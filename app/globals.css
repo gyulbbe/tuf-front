@@ -80,4 +80,5 @@ select {
 ::selection {
   background: rgba(86, 101, 95, 0.2);
   color: var(--foreground);
+  font-family: var(--font-geist-sans), sans-serif;
 }

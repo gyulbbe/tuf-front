@@ -2,7 +2,7 @@ name: Codex Issue To PR
 
 on:
   issues:
-    types: [opened, reopened, labeled]
+    types: [labeled]
   issue_comment:
     types: [created]
 
@@ -18,16 +18,12 @@ jobs:
     if: >
       (
         github.event_name == 'issues' &&
-        (
-          github.event.action == 'opened' ||
-          github.event.action == 'reopened' ||
-          github.event.label.name == 'ai-fix'
-        )
+        github.event.label.name == 'ai-fix'
       ) ||
       (
         github.event_name == 'issue_comment' &&
         !github.event.issue.pull_request &&
-        startsWith(github.event.comment.body, '/fix')
+        startsWith(github.event.comment.body, 'ai-fix')
       )
     runs-on: ubuntu-latest
     steps:

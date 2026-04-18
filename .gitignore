@@ -50,3 +50,5 @@ next-env.d.ts
 .wrangler/
 cloudflare-env.d.ts
 
+# local app data
+/data/users.json

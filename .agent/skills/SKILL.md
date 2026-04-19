@@ -18,4 +18,6 @@ description: Use this skill when working in the tuf-front repository and you nee
 
 ## References
 
+- Backend API docs: https://api.tufclan.com/swagger-ui/index.html#/
+
 - 개발환경 요약: [references/development-environment.md](references/development-environment.md)

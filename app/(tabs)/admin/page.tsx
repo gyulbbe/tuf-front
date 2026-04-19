@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SurfaceCard } from "@/components/site/surface-card";
+import { requireServerAuth } from "@/lib/auth/server-auth";
 
 export const metadata: Metadata = {
   title: "관리자",
@@ -23,7 +24,30 @@ const adminSections = [
   },
 ];
 
-export default function AdminPage() {
+function isAdminRole(role: string) {
+  return role.trim().toLowerCase() === "admin";
+}
+
+export default async function AdminPage() {
+  const session = await requireServerAuth("/admin");
+
+  if (!isAdminRole(session.user.role)) {
+    return (
+      <SurfaceCard className="p-7 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
+          Admin
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+          접근 권한 없음
+        </h1>
+        <p className="mt-4 max-w-2xl text-base leading-8 text-muted">
+          이 페이지는 `role=admin` 계정만 접근할 수 있다. 현재 JWT 권한으로는
+          관리자 기능을 볼 수 없다.
+        </p>
+      </SurfaceCard>
+    );
+  }
+
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
       <SurfaceCard className="p-7 sm:p-8">
@@ -34,9 +58,8 @@ export default function AdminPage() {
           관리자
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-8 text-muted">
-          관리자 탭은 운영 전용 작업 공간입니다. 지금은 계정 직접 등록 방식에
-          맞춰 골격만 먼저 두었고, 이후 사용자 추가와 권한 관리 기능을 이
-          페이지에서 확장하면 됩니다.
+          관리자 탭은 운영 전용 작업 공간이다. 서버에서 JWT 기반 로그인 상태를
+          먼저 확인한 뒤, `role` claim이 admin일 때만 관리자 기능을 보여준다.
         </p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -61,13 +84,13 @@ export default function AdminPage() {
           <p className="text-sm font-semibold text-foreground">현재 기준</p>
           <ul className="mt-4 space-y-3 text-sm leading-7 text-muted">
             <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-              계정은 직접 등록 방식으로 운영
+              서버에서 로그인 상태를 먼저 확인
             </li>
             <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-              계정은 관리자 직접 등록
+              `role=admin` 일 때만 관리자 화면 노출
             </li>
             <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-              권한 분리는 후속 단계에서 연결
+              JWT 만료/401 시 자동 로그아웃
             </li>
           </ul>
         </SurfaceCard>
@@ -76,7 +99,7 @@ export default function AdminPage() {
           <p className="text-sm font-semibold text-foreground">다음 작업 후보</p>
           <p className="mt-3 text-sm leading-7 text-muted">
             계정 목록 조회, 비밀번호 초기화, 권한 변경, 공지 작성 권한 같은
-            운영 기능을 이 탭 기준으로 이어서 붙일 수 있습니다.
+            운영 기능을 이 탭 기준으로 이어서 붙일 수 있다.
           </p>
         </SurfaceCard>
       </div>

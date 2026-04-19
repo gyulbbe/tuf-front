@@ -1,3 +1,4 @@
+import axios from "axios";
 import { apiClient } from "@/lib/api/client";
 
 type ApiEnvelope<T> = {
@@ -219,6 +220,105 @@ export type DraftUserSearchResult = {
   photo: string | null;
 };
 
+export type DraftApiErrorInfo = {
+  fallback: string;
+  httpStatus: number | null;
+  method: string | null;
+  params: unknown;
+  requestData: unknown;
+  responseData: unknown;
+  responseMessage: string | null;
+  responseStatus: number | null;
+  url: string | null;
+};
+
+export class DraftApiError extends Error {
+  info: DraftApiErrorInfo;
+
+  constructor(message: string, info: DraftApiErrorInfo) {
+    super(message);
+    this.name = "DraftApiError";
+    this.info = info;
+  }
+}
+
+export function isDraftApiError(error: unknown): error is DraftApiError {
+  return error instanceof DraftApiError;
+}
+
+export function getDraftErrorDebugInfo(error: unknown) {
+  if (isDraftApiError(error)) {
+    return {
+      name: error.name,
+      message: error.message,
+      ...error.info,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return {
+    error,
+  };
+}
+
+function parseRequestData(value: unknown) {
+  if (typeof value !== "string") {
+    return value ?? null;
+  }
+
+  if (!value.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function createDraftApiError(
+  fallback: string,
+  options: {
+    config?: {
+      data?: unknown;
+      method?: string;
+      params?: unknown;
+      url?: string;
+    } | null;
+    httpStatus?: number | null;
+    message?: string | null;
+    responseData?: unknown;
+    responseStatus?: number | null;
+  },
+) {
+  const responseMessage =
+    typeof options.message === "string" && options.message.trim()
+      ? options.message
+      : fallback;
+
+  return new DraftApiError(responseMessage, {
+    fallback,
+    httpStatus:
+      typeof options.httpStatus === "number" ? options.httpStatus : null,
+    method: options.config?.method?.toUpperCase() ?? null,
+    params: options.config?.params ?? null,
+    requestData: parseRequestData(options.config?.data),
+    responseData: options.responseData ?? null,
+    responseMessage,
+    responseStatus:
+      typeof options.responseStatus === "number" ? options.responseStatus : null,
+    url: options.config?.url ?? null,
+  });
+}
+
 function readArray<T>(value: unknown, fallback: T[] = []) {
   return Array.isArray(value) ? (value as T[]) : fallback;
 }
@@ -262,50 +362,148 @@ function readErrorMessage(data: unknown, fallback: string) {
 }
 
 async function unwrapResponse<T>(
-  request: Promise<{ status: number; data: ApiEnvelope<T> | ErrorResponseBody }>,
+  request: Promise<{
+    config?: {
+      data?: unknown;
+      method?: string;
+      params?: unknown;
+      url?: string;
+    };
+    status: number;
+    data: ApiEnvelope<T> | ErrorResponseBody;
+  }>,
   fallback: string,
 ) {
-  const response = await request;
+  try {
+    const response = await request;
+    const responseStatus =
+      typeof (response.data as ApiEnvelope<T>).status === "number"
+        ? (response.data as ApiEnvelope<T>).status ?? null
+        : response.status;
+    const normalizedResponseStatus = responseStatus ?? response.status;
+    const responseMessage = readErrorMessage(response.data, fallback);
 
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error(readErrorMessage(response.data, fallback));
+    if (response.status < 200 || response.status >= 300) {
+      throw createDraftApiError(fallback, {
+        config: response.config,
+        httpStatus: response.status,
+        message: responseMessage,
+        responseData: response.data,
+        responseStatus: normalizedResponseStatus,
+      });
+    }
+
+    const body = response.data as ApiEnvelope<T>;
+
+    if (
+      normalizedResponseStatus >= 400 ||
+      body.data === null ||
+      body.data === undefined
+    ) {
+      throw createDraftApiError(fallback, {
+        config: response.config,
+        httpStatus: response.status,
+        message: responseMessage,
+        responseData: response.data,
+        responseStatus: normalizedResponseStatus,
+      });
+    }
+
+    return body.data;
+  } catch (error) {
+    if (isDraftApiError(error)) {
+      throw error;
+    }
+
+    if (axios.isAxiosError(error)) {
+      throw createDraftApiError(fallback, {
+        config: error.config,
+        httpStatus: error.response?.status ?? null,
+        message: readErrorMessage(error.response?.data, error.message || fallback),
+        responseData: error.response?.data ?? null,
+        responseStatus:
+          typeof error.response?.data?.status === "number"
+            ? error.response.data.status
+            : null,
+      });
+    }
+
+    if (error instanceof Error) {
+      throw createDraftApiError(fallback, {
+        message: error.message,
+      });
+    }
+
+    throw createDraftApiError(fallback, {});
   }
-
-  const body = response.data as ApiEnvelope<T>;
-  const responseStatus =
-    typeof body.status === "number" ? body.status : response.status;
-
-  if (responseStatus >= 400 || body.data === null || body.data === undefined) {
-    throw new Error(
-      typeof body.message === "string" && body.message.trim()
-        ? body.message
-        : fallback,
-    );
-  }
-
-  return body.data;
 }
 
 async function unwrapVoidResponse(
-  request: Promise<{ status: number; data: ApiEnvelope<null> | ErrorResponseBody }>,
+  request: Promise<{
+    config?: {
+      data?: unknown;
+      method?: string;
+      params?: unknown;
+      url?: string;
+    };
+    status: number;
+    data: ApiEnvelope<null> | ErrorResponseBody;
+  }>,
   fallback: string,
 ) {
-  const response = await request;
+  try {
+    const response = await request;
+    const responseStatus =
+      typeof (response.data as ApiEnvelope<null>).status === "number"
+        ? (response.data as ApiEnvelope<null>).status ?? null
+        : response.status;
+    const normalizedResponseStatus = responseStatus ?? response.status;
+    const responseMessage = readErrorMessage(response.data, fallback);
 
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error(readErrorMessage(response.data, fallback));
-  }
+    if (response.status < 200 || response.status >= 300) {
+      throw createDraftApiError(fallback, {
+        config: response.config,
+        httpStatus: response.status,
+        message: responseMessage,
+        responseData: response.data,
+        responseStatus: normalizedResponseStatus,
+      });
+    }
 
-  const body = response.data as ApiEnvelope<null>;
-  const responseStatus =
-    typeof body.status === "number" ? body.status : response.status;
+    if (normalizedResponseStatus >= 400) {
+      throw createDraftApiError(fallback, {
+        config: response.config,
+        httpStatus: response.status,
+        message: responseMessage,
+        responseData: response.data,
+        responseStatus: normalizedResponseStatus,
+      });
+    }
+  } catch (error) {
+    if (isDraftApiError(error)) {
+      throw error;
+    }
 
-  if (responseStatus >= 400) {
-    throw new Error(
-      typeof body.message === "string" && body.message.trim()
-        ? body.message
-        : fallback,
-    );
+    if (axios.isAxiosError(error)) {
+      throw createDraftApiError(fallback, {
+        config: error.config,
+        httpStatus: error.response?.status ?? null,
+        message: readErrorMessage(error.response?.data, error.message || fallback),
+        responseData: error.response?.data ?? null,
+        responseStatus:
+          typeof error.response?.data?.status === "number"
+            ? error.response.data.status
+            : null,
+      });
+    }
+
+    if (error instanceof Error) {
+      throw createDraftApiError(fallback, {
+        message: error.message,
+      });
+    }
+
+    throw createDraftApiError(fallback, {});
   }
 }
 

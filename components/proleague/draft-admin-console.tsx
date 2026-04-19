@@ -15,6 +15,7 @@ import {
   deleteDraftTeam,
   deleteDraftTeamOperator,
   getDraftSessionDetail,
+  getDraftErrorDebugInfo,
   listDraftSessions,
   searchDraftUsers,
   updateDraftCandidate,
@@ -177,6 +178,31 @@ function readErrorMessage(error: unknown) {
   }
 
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+}
+
+function logDraftAdminIssue(
+  action: string,
+  error: unknown,
+  context?: Record<string, unknown>,
+) {
+  const message = readErrorMessage(error);
+
+  console.groupCollapsed(`[Draft Admin] ${action} 실패: ${message}`);
+
+  if (context) {
+    console.log("context", context);
+  }
+
+  console.error("detail", getDraftErrorDebugInfo(error));
+  console.groupEnd();
+}
+
+function logDraftAdminInfo(
+  action: string,
+  message: string,
+  context?: Record<string, unknown>,
+) {
+  console.info(`[Draft Admin] ${action}: ${message}`, context ?? {});
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -602,11 +628,14 @@ function UserAutocompleteInput({
         setResults(nextResults);
         setIsOpen(true);
         setActiveIndex(nextResults.length > 0 ? 0 : -1);
-      } catch {
+      } catch (error) {
         if (cancelled) {
           return;
         }
 
+        logDraftAdminIssue("유저 자동완성 검색", error, {
+          keyword,
+        });
         setResults([]);
         setIsOpen(true);
         setActiveIndex(-1);
@@ -1512,6 +1541,30 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     onDataChanged?.();
   }
 
+  function handleActionError(
+    action: string,
+    error: unknown,
+    context?: Record<string, unknown>,
+  ) {
+    logDraftAdminIssue(action, error, context);
+    setNotice({
+      tone: "error",
+      text: readErrorMessage(error),
+    });
+  }
+
+  function handleActionInfo(
+    action: string,
+    message: string,
+    context?: Record<string, unknown>,
+  ) {
+    logDraftAdminInfo(action, message, context);
+    setNotice({
+      tone: "neutral",
+      text: message,
+    });
+  }
+
   function resetDetailState() {
     startTransition(() => {
       setSelectedSessionDetail(null);
@@ -1605,10 +1658,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           return;
         }
 
-        setNotice({
-          tone: "error",
-          text: readErrorMessage(error),
-        });
+        handleActionError("세션 목록 초기 로드", error);
       } finally {
         if (!cancelled) {
           setLoadingSessions(false);
@@ -1648,10 +1698,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           return;
         }
 
-        setNotice({
-          tone: "error",
-          text: readErrorMessage(error),
-        });
+        handleActionError("세션 상세 로드", error, { sessionId });
       } finally {
         if (!cancelled) {
           setLoadingDetail(false);
@@ -1767,9 +1814,8 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "세션을 생성했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("세션 생성", error, {
+        form: createForm,
       });
     } finally {
       setPendingAction(null);
@@ -1805,9 +1851,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "세션 정보를 저장했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("세션 저장", error, {
+        form: editForm,
+        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);
@@ -1830,9 +1876,8 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "세션을 삭제했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("세션 삭제", error, {
+        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);
@@ -1867,9 +1912,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "팀을 생성했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("팀 생성", error, {
+        form: teamForm,
+        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);
@@ -1908,9 +1953,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "팀 정보를 저장했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("팀 저장", error, {
+        editState,
+        sessionId: selectedSessionId,
+        teamId,
       });
     } finally {
       setPendingAction(null);
@@ -1934,9 +1980,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "팀을 삭제했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("팀 삭제", error, {
+        sessionId: selectedSessionId,
+        teamId,
       });
     } finally {
       setPendingAction(null);
@@ -1972,9 +2018,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "운영자를 등록했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("운영자 등록", error, {
+        lookup,
+        sessionId: selectedSessionId,
+        teamId,
       });
     } finally {
       setPendingAction(null);
@@ -2002,9 +2049,11 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "운영자 정보를 저장했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("운영자 저장", error, {
+        operatorUserId,
+        payload,
+        sessionId: selectedSessionId,
+        teamId,
       });
     } finally {
       setPendingAction(null);
@@ -2031,9 +2080,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "운영자를 삭제했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("운영자 삭제", error, {
+        operatorUserId,
+        sessionId: selectedSessionId,
+        teamId,
       });
     } finally {
       setPendingAction(null);
@@ -2042,6 +2092,66 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
   async function handleAssignPicker(teamId: number, operatorUserId: number) {
     if (selectedSessionId === null) {
+      return;
+    }
+
+    const team = selectedSessionDetail?.teams.find((item) => item.id === teamId);
+    const operator = team?.operators.find(
+      (item) => item.operatorUserId === operatorUserId,
+    );
+
+    if (!team || !operator) {
+      handleActionError(
+        "픽커 지정",
+        new Error("팀 또는 운영자 정보를 찾지 못했습니다."),
+        {
+          operatorUserId,
+          sessionId: selectedSessionId,
+          teamId,
+        },
+      );
+      return;
+    }
+
+    if (operator.canPick === "Y") {
+      handleActionInfo(
+        "픽커 지정",
+        "현재 백엔드에는 픽커 해제 API가 없어서 같은 픽커를 다시 눌러도 취소되지 않습니다.",
+        {
+          operatorUserId,
+          role: operator.role,
+          sessionId: selectedSessionId,
+          teamId,
+        },
+      );
+      return;
+    }
+
+    if (operator.isActive !== "Y") {
+      handleActionError(
+        "픽커 지정",
+        new Error("비활성 운영자는 픽커로 지정할 수 없습니다."),
+        {
+          operatorUserId,
+          role: operator.role,
+          sessionId: selectedSessionId,
+          teamId,
+        },
+      );
+      return;
+    }
+
+    if (!["CAPTAIN", "VICE_CAPTAIN"].includes(operator.role)) {
+      handleActionError(
+        "픽커 지정",
+        new Error("픽커는 CAPTAIN 또는 VICE_CAPTAIN만 지정할 수 있습니다."),
+        {
+          operatorUserId,
+          role: operator.role,
+          sessionId: selectedSessionId,
+          teamId,
+        },
+      );
       return;
     }
 
@@ -2060,9 +2170,11 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "픽커를 지정했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("픽커 지정", error, {
+        operatorUserId,
+        role: operator.role,
+        sessionId: selectedSessionId,
+        teamId,
       });
     } finally {
       setPendingAction(null);
@@ -2101,9 +2213,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "후보를 등록했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("후보 등록", error, {
+        form: candidateForm,
+        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);
@@ -2150,9 +2262,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "후보 정보를 저장했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("후보 저장", error, {
+        candidateUserId,
+        editState,
+        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);
@@ -2175,9 +2288,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "후보를 삭제했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("후보 삭제", error, {
+        candidateUserId,
+        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);
@@ -2209,9 +2322,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "드래프트 순서를 등록했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("순서 등록", error, {
+        form: orderForm,
+        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);
@@ -2247,9 +2360,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "드래프트 순서를 저장했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("순서 저장", error, {
+        editState,
+        originalPickNo,
+        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);
@@ -2274,9 +2388,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "드래프트 순서를 삭제했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("순서 삭제", error, {
+        pickNo,
+        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);
@@ -2299,9 +2413,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "픽 기록을 삭제했습니다. 필요하면 후보 상태와 순서를 아래 섹션에서 바로 보정해 주세요.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
+      handleActionError("픽 기록 삭제", error, {
+        pickNo,
+        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);

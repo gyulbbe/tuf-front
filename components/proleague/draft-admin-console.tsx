@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import {
   assignDraftPicker,
   createDraftCandidate,
@@ -8,23 +8,28 @@ import {
   createDraftSession,
   createDraftTeam,
   createDraftTeamOperator,
+  deleteDraftCandidate,
+  deleteDraftOrder,
+  deleteDraftPick,
+  deleteDraftSession,
+  deleteDraftTeam,
   deleteDraftTeamOperator,
-  finishDraftSession,
   getDraftSessionDetail,
   listDraftSessions,
-  pauseDraftSession,
-  resumeDraftSession,
-  searchDraftUserByLoginId,
-  startDraftSession,
+  searchDraftUsers,
+  updateDraftCandidate,
+  updateDraftOrder,
   updateDraftSession,
+  updateDraftTeam,
   updateDraftTeamOperator,
   type DraftCandidate,
   type DraftLiveTeam,
   type DraftOrder,
+  type DraftPick,
   type DraftSessionDetail,
   type DraftSessionSummary,
   type DraftTeamOperator,
-  type DraftUserLookup,
+  type DraftUserSearchResult,
 } from "@/lib/api/draft";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
@@ -50,23 +55,42 @@ type TeamFormState = {
 };
 
 type TeamLookupState = {
-  loginId: string;
+  query: string;
   operatorUserId: string;
   role: string;
   isActive: string;
-  result: DraftUserLookup | null;
+  selectedUser: DraftUserSearchResult | null;
 };
 
 type CandidateFormState = {
-  loginId: string;
+  query: string;
   candidateUserId: string;
   candidateName: string;
   race: string;
   status: string;
-  result: DraftUserLookup | null;
+  selectedUser: DraftUserSearchResult | null;
+};
+
+type TeamEditState = {
+  teamName: string;
+  displayOrder: string;
+};
+
+type CandidateEditState = {
+  candidateName: string;
+  race: string;
+  status: string;
+  pickedDraftTeamId: string;
+  pickedAt: string;
 };
 
 type OrderFormState = {
+  roundNo: string;
+  pickNo: string;
+  draftTeamId: string;
+};
+
+type OrderEditState = {
   roundNo: string;
   pickNo: string;
   draftTeamId: string;
@@ -81,10 +105,38 @@ type DraftAdminConsoleProps = {
   onDataChanged?: () => void;
 };
 
+type UserAutocompleteInputProps = {
+  disabled?: boolean;
+  onSelect: (user: DraftUserSearchResult) => void;
+  placeholder: string;
+  value: string;
+  onValueChange: (value: string) => void;
+};
+
 const ROLE_OPTIONS = ["CAPTAIN", "VICE_CAPTAIN", "OPERATOR"] as const;
 const ACTIVE_OPTIONS = ["Y", "N"] as const;
 const RACE_OPTIONS = ["TERRAN", "ZERG", "PROTOSS", "RANDOM"] as const;
-const CANDIDATE_STATUS_OPTIONS = ["WAITING", "PICKED"] as const;
+const CANDIDATE_STATUS_OPTIONS = [
+  "WAITING",
+  "PICKED",
+  "SKIPPED",
+  "EXCLUDED",
+] as const;
+
+const SESSION_STATUS_LABELS: Record<string, string> = {
+  READY: "준비",
+  LIVE: "진행 중",
+  PAUSED: "일시정지",
+  FINISHED: "종료",
+  CANCELLED: "취소",
+};
+
+const CANDIDATE_STATUS_LABELS: Record<string, string> = {
+  WAITING: "대기",
+  PICKED: "지명됨",
+  SKIPPED: "스킵",
+  EXCLUDED: "제외",
+};
 
 const SELECT_CLASS_NAME =
   "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
@@ -102,12 +154,12 @@ const EMPTY_EDIT_FORM: SessionFormState = {
 };
 
 const EMPTY_CANDIDATE_FORM: CandidateFormState = {
-  loginId: "",
+  query: "",
   candidateUserId: "",
   candidateName: "",
   race: "TERRAN",
   status: "WAITING",
-  result: null,
+  selectedUser: null,
 };
 
 const EMPTY_ORDER_FORM: OrderFormState = {
@@ -116,20 +168,12 @@ const EMPTY_ORDER_FORM: OrderFormState = {
   draftTeamId: "",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  READY: "준비",
-  LIVE: "진행 중",
-  PAUSED: "일시정지",
-  FINISHED: "종료",
-  CANCELLED: "취소",
-};
-
 function readErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
 
-  return "요청을 처리하지 못했다. 잠시 후 다시 시도해줘.";
+  return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -152,19 +196,48 @@ function formatDateTime(value: string | null | undefined) {
   }).format(timestamp);
 }
 
-function formatDraftStatus(status: string | null | undefined) {
+function toDateTimeLocalValue(value: string | null | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  const timestamp = Date.parse(value);
+
+  if (Number.isNaN(timestamp)) {
+    return value.slice(0, 16);
+  }
+
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function formatSessionStatus(status: string | null | undefined) {
   if (!status) {
     return "미정";
   }
 
-  return STATUS_LABELS[status] ?? status;
+  return SESSION_STATUS_LABELS[status] ?? status;
+}
+
+function formatCandidateStatus(status: string | null | undefined) {
+  if (!status) {
+    return "미정";
+  }
+
+  return CANDIDATE_STATUS_LABELS[status] ?? status;
 }
 
 function parsePositiveInt(value: string, fieldName: string, minimum = 1) {
   const parsed = Number(value.trim());
 
   if (!Number.isInteger(parsed) || parsed < minimum) {
-    throw new Error(`${fieldName}은(는) ${minimum} 이상의 정수여야 한다.`);
+    throw new Error(`${fieldName}은(는) ${minimum} 이상의 정수여야 합니다.`);
   }
 
   return parsed;
@@ -179,6 +252,21 @@ function normalizeRace(value: string | null | undefined) {
   return RACE_OPTIONS.includes(normalized as (typeof RACE_OPTIONS)[number])
     ? normalized
     : null;
+}
+
+function getCandidateStatusPriority(status: string) {
+  switch (status) {
+    case "WAITING":
+      return 0;
+    case "PICKED":
+      return 1;
+    case "SKIPPED":
+      return 2;
+    case "EXCLUDED":
+      return 3;
+    default:
+      return 4;
+  }
 }
 
 function sortSessions(sessions: DraftSessionSummary[]) {
@@ -214,8 +302,12 @@ function sortTeams(teams: DraftLiveTeam[]) {
 
 function sortCandidates(candidates: DraftCandidate[]) {
   return [...candidates].sort((left, right) => {
-    if (left.status !== right.status) {
-      return left.status.localeCompare(right.status);
+    const priorityGap =
+      getCandidateStatusPriority(left.status) -
+      getCandidateStatusPriority(right.status);
+
+    if (priorityGap !== 0) {
+      return priorityGap;
     }
 
     return left.candidateName.localeCompare(right.candidateName, "ko");
@@ -224,6 +316,10 @@ function sortCandidates(candidates: DraftCandidate[]) {
 
 function sortOrders(orders: DraftOrder[]) {
   return [...orders].sort((left, right) => left.pickNo - right.pickNo);
+}
+
+function sortPicks(picks: DraftPick[]) {
+  return [...picks].sort((left, right) => left.pickNo - right.pickNo);
 }
 
 function chooseSessionId(
@@ -252,6 +348,39 @@ function createOperatorKey(teamId: number, operatorUserId: number) {
   return `${teamId}:${operatorUserId}`;
 }
 
+function createEmptyTeamLookupState(): TeamLookupState {
+  return {
+    query: "",
+    operatorUserId: "",
+    role: "OPERATOR",
+    isActive: "Y",
+    selectedUser: null,
+  };
+}
+
+function createInitialTeamLookups(detail: DraftSessionDetail) {
+  const nextState: Record<number, TeamLookupState> = {};
+
+  for (const team of detail.teams) {
+    nextState[team.id] = createEmptyTeamLookupState();
+  }
+
+  return nextState;
+}
+
+function createInitialTeamEdits(detail: DraftSessionDetail) {
+  const nextState: Record<number, TeamEditState> = {};
+
+  for (const team of detail.teams) {
+    nextState[team.id] = {
+      teamName: team.teamName,
+      displayOrder: String(team.displayOrder),
+    };
+  }
+
+  return nextState;
+}
+
 function createInitialOperatorEdits(detail: DraftSessionDetail) {
   const nextState: Record<string, OperatorEditState> = {};
 
@@ -267,21 +396,33 @@ function createInitialOperatorEdits(detail: DraftSessionDetail) {
   return nextState;
 }
 
-function createEmptyTeamLookupState(): TeamLookupState {
-  return {
-    loginId: "",
-    operatorUserId: "",
-    role: "OPERATOR",
-    isActive: "Y",
-    result: null,
-  };
+function createInitialCandidateEdits(detail: DraftSessionDetail) {
+  const nextState: Record<number, CandidateEditState> = {};
+
+  for (const candidate of detail.candidates) {
+    nextState[candidate.candidateUserId] = {
+      candidateName: candidate.candidateName,
+      race: normalizeRace(candidate.race) ?? "TERRAN",
+      status: candidate.status,
+      pickedDraftTeamId: candidate.pickedDraftTeamId
+        ? String(candidate.pickedDraftTeamId)
+        : "",
+      pickedAt: toDateTimeLocalValue(candidate.pickedAt),
+    };
+  }
+
+  return nextState;
 }
 
-function createInitialTeamLookups(detail: DraftSessionDetail) {
-  const nextState: Record<number, TeamLookupState> = {};
+function createInitialOrderEdits(detail: DraftSessionDetail) {
+  const nextState: Record<number, OrderEditState> = {};
 
-  for (const team of detail.teams) {
-    nextState[team.id] = createEmptyTeamLookupState();
+  for (const order of detail.orders) {
+    nextState[order.pickNo] = {
+      roundNo: String(order.roundNo),
+      pickNo: String(order.pickNo),
+      draftTeamId: String(order.draftTeamId),
+    };
   }
 
   return nextState;
@@ -329,28 +470,35 @@ function getNoticeClassName(tone: NoticeTone) {
   return "border border-line bg-surface-muted text-foreground";
 }
 
-function getStatusChipClassName(active: boolean) {
+function getStateChipClassName(active: boolean) {
   return active
     ? "border border-success-ink/15 bg-success-soft text-success-ink"
     : "border border-line bg-surface-muted text-muted";
 }
 
 function getCandidateStatusClassName(status: string) {
-  return status === "WAITING"
-    ? "border border-success-ink/15 bg-success-soft text-success-ink"
-    : "border border-line bg-surface-muted text-muted";
+  switch (status) {
+    case "WAITING":
+      return "border border-success-ink/15 bg-success-soft text-success-ink";
+    case "PICKED":
+      return "bg-accent text-white";
+    case "EXCLUDED":
+      return "border border-danger-ink/15 bg-danger-soft text-danger-ink";
+    default:
+      return "border border-line bg-surface-muted text-muted";
+  }
 }
 
 function SetupStatCard({
-  label,
-  value,
   description,
+  label,
   ready,
+  value,
 }: {
-  label: string;
-  value: string;
   description: string;
+  label: string;
   ready: boolean;
+  value: string;
 }) {
   return (
     <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
@@ -359,7 +507,7 @@ function SetupStatCard({
         <span
           className={cn(
             "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]",
-            getStatusChipClassName(ready),
+            getStateChipClassName(ready),
           )}
         >
           {ready ? "READY" : "NEED"}
@@ -373,24 +521,283 @@ function SetupStatCard({
   );
 }
 
-function OperatorRow({
-  pendingAction,
-  operator,
+function UserAutocompleteInput({
+  disabled = false,
+  onSelect,
+  placeholder,
+  value,
+  onValueChange,
+}: UserAutocompleteInputProps) {
+  const [results, setResults] = useState<DraftUserSearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const blurTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const keyword = value.trim();
+
+    if (!keyword) {
+      const timeoutId = window.setTimeout(() => {
+        setResults([]);
+        setLoading(false);
+        setIsOpen(false);
+        setActiveIndex(-1);
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      setLoading(true);
+
+      try {
+        const nextResults = await searchDraftUsers(keyword, 8);
+
+        if (cancelled) {
+          return;
+        }
+
+        setResults(nextResults);
+        setIsOpen(true);
+        setActiveIndex(nextResults.length > 0 ? 0 : -1);
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        setResults([]);
+        setIsOpen(true);
+        setActiveIndex(-1);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [value]);
+
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current !== null) {
+        window.clearTimeout(blurTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function closeDropdown() {
+    setIsOpen(false);
+    setActiveIndex(-1);
+  }
+
+  function selectUser(user: DraftUserSearchResult) {
+    onSelect(user);
+    setResults([]);
+    closeDropdown();
+  }
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={(event) => {
+          onValueChange(event.target.value);
+          setIsOpen(true);
+        }}
+        onFocus={() => {
+          if (value.trim()) {
+            setIsOpen(true);
+          }
+        }}
+        onBlur={() => {
+          blurTimeoutRef.current = window.setTimeout(() => {
+            closeDropdown();
+          }, 120);
+        }}
+        onKeyDown={(event) => {
+          if (!isOpen && event.key === "ArrowDown") {
+            setIsOpen(true);
+            return;
+          }
+
+          if (!isOpen) {
+            return;
+          }
+
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setActiveIndex((current) =>
+              results.length === 0 ? -1 : Math.min(current + 1, results.length - 1),
+            );
+          }
+
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setActiveIndex((current) =>
+              results.length === 0 ? -1 : Math.max(current - 1, 0),
+            );
+          }
+
+          if (event.key === "Enter" && activeIndex >= 0 && results[activeIndex]) {
+            event.preventDefault();
+            selectUser(results[activeIndex]);
+          }
+
+          if (event.key === "Escape") {
+            closeDropdown();
+          }
+        }}
+      />
+
+      {loading ? (
+        <p className="mt-2 text-xs text-muted">검색 중...</p>
+      ) : null}
+
+      {isOpen && value.trim() ? (
+        <div className="absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-[22px] border border-line bg-surface shadow-[0_18px_60px_-40px_rgba(31,42,40,0.7)]">
+          {results.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-muted">검색 결과가 없습니다.</div>
+          ) : (
+            <div className="max-h-72 overflow-y-auto py-2">
+              {results.map((user, index) => (
+                <button
+                  key={`${user.id}:${user.userId}`}
+                  type="button"
+                  className={cn(
+                    "flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors",
+                    index === activeIndex
+                      ? "bg-surface-strong"
+                      : "hover:bg-surface-strong",
+                  )}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    selectUser(user);
+                  }}
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {user.userId}
+                    </p>
+                    <p className="mt-1 text-xs text-muted">
+                      {user.name ?? "이름 없음"}
+                      {user.tier ? ` · ${user.tier}` : ""}
+                      {user.race ? ` · ${user.race}` : ""}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-surface-strong px-3 py-1 text-xs text-muted">
+                    id {user.id}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TeamRow({
+  draftTeam,
   editState,
+  pendingAction,
+  onChange,
+  onDelete,
+  onSave,
+}: {
+  draftTeam: DraftLiveTeam;
+  editState: TeamEditState;
+  pendingAction: string | null;
+  onChange: (patch: Partial<TeamEditState>) => void;
+  onDelete: () => Promise<void>;
+  onSave: () => Promise<void>;
+}) {
+  return (
+    <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            teamId {draftTeam.id}
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            운영자 {draftTeam.operators.length}명 · 로스터 {draftTeam.roster.length}명
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            disabled={pendingAction !== null}
+            onClick={() => {
+              void onSave();
+            }}
+          >
+            {pendingAction === `team-save:${draftTeam.id}` ? "저장 중" : "저장"}
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            disabled={pendingAction !== null}
+            onClick={() => {
+              void onDelete();
+            }}
+          >
+            {pendingAction === `team-delete:${draftTeam.id}` ? "삭제 중" : "삭제"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <Input
+          value={editState.teamName}
+          onChange={(event) => {
+            onChange({ teamName: event.target.value });
+          }}
+          placeholder="팀 이름"
+        />
+        <Input
+          type="number"
+          min={1}
+          value={editState.displayOrder}
+          onChange={(event) => {
+            onChange({ displayOrder: event.target.value });
+          }}
+          placeholder="displayOrder"
+        />
+      </div>
+    </div>
+  );
+}
+
+function OperatorRow({
+  draftTeamId,
+  editState,
+  operator,
+  pendingAction,
   onChange,
   onDelete,
   onAssignPicker,
   onSave,
 }: {
-  pendingAction: string | null;
-  operator: DraftTeamOperator;
+  draftTeamId: number;
   editState: OperatorEditState;
+  operator: DraftTeamOperator;
+  pendingAction: string | null;
   onChange: (patch: Partial<OperatorEditState>) => void;
   onDelete: () => Promise<void>;
   onAssignPicker: () => Promise<void>;
   onSave: () => Promise<void>;
 }) {
-  const rowKey = createOperatorKey(operator.draftTeamId, operator.operatorUserId);
+  const actionKey = createOperatorKey(draftTeamId, operator.operatorUserId);
 
   return (
     <div className="rounded-[24px] border border-line bg-surface px-4 py-4">
@@ -404,7 +811,6 @@ function OperatorRow({
             {operator.canPick === "Y" ? " · 현재 픽커" : ""}
           </p>
         </div>
-
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
@@ -414,7 +820,9 @@ function OperatorRow({
               void onAssignPicker();
             }}
           >
-            {pendingAction === `picker:${rowKey}` ? "지정 중" : "픽커 지정"}
+            {pendingAction === `operator-picker:${actionKey}`
+              ? "지정 중"
+              : "픽커 지정"}
           </Button>
           <Button
             size="sm"
@@ -423,7 +831,7 @@ function OperatorRow({
               void onSave();
             }}
           >
-            {pendingAction === `save:${rowKey}` ? "저장 중" : "저장"}
+            {pendingAction === `operator-save:${actionKey}` ? "저장 중" : "저장"}
           </Button>
           <Button
             size="sm"
@@ -433,7 +841,7 @@ function OperatorRow({
               void onDelete();
             }}
           >
-            {pendingAction === `delete:${rowKey}` ? "삭제 중" : "삭제"}
+            {pendingAction === `operator-delete:${actionKey}` ? "삭제 중" : "삭제"}
           </Button>
         </div>
       </div>
@@ -457,7 +865,6 @@ function OperatorRow({
             ))}
           </select>
         </label>
-
         <label className="block">
           <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
             Active
@@ -487,7 +894,6 @@ function TeamOperatorManager({
   operatorEdits,
   pendingAction,
   onChangeLookup,
-  onSearchUser,
   onAddOperator,
   onAssignPicker,
   onDeleteOperator,
@@ -499,7 +905,6 @@ function TeamOperatorManager({
   operatorEdits: Record<string, OperatorEditState>;
   pendingAction: string | null;
   onChangeLookup: (teamId: number, patch: Partial<TeamLookupState>) => void;
-  onSearchUser: (teamId: number) => Promise<void>;
   onAddOperator: (teamId: number) => Promise<void>;
   onAssignPicker: (teamId: number, operatorUserId: number) => Promise<void>;
   onDeleteOperator: (teamId: number, operatorUserId: number) => Promise<void>;
@@ -533,26 +938,30 @@ function TeamOperatorManager({
 
       <div className="mt-5 rounded-[24px] border border-line bg-surface px-4 py-4">
         <p className="text-sm font-semibold text-foreground">
-          아이디 검색 후 운영자 등록
+          userId 자동완성으로 운영자 등록
         </p>
         <p className="mt-2 text-sm leading-7 text-muted">
-          <code className="rounded bg-surface-muted px-2 py-1 text-xs text-foreground">
-            /user/get/{"{userId}"}
-          </code>
-          {" "}응답에 숫자 userPk가 없을 수 있어서, 검색 후 필요하면 userPk를 직접
-          입력해야 한다.
+          일부만 입력해도 검색 결과가 내려온다. 선택하면 userPk가 자동으로
+          채워지고, 필요하면 직접 수정할 수 있다.
         </p>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_140px_140px_120px_auto]">
-          <Input
-            value={lookupState.loginId}
-            onChange={(event) => {
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_140px_140px_120px_auto]">
+          <UserAutocompleteInput
+            value={lookupState.query}
+            placeholder="userId 검색"
+            onValueChange={(value) => {
               onChangeLookup(draftTeam.id, {
-                loginId: event.target.value,
-                result: null,
+                query: value,
+                selectedUser: null,
               });
             }}
-            placeholder="userId 검색"
+            onSelect={(user) => {
+              onChangeLookup(draftTeam.id, {
+                query: user.userId,
+                operatorUserId: String(user.id),
+                selectedUser: user,
+              });
+            }}
           />
           <Input
             value={lookupState.operatorUserId}
@@ -593,43 +1002,33 @@ function TeamOperatorManager({
               </option>
             ))}
           </select>
-          <div className="flex gap-2">
-            <Button
-              disabled={pendingAction !== null || !lookupState.loginId.trim()}
-              onClick={() => {
-                void onSearchUser(draftTeam.id);
-              }}
-            >
-              {pendingAction === `search:${draftTeam.id}` ? "검색 중" : "검색"}
-            </Button>
-            <Button
-              variant="accent"
-              disabled={
-                pendingAction !== null || !lookupState.operatorUserId.trim()
-              }
-              onClick={() => {
-                void onAddOperator(draftTeam.id);
-              }}
-            >
-              {pendingAction === `add:${draftTeam.id}` ? "등록 중" : "등록"}
-            </Button>
-          </div>
+          <Button
+            variant="accent"
+            disabled={pendingAction !== null || !lookupState.operatorUserId.trim()}
+            onClick={() => {
+              void onAddOperator(draftTeam.id);
+            }}
+          >
+            {pendingAction === `operator-add:${draftTeam.id}` ? "등록 중" : "등록"}
+          </Button>
         </div>
 
-        {lookupState.result ? (
+        {lookupState.selectedUser ? (
           <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
             <p className="text-sm font-semibold text-foreground">
-              검색 결과: {lookupState.result.userId}
+              선택됨: {lookupState.selectedUser.userId}
             </p>
             <p className="mt-1 text-sm text-muted">
-              {lookupState.result.name ?? "이름 없음"}
-              {lookupState.result.tier ? ` · ${lookupState.result.tier}` : ""}
-              {lookupState.result.race ? ` · ${lookupState.result.race}` : ""}
+              {lookupState.selectedUser.name ?? "이름 없음"}
+              {lookupState.selectedUser.tier
+                ? ` · ${lookupState.selectedUser.tier}`
+                : ""}
+              {lookupState.selectedUser.race
+                ? ` · ${lookupState.selectedUser.race}`
+                : ""}
             </p>
             <p className="mt-2 text-xs leading-6 text-muted">
-              {lookupState.result.resolvedUserPk
-                ? `응답에서 userPk ${lookupState.result.resolvedUserPk}를 찾았다.`
-                : "응답에 userPk가 없어서 운영자 등록 전 숫자 userPk를 직접 넣어야 한다."}
+              userPk {lookupState.selectedUser.id}이 자동으로 입력되었다.
             </p>
           </div>
         ) : null}
@@ -651,9 +1050,10 @@ function TeamOperatorManager({
             return (
               <OperatorRow
                 key={key}
-                pendingAction={pendingAction}
-                operator={operator}
+                draftTeamId={draftTeam.id}
                 editState={editState}
+                operator={operator}
+                pendingAction={pendingAction}
                 onChange={(patch) => {
                   onUpdateOperatorEdit(draftTeam.id, operator.operatorUserId, patch);
                 }}
@@ -671,6 +1071,265 @@ function TeamOperatorManager({
   );
 }
 
+function CandidateRow({
+  candidate,
+  editState,
+  pendingAction,
+  teams,
+  onChange,
+  onDelete,
+  onSave,
+}: {
+  candidate: DraftCandidate;
+  editState: CandidateEditState;
+  pendingAction: string | null;
+  teams: DraftLiveTeam[];
+  onChange: (patch: Partial<CandidateEditState>) => void;
+  onDelete: () => Promise<void>;
+  onSave: () => Promise<void>;
+}) {
+  const isPicked = editState.status === "PICKED";
+
+  return (
+    <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            {candidate.candidateName}
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            userPk {candidate.candidateUserId}
+            {candidate.race ? ` · ${candidate.race}` : ""}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <span
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-semibold",
+              getCandidateStatusClassName(editState.status),
+            )}
+          >
+            {formatCandidateStatus(editState.status)}
+          </span>
+          <Button
+            size="sm"
+            disabled={pendingAction !== null}
+            onClick={() => {
+              void onSave();
+            }}
+          >
+            {pendingAction === `candidate-save:${candidate.candidateUserId}`
+              ? "저장 중"
+              : "저장"}
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            disabled={pendingAction !== null}
+            onClick={() => {
+              void onDelete();
+            }}
+          >
+            {pendingAction === `candidate-delete:${candidate.candidateUserId}`
+              ? "삭제 중"
+              : "삭제"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-2">
+        <Input
+          value={editState.candidateName}
+          onChange={(event) => {
+            onChange({ candidateName: event.target.value });
+          }}
+          placeholder="candidateName"
+        />
+        <select
+          className={SELECT_CLASS_NAME}
+          value={editState.race}
+          onChange={(event) => {
+            onChange({ race: event.target.value });
+          }}
+        >
+          {RACE_OPTIONS.map((race) => (
+            <option key={race} value={race}>
+              {race}
+            </option>
+          ))}
+        </select>
+        <select
+          className={SELECT_CLASS_NAME}
+          value={editState.status}
+          onChange={(event) => {
+            onChange({ status: event.target.value });
+          }}
+        >
+          {CANDIDATE_STATUS_OPTIONS.map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
+          ))}
+        </select>
+        <select
+          className={SELECT_CLASS_NAME}
+          value={editState.pickedDraftTeamId}
+          disabled={!isPicked}
+          onChange={(event) => {
+            onChange({ pickedDraftTeamId: event.target.value });
+          }}
+        >
+          <option value="">지명 팀 없음</option>
+          {teams.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.teamName} (teamId {team.id})
+            </option>
+          ))}
+        </select>
+        <Input
+          type="datetime-local"
+          value={editState.pickedAt}
+          disabled={!isPicked}
+          onChange={(event) => {
+            onChange({ pickedAt: event.target.value });
+          }}
+        />
+      </div>
+
+      {candidate.pickedDraftTeamName ? (
+        <p className="mt-3 text-sm text-muted">
+          현재 기록: {candidate.pickedDraftTeamName} · {formatDateTime(candidate.pickedAt)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function OrderRow({
+  editState,
+  order,
+  pendingAction,
+  teams,
+  onChange,
+  onDelete,
+  onSave,
+}: {
+  editState: OrderEditState;
+  order: DraftOrder;
+  pendingAction: string | null;
+  teams: DraftLiveTeam[];
+  onChange: (patch: Partial<OrderEditState>) => void;
+  onDelete: () => Promise<void>;
+  onSave: () => Promise<void>;
+}) {
+  return (
+    <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            Pick {order.pickNo}
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            현재 팀 {order.draftTeamName} · round {order.roundNo}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            disabled={pendingAction !== null}
+            onClick={() => {
+              void onSave();
+            }}
+          >
+            {pendingAction === `order-save:${order.pickNo}` ? "저장 중" : "저장"}
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            disabled={pendingAction !== null}
+            onClick={() => {
+              void onDelete();
+            }}
+          >
+            {pendingAction === `order-delete:${order.pickNo}` ? "삭제 중" : "삭제"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-3">
+        <Input
+          type="number"
+          min={1}
+          value={editState.roundNo}
+          onChange={(event) => {
+            onChange({ roundNo: event.target.value });
+          }}
+          placeholder="roundNo"
+        />
+        <Input
+          type="number"
+          min={1}
+          value={editState.pickNo}
+          onChange={(event) => {
+            onChange({ pickNo: event.target.value });
+          }}
+          placeholder="pickNo"
+        />
+        <select
+          className={SELECT_CLASS_NAME}
+          value={editState.draftTeamId}
+          onChange={(event) => {
+            onChange({ draftTeamId: event.target.value });
+          }}
+        >
+          <option value="">팀 선택</option>
+          {teams.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.displayOrder}. {team.teamName} (teamId {team.id})
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function PickRow({
+  pick,
+  pendingAction,
+  onDelete,
+}: {
+  pick: DraftPick;
+  pendingAction: string | null;
+  onDelete: () => Promise<void>;
+}) {
+  return (
+    <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            Pick {pick.pickNo} · {pick.candidateName}
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            {pick.draftTeamName} · pickedBy {pick.pickedByUserName} · round {pick.roundNo}
+          </p>
+          <p className="mt-2 text-sm text-muted">{formatDateTime(pick.pickedAt)}</p>
+        </div>
+        <Button
+          size="sm"
+          variant="danger"
+          disabled={pendingAction !== null}
+          onClick={() => {
+            void onDelete();
+          }}
+        >
+          {pendingAction === `pick-delete:${pick.pickNo}` ? "삭제 중" : "픽 삭제"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   const [sessions, setSessions] = useState<DraftSessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
@@ -685,9 +1344,14 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   const [candidateForm, setCandidateForm] =
     useState<CandidateFormState>(EMPTY_CANDIDATE_FORM);
   const [orderForm, setOrderForm] = useState<OrderFormState>(EMPTY_ORDER_FORM);
+  const [teamEdits, setTeamEdits] = useState<Record<number, TeamEditState>>({});
   const [operatorEdits, setOperatorEdits] = useState<
     Record<string, OperatorEditState>
   >({});
+  const [candidateEdits, setCandidateEdits] = useState<
+    Record<number, CandidateEditState>
+  >({});
+  const [orderEdits, setOrderEdits] = useState<Record<number, OrderEditState>>({});
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -698,26 +1362,17 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     ? sortCandidates(selectedSessionDetail.candidates)
     : [];
   const sortedOrders = selectedSessionDetail ? sortOrders(selectedSessionDetail.orders) : [];
-  const pickerTeamCount = sortedTeams.filter((team) =>
-    team.operators.some((operator) => operator.canPick === "Y"),
-  ).length;
+  const sortedPicks = selectedSessionDetail ? sortPicks(selectedSessionDetail.picks) : [];
   const operatorCount = sortedTeams.reduce(
     (count, team) => count + team.operators.length,
     0,
   );
+  const pickerTeamCount = sortedTeams.filter((team) =>
+    team.operators.some((operator) => operator.canPick === "Y"),
+  ).length;
   const waitingCandidateCount = sortedCandidates.filter(
     (candidate) => candidate.status === "WAITING",
   ).length;
-  const canStartSession =
-    selectedSessionDetail !== null &&
-    selectedSessionDetail.status === "READY" &&
-    selectedSessionDetail.teams.length > 0 &&
-    selectedSessionDetail.orders.length > 0;
-  const readyForLivePick =
-    canStartSession &&
-    pickerTeamCount > 0 &&
-    selectedSessionDetail.candidates.length > 0 &&
-    operatorCount > 0;
 
   function notifyChange() {
     onDataChanged?.();
@@ -731,7 +1386,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       setTeamLookups({});
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setOrderForm(EMPTY_ORDER_FORM);
+      setTeamEdits({});
       setOperatorEdits({});
+      setCandidateEdits({});
+      setOrderEdits({});
     });
   }
 
@@ -747,7 +1405,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       setTeamLookups(createInitialTeamLookups(detail));
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setOrderForm(createDefaultOrderForm(detail));
+      setTeamEdits(createInitialTeamEdits(detail));
       setOperatorEdits(createInitialOperatorEdits(detail));
+      setCandidateEdits(createInitialCandidateEdits(detail));
+      setOrderEdits(createInitialOrderEdits(detail));
     });
   }
 
@@ -761,10 +1422,29 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       setSessions(sortSessions(nextSessions));
       setSelectedSessionId(sessionId);
     });
+
     applyDetail(detail);
     notifyChange();
 
     return detail;
+  }
+
+  async function syncAfterSessionDelete() {
+    const nextSessions = sortSessions(await listDraftSessions());
+    const nextSelectedSessionId = chooseSessionId(nextSessions, null, null);
+
+    startTransition(() => {
+      setSessions(nextSessions);
+      setSelectedSessionId(nextSelectedSessionId);
+    });
+
+    if (nextSelectedSessionId === null) {
+      resetDetailState();
+      notifyChange();
+      return;
+    }
+
+    await refreshSelectedSession(nextSelectedSessionId);
   }
 
   useEffect(() => {
@@ -780,12 +1460,11 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           return;
         }
 
-        const nextSelectedSessionId = chooseSessionId(nextSessions, null, null);
+        const nextSelected = chooseSessionId(nextSessions, null, null);
 
         startTransition(() => {
           setSessions(nextSessions);
-          setLoadingDetail(nextSelectedSessionId !== null);
-          setSelectedSessionId(nextSelectedSessionId);
+          setSelectedSessionId(nextSelected);
         });
       } catch (error) {
         if (cancelled) {
@@ -863,15 +1542,30 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     }));
   }
 
+  function updateTeamEdit(teamId: number, patch: Partial<TeamEditState>) {
+    setTeamEdits((current) => ({
+      ...current,
+      [teamId]: {
+        ...(current[teamId] ?? {
+          teamName: "",
+          displayOrder: "",
+        }),
+        ...patch,
+      },
+    }));
+  }
+
   function updateOperatorEdit(
     teamId: number,
     operatorUserId: number,
     patch: Partial<OperatorEditState>,
   ) {
+    const key = createOperatorKey(teamId, operatorUserId);
+
     setOperatorEdits((current) => ({
       ...current,
-      [createOperatorKey(teamId, operatorUserId)]: {
-        ...(current[createOperatorKey(teamId, operatorUserId)] ?? {
+      [key]: {
+        ...(current[key] ?? {
           role: "OPERATOR",
           isActive: "Y",
         }),
@@ -880,8 +1574,41 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     }));
   }
 
+  function updateCandidateEdit(
+    candidateUserId: number,
+    patch: Partial<CandidateEditState>,
+  ) {
+    setCandidateEdits((current) => ({
+      ...current,
+      [candidateUserId]: {
+        ...(current[candidateUserId] ?? {
+          candidateName: "",
+          race: "TERRAN",
+          status: "WAITING",
+          pickedDraftTeamId: "",
+          pickedAt: "",
+        }),
+        ...patch,
+      },
+    }));
+  }
+
+  function updateOrderEdit(pickNo: number, patch: Partial<OrderEditState>) {
+    setOrderEdits((current) => ({
+      ...current,
+      [pickNo]: {
+        ...(current[pickNo] ?? {
+          roundNo: "",
+          pickNo: "",
+          draftTeamId: "",
+        }),
+        ...patch,
+      },
+    }));
+  }
+
   async function handleCreateSession() {
-    setPendingAction("create-session");
+    setPendingAction("session-create");
     setNotice(null);
 
     try {
@@ -893,12 +1620,17 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           "픽 제한 시간",
         ),
       };
+
+      if (!payload.title) {
+        throw new Error("세션 이름을 입력해야 합니다.");
+      }
+
       const created = await createDraftSession(payload);
       await refreshSelectedSession(created.id);
       setCreateForm(EMPTY_CREATE_FORM);
       setNotice({
         tone: "success",
-        text: "세션을 생성했다.",
+        text: "세션을 생성했습니다.",
       });
     } catch (error) {
       setNotice({
@@ -915,7 +1647,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
-    setPendingAction("update-session");
+    setPendingAction("session-save");
     setNotice(null);
 
     try {
@@ -927,11 +1659,41 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           "픽 제한 시간",
         ),
       };
+
+      if (!payload.title) {
+        throw new Error("세션 이름을 입력해야 합니다.");
+      }
+
       await updateDraftSession(selectedSessionId, payload);
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "세션 정보를 저장했다.",
+        text: "세션 정보를 저장했습니다.",
+      });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: readErrorMessage(error),
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleDeleteSession() {
+    if (selectedSessionId === null) {
+      return;
+    }
+
+    setPendingAction("session-delete");
+    setNotice(null);
+
+    try {
+      await deleteDraftSession(selectedSessionId);
+      await syncAfterSessionDelete();
+      setNotice({
+        tone: "success",
+        text: "세션을 삭제했습니다.",
       });
     } catch (error) {
       setNotice({
@@ -948,21 +1710,27 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
-    setPendingAction("create-team");
+    setPendingAction("team-create");
     setNotice(null);
 
     try {
       const payload = {
         draftSessionId: selectedSessionId,
         teamName: teamForm.teamName.trim(),
-        displayOrder: parsePositiveInt(teamForm.displayOrder, "표시 순서"),
+        displayOrder: parsePositiveInt(teamForm.displayOrder, "displayOrder"),
       };
-      await createDraftTeam(payload);
-      const detail = await refreshSelectedSession(selectedSessionId);
+
+      if (!payload.teamName) {
+        throw new Error("팀 이름을 입력해야 합니다.");
+      }
+
+      const detail = await createDraftTeam(payload).then(() =>
+        refreshSelectedSession(selectedSessionId),
+      );
       setTeamForm(createDefaultTeamForm(detail));
       setNotice({
         tone: "success",
-        text: "팀을 추가했다.",
+        text: "팀을 생성했습니다.",
       });
     } catch (error) {
       setNotice({
@@ -974,33 +1742,64 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     }
   }
 
-  async function handleSearchUser(teamId: number) {
-    const lookup = teamLookups[teamId];
-
-    if (!lookup?.loginId.trim()) {
+  async function handleSaveTeam(teamId: number) {
+    if (selectedSessionId === null) {
       return;
     }
 
-    setPendingAction(`search:${teamId}`);
+    const editState = teamEdits[teamId];
+
+    if (!editState) {
+      return;
+    }
+
+    setPendingAction(`team-save:${teamId}`);
     setNotice(null);
 
     try {
-      const result = await searchDraftUserByLoginId(lookup.loginId.trim());
-      updateLookup(teamId, {
-        result,
-        operatorUserId:
-          result.resolvedUserPk !== null
-            ? String(result.resolvedUserPk)
-            : lookup.operatorUserId,
-      });
+      const payload = {
+        draftSessionId: selectedSessionId,
+        teamName: editState.teamName.trim(),
+        displayOrder: parsePositiveInt(editState.displayOrder, "displayOrder"),
+      };
+
+      if (!payload.teamName) {
+        throw new Error("팀 이름을 입력해야 합니다.");
+      }
+
+      await updateDraftTeam(teamId, payload);
+      await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: `${result.userId} 정보를 찾았다.`,
+        text: "팀 정보를 저장했습니다.",
       });
     } catch (error) {
-      updateLookup(teamId, {
-        result: null,
+      setNotice({
+        tone: "error",
+        text: readErrorMessage(error),
       });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleDeleteTeam(teamId: number) {
+    if (selectedSessionId === null) {
+      return;
+    }
+
+    setPendingAction(`team-delete:${teamId}`);
+    setNotice(null);
+
+    try {
+      await deleteDraftTeam(teamId);
+      const detail = await refreshSelectedSession(selectedSessionId);
+      setTeamForm(createDefaultTeamForm(detail));
+      setNotice({
+        tone: "success",
+        text: "팀을 삭제했습니다.",
+      });
+    } catch (error) {
       setNotice({
         tone: "error",
         text: readErrorMessage(error),
@@ -1021,7 +1820,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
-    setPendingAction(`add:${teamId}`);
+    setPendingAction(`operator-add:${teamId}`);
     setNotice(null);
 
     try {
@@ -1031,11 +1830,12 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         role: lookup.role,
         isActive: lookup.isActive,
       };
+
       await createDraftTeamOperator(payload);
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "팀 운영자를 등록했다.",
+        text: "운영자를 등록했습니다.",
       });
     } catch (error) {
       setNotice({
@@ -1056,7 +1856,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
-    const actionKey = `save:${createOperatorKey(teamId, operatorUserId)}`;
+    const actionKey = `operator-save:${createOperatorKey(teamId, operatorUserId)}`;
     setPendingAction(actionKey);
     setNotice(null);
 
@@ -1065,7 +1865,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "운영자 정보를 저장했다.",
+        text: "운영자 정보를 저장했습니다.",
       });
     } catch (error) {
       setNotice({
@@ -1082,7 +1882,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
-    const actionKey = `delete:${createOperatorKey(teamId, operatorUserId)}`;
+    const actionKey = `operator-delete:${createOperatorKey(
+      teamId,
+      operatorUserId,
+    )}`;
     setPendingAction(actionKey);
     setNotice(null);
 
@@ -1091,7 +1894,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "운영자를 삭제했다.",
+        text: "운영자를 삭제했습니다.",
       });
     } catch (error) {
       setNotice({
@@ -1108,7 +1911,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
-    const actionKey = `picker:${createOperatorKey(teamId, operatorUserId)}`;
+    const actionKey = `operator-picker:${createOperatorKey(
+      teamId,
+      operatorUserId,
+    )}`;
     setPendingAction(actionKey);
     setNotice(null);
 
@@ -1117,47 +1923,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "픽커를 지정했다.",
+        text: "픽커를 지정했습니다.",
       });
     } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
-      });
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function handleSearchCandidate() {
-    if (!candidateForm.loginId.trim()) {
-      return;
-    }
-
-    setPendingAction("search-candidate");
-    setNotice(null);
-
-    try {
-      const result = await searchDraftUserByLoginId(candidateForm.loginId.trim());
-      setCandidateForm((current) => ({
-        ...current,
-        result,
-        candidateUserId:
-          result.resolvedUserPk !== null
-            ? String(result.resolvedUserPk)
-            : current.candidateUserId,
-        candidateName: current.candidateName || result.userId,
-        race: normalizeRace(result.race) ?? current.race,
-      }));
-      setNotice({
-        tone: "success",
-        text: `${result.userId} 후보 정보를 찾았다.`,
-      });
-    } catch (error) {
-      setCandidateForm((current) => ({
-        ...current,
-        result: null,
-      }));
       setNotice({
         tone: "error",
         text: readErrorMessage(error),
@@ -1172,7 +1940,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
-    setPendingAction("create-candidate");
+    setPendingAction("candidate-create");
     setNotice(null);
 
     try {
@@ -1188,7 +1956,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       };
 
       if (!payload.candidateName) {
-        throw new Error("후보 이름을 입력해야 한다.");
+        throw new Error("후보 이름을 입력해야 합니다.");
       }
 
       await createDraftCandidate(payload);
@@ -1196,7 +1964,81 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setNotice({
         tone: "success",
-        text: "후보를 등록했다.",
+        text: "후보를 등록했습니다.",
+      });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: readErrorMessage(error),
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleSaveCandidate(candidateUserId: number) {
+    if (selectedSessionId === null) {
+      return;
+    }
+
+    const editState = candidateEdits[candidateUserId];
+
+    if (!editState) {
+      return;
+    }
+
+    setPendingAction(`candidate-save:${candidateUserId}`);
+    setNotice(null);
+
+    try {
+      const isPicked = editState.status === "PICKED";
+      const payload = {
+        draftSessionId: selectedSessionId,
+        candidateUserId,
+        candidateName: editState.candidateName.trim(),
+        race: editState.race,
+        status: editState.status,
+        pickedDraftTeamId:
+          isPicked && editState.pickedDraftTeamId
+            ? parsePositiveInt(editState.pickedDraftTeamId, "지명 팀")
+            : null,
+        pickedAt: isPicked && editState.pickedAt ? editState.pickedAt : null,
+      };
+
+      if (!payload.candidateName) {
+        throw new Error("후보 이름을 입력해야 합니다.");
+      }
+
+      await updateDraftCandidate(selectedSessionId, candidateUserId, payload);
+      await refreshSelectedSession(selectedSessionId);
+      setNotice({
+        tone: "success",
+        text: "후보 정보를 저장했습니다.",
+      });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: readErrorMessage(error),
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleDeleteCandidate(candidateUserId: number) {
+    if (selectedSessionId === null) {
+      return;
+    }
+
+    setPendingAction(`candidate-delete:${candidateUserId}`);
+    setNotice(null);
+
+    try {
+      await deleteDraftCandidate(selectedSessionId, candidateUserId);
+      await refreshSelectedSession(selectedSessionId);
+      setNotice({
+        tone: "success",
+        text: "후보를 삭제했습니다.",
       });
     } catch (error) {
       setNotice({
@@ -1213,7 +2055,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
-    setPendingAction("create-order");
+    setPendingAction("order-create");
     setNotice(null);
 
     try {
@@ -1223,12 +2065,14 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         pickNo: parsePositiveInt(orderForm.pickNo, "픽 번호"),
         draftTeamId: parsePositiveInt(orderForm.draftTeamId, "팀"),
       };
-      await createDraftOrder(payload);
-      const detail = await refreshSelectedSession(selectedSessionId);
+
+      const detail = await createDraftOrder(payload).then(() =>
+        refreshSelectedSession(selectedSessionId),
+      );
       setOrderForm(createDefaultOrderForm(detail));
       setNotice({
         tone: "success",
-        text: "드래프트 순서를 등록했다.",
+        text: "드래프트 순서를 등록했습니다.",
       });
     } catch (error) {
       setNotice({
@@ -1240,20 +2084,33 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     }
   }
 
-  async function handleStartSession() {
+  async function handleSaveOrder(originalPickNo: number) {
     if (selectedSessionId === null) {
       return;
     }
 
-    setPendingAction("start-session");
+    const editState = orderEdits[originalPickNo];
+
+    if (!editState) {
+      return;
+    }
+
+    setPendingAction(`order-save:${originalPickNo}`);
     setNotice(null);
 
     try {
-      await startDraftSession(selectedSessionId);
+      const payload = {
+        draftSessionId: selectedSessionId,
+        roundNo: parsePositiveInt(editState.roundNo, "라운드"),
+        pickNo: parsePositiveInt(editState.pickNo, "픽 번호"),
+        draftTeamId: parsePositiveInt(editState.draftTeamId, "팀"),
+      };
+
+      await updateDraftOrder(selectedSessionId, originalPickNo, payload);
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "세션을 시작했다.",
+        text: "드래프트 순서를 저장했습니다.",
       });
     } catch (error) {
       setNotice({
@@ -1265,20 +2122,22 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     }
   }
 
-  async function handlePauseSession() {
+  async function handleDeleteOrder(pickNo: number) {
     if (selectedSessionId === null) {
       return;
     }
 
-    setPendingAction("pause-session");
+    setPendingAction(`order-delete:${pickNo}`);
     setNotice(null);
 
     try {
-      await pauseDraftSession(selectedSessionId);
-      await refreshSelectedSession(selectedSessionId);
+      const detail = await deleteDraftOrder(selectedSessionId, pickNo).then(() =>
+        refreshSelectedSession(selectedSessionId),
+      );
+      setOrderForm(createDefaultOrderForm(detail));
       setNotice({
         tone: "success",
-        text: "세션을 일시정지했다.",
+        text: "드래프트 순서를 삭제했습니다.",
       });
     } catch (error) {
       setNotice({
@@ -1290,45 +2149,20 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     }
   }
 
-  async function handleResumeSession() {
+  async function handleDeletePick(pickNo: number) {
     if (selectedSessionId === null) {
       return;
     }
 
-    setPendingAction("resume-session");
+    setPendingAction(`pick-delete:${pickNo}`);
     setNotice(null);
 
     try {
-      await resumeDraftSession(selectedSessionId);
+      await deleteDraftPick(selectedSessionId, pickNo);
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "세션을 재개했다.",
-      });
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
-      });
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function handleFinishSession() {
-    if (selectedSessionId === null) {
-      return;
-    }
-
-    setPendingAction("finish-session");
-    setNotice(null);
-
-    try {
-      await finishDraftSession(selectedSessionId);
-      await refreshSelectedSession(selectedSessionId);
-      setNotice({
-        tone: "success",
-        text: "세션을 종료했다.",
+        text: "픽 기록을 삭제했습니다. 필요하면 후보 상태와 순서를 아래 섹션에서 바로 보정해 주세요.",
       });
     } catch (error) {
       setNotice({
@@ -1359,12 +2193,12 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-foreground">
-              드래프트 준비 순서
+              관리자 드래프트 준비/정리 콘솔
             </p>
             <p className="mt-2 text-sm leading-7 text-muted">
-              1. 세션 선택/생성 → 2. 팀 생성 → 3. 팀별 운영자 등록/픽커 지정 →
-              4. 후보 등록 → 5. 순서 등록 → 6. 세션 시작 → 7. 아래 라이브 보드에서
-              실제 픽 진행
+              세션, 팀, 운영자, 후보, 순서, 픽 기록을 준비하고 보정하는 화면이다.
+              실시간 start/pause/resume/extend/skip/finish는 아래 라이브 보드에서
+              처리하고, 여기서는 CRUD와 복구 작업에 집중한다.
             </p>
           </div>
 
@@ -1373,58 +2207,60 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               <p className="font-semibold text-foreground">
                 {selectedSessionDetail.title}
               </p>
-              <p>상태: {formatDraftStatus(selectedSessionDetail.status)}</p>
+              <p>상태: {formatSessionStatus(selectedSessionDetail.status)}</p>
               <p>현재 픽: {selectedSessionDetail.currentPickNo ?? "-"}</p>
               <p>현재 팀: {selectedSessionDetail.currentDraftTeamId ?? "-"}</p>
             </div>
           ) : (
             <div className="rounded-[24px] border border-dashed border-line px-4 py-4 text-sm text-muted">
-              세션을 선택하면 준비 현황이 나온다.
+              세션을 선택하면 준비 현황이 표시된다.
             </div>
           )}
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <SetupStatCard
             label="팀"
-            value={
-              selectedSessionDetail
-                ? `${selectedSessionDetail.teams.length}/${selectedSessionDetail.teamCount}`
-                : "0/0"
-            }
-            description="세션 시작 전 최소 1개 팀이 있어야 한다."
-            ready={(selectedSessionDetail?.teams.length ?? 0) > 0}
+            value={selectedSessionDetail ? String(sortedTeams.length) : "0"}
+            description="팀 생성/수정/삭제"
+            ready={sortedTeams.length > 0}
           />
           <SetupStatCard
             label="운영자"
             value={String(operatorCount)}
-            description="실제 픽을 하려면 팀별 운영자가 필요하다."
+            description="자동완성 검색으로 등록"
             ready={operatorCount > 0}
           />
           <SetupStatCard
             label="픽커 팀"
             value={String(pickerTeamCount)}
-            description="팀별 픽커는 관리자 권한으로 따로 지정한다."
+            description="팀별 현재 픽커 수"
             ready={pickerTeamCount > 0}
           />
           <SetupStatCard
             label="후보"
-            value={String(waitingCandidateCount)}
-            description="라이브 픽까지 하려면 후보가 있어야 한다."
-            ready={waitingCandidateCount > 0}
+            value={String(sortedCandidates.length)}
+            description="WAITING/PICKED/SKIPPED/EXCLUDED"
+            ready={sortedCandidates.length > 0}
           />
           <SetupStatCard
             label="순서"
             value={String(sortedOrders.length)}
-            description="세션 시작 최소 조건은 팀 + 순서다."
+            description="드래프트 order 편집"
             ready={sortedOrders.length > 0}
+          />
+          <SetupStatCard
+            label="픽 기록"
+            value={String(sortedPicks.length)}
+            description="삭제 후 후보/순서 보정 가능"
+            ready={sortedPicks.length > 0}
           />
         </div>
       </SurfaceCard>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">1. 세션 생성</p>
+          <p className="text-sm font-semibold text-foreground">세션 생성</p>
           <div className="mt-4 grid gap-3">
             <Input
               value={createForm.title}
@@ -1469,14 +2305,14 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                 void handleCreateSession();
               }}
             >
-              {pendingAction === "create-session" ? "생성 중" : "세션 생성"}
+              {pendingAction === "session-create" ? "생성 중" : "세션 생성"}
             </Button>
           </div>
         </SurfaceCard>
 
         <SurfaceCard className="p-6">
           <p className="text-sm font-semibold text-foreground">
-            1-1. 세션 선택 / 수정
+            세션 선택 / 수정 / 삭제
           </p>
           <div className="mt-4 grid gap-3">
             <select
@@ -1488,8 +2324,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   : null;
 
                 startTransition(() => {
-                  setSelectedSessionDetail(null);
-                  setLoadingDetail(nextSessionId !== null);
                   setSelectedSessionId(nextSessionId);
                 });
               }}
@@ -1502,13 +2336,14 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {session.title} · {formatDraftStatus(session.status)}
+                  {session.title} · {formatSessionStatus(session.status)}
                 </option>
               ))}
             </select>
 
             <Input
               value={editForm.title}
+              disabled={selectedSessionId === null}
               onChange={(event) => {
                 setEditForm((current) => ({
                   ...current,
@@ -1516,13 +2351,13 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                 }));
               }}
               placeholder="세션 이름"
-              disabled={selectedSessionId === null}
             />
             <div className="grid gap-3 sm:grid-cols-2">
               <Input
                 type="number"
                 min={2}
                 value={editForm.teamCount}
+                disabled={selectedSessionId === null}
                 onChange={(event) => {
                   setEditForm((current) => ({
                     ...current,
@@ -1530,12 +2365,12 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   }));
                 }}
                 placeholder="팀 수"
-                disabled={selectedSessionId === null}
               />
               <Input
                 type="number"
                 min={1}
                 value={editForm.pickTimeSeconds}
+                disabled={selectedSessionId === null}
                 onChange={(event) => {
                   setEditForm((current) => ({
                     ...current,
@@ -1543,13 +2378,12 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   }));
                 }}
                 placeholder="픽 제한 시간(초)"
-                disabled={selectedSessionId === null}
               />
             </div>
 
             {selectedSessionDetail ? (
               <div className="rounded-[22px] bg-surface-muted px-4 py-4 text-sm leading-7 text-muted">
-                <p>상태: {formatDraftStatus(selectedSessionDetail.status)}</p>
+                <p>상태: {formatSessionStatus(selectedSessionDetail.status)}</p>
                 <p>시작: {formatDateTime(selectedSessionDetail.startedAt)}</p>
                 <p>종료: {formatDateTime(selectedSessionDetail.endedAt)}</p>
               </div>
@@ -1557,18 +2391,29 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               <div className="rounded-[22px] border border-dashed border-line px-4 py-4 text-sm text-muted">
                 {loadingDetail
                   ? "세션 정보를 불러오는 중이다."
-                  : "수정할 세션을 선택해줘."}
+                  : "수정할 세션을 선택해 주세요."}
               </div>
             )}
 
-            <Button
-              disabled={pendingAction !== null || selectedSessionId === null}
-              onClick={() => {
-                void handleUpdateSession();
-              }}
-            >
-              {pendingAction === "update-session" ? "저장 중" : "세션 저장"}
-            </Button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                disabled={pendingAction !== null || selectedSessionId === null}
+                onClick={() => {
+                  void handleUpdateSession();
+                }}
+              >
+                {pendingAction === "session-save" ? "저장 중" : "세션 저장"}
+              </Button>
+              <Button
+                variant="danger"
+                disabled={pendingAction !== null || selectedSessionId === null}
+                onClick={() => {
+                  void handleDeleteSession();
+                }}
+              >
+                {pendingAction === "session-delete" ? "삭제 중" : "세션 삭제"}
+              </Button>
+            </div>
           </div>
         </SurfaceCard>
       </div>
@@ -1576,22 +2421,24 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       <SurfaceCard className="p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-foreground">2. 팀 생성</p>
+            <p className="text-sm font-semibold text-foreground">
+              팀 생성 / 수정 / 삭제
+            </p>
             <p className="mt-2 text-sm leading-7 text-muted">
-              세션 시작 전에 최소한 팀과 순서는 있어야 한다. displayOrder는 기본
-              순서 계산과 팀 정렬 기준으로 쓴다.
+              팀은 세션 내부 준비의 기준 데이터다. displayOrder를 수정하면 순서
+              기본값 계산에도 반영된다.
             </p>
           </div>
           {selectedSessionDetail ? (
             <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
-              목표 팀 수 {selectedSessionDetail.teamCount}개
+              세션 팀 수 {sortedTeams.length} / 목표 {selectedSessionDetail.teamCount}
             </div>
           ) : null}
         </div>
 
         {!selectedSessionDetail ? (
           <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-            먼저 세션을 선택해줘.
+            먼저 세션을 선택해 주세요.
           </div>
         ) : (
           <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
@@ -1626,7 +2473,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                     void handleCreateTeam();
                   }}
                 >
-                  {pendingAction === "create-team" ? "추가 중" : "팀 추가"}
+                  {pendingAction === "team-create" ? "생성 중" : "팀 생성"}
                 </Button>
               </div>
             </div>
@@ -1638,25 +2485,22 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                 </div>
               ) : (
                 sortedTeams.map((team) => (
-                  <div
+                  <TeamRow
                     key={team.id}
-                    className="rounded-[24px] border border-line bg-surface-strong px-4 py-4"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground">
-                        {team.teamName}
-                      </p>
-                      <span className="rounded-full bg-surface px-3 py-1 text-xs text-muted">
-                        #{team.displayOrder}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-7 text-muted">
-                      teamId {team.id}
-                    </p>
-                    <p className="text-sm leading-7 text-muted">
-                      운영자 {team.operators.length}명
-                    </p>
-                  </div>
+                    draftTeam={team}
+                    editState={
+                      teamEdits[team.id] ?? {
+                        teamName: team.teamName,
+                        displayOrder: String(team.displayOrder),
+                      }
+                    }
+                    pendingAction={pendingAction}
+                    onChange={(patch) => {
+                      updateTeamEdit(team.id, patch);
+                    }}
+                    onDelete={() => handleDeleteTeam(team.id)}
+                    onSave={() => handleSaveTeam(team.id)}
+                  />
                 ))
               )}
             </div>
@@ -1668,11 +2512,11 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-foreground">
-              3. 팀별 운영자 등록 / 픽커 지정
+              운영자 등록 / 수정 / 삭제 / 픽커 지정
             </p>
             <p className="mt-2 text-sm leading-7 text-muted">
-              실제 유저가 픽하려면 팀 운영자 등록이 먼저 있어야 하고, 그 중 한
-              명을 픽커로 지정해야 한다.
+              userId 자동완성으로 운영자를 찾고, 선택한 결과에서 userPk를 자동으로
+              채운다. 자동값이 맞지 않으면 수동으로 수정할 수 있다.
             </p>
           </div>
           {selectedSessionDetail ? (
@@ -1685,11 +2529,11 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         <div className="mt-5">
           {!selectedSessionDetail ? (
             <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-              세션을 먼저 선택해줘.
+              세션을 먼저 선택해 주세요.
             </div>
           ) : sortedTeams.length === 0 ? (
             <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-              팀을 먼저 만든 뒤 운영자를 등록해야 한다.
+              팀을 먼저 만든 뒤 운영자를 등록해 주세요.
             </div>
           ) : (
             <div className="grid gap-4 xl:grid-cols-2">
@@ -1701,7 +2545,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   operatorEdits={operatorEdits}
                   pendingAction={pendingAction}
                   onChangeLookup={updateLookup}
-                  onSearchUser={handleSearchUser}
                   onAddOperator={handleAddOperator}
                   onAssignPicker={handleAssignPicker}
                   onDeleteOperator={handleDeleteOperator}
@@ -1718,10 +2561,12 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         <SurfaceCard className="p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-foreground">4. 후보 등록</p>
+              <p className="text-sm font-semibold text-foreground">
+                후보 등록 / 수정 / 삭제
+              </p>
               <p className="mt-2 text-sm leading-7 text-muted">
-                아이디 검색으로 후보 정보를 참고한 뒤 숫자 userPk를 넣어서 후보를
-                등록한다.
+                후보도 userId 자동완성으로 검색할 수 있다. 상태는 WAITING, PICKED,
+                SKIPPED, EXCLUDED 전체를 지원한다.
               </p>
             </div>
             <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
@@ -1731,23 +2576,33 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
           {!selectedSessionDetail ? (
             <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-              세션을 먼저 선택해줘.
+              세션을 먼저 선택해 주세요.
             </div>
           ) : (
             <>
               <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
                 <div className="grid gap-3">
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px_auto]">
-                    <Input
-                      value={candidateForm.loginId}
-                      onChange={(event) => {
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+                    <UserAutocompleteInput
+                      value={candidateForm.query}
+                      placeholder="userId 검색"
+                      onValueChange={(value) => {
                         setCandidateForm((current) => ({
                           ...current,
-                          loginId: event.target.value,
-                          result: null,
+                          query: value,
+                          selectedUser: null,
                         }));
                       }}
-                      placeholder="userId 검색"
+                      onSelect={(user) => {
+                        setCandidateForm((current) => ({
+                          ...current,
+                          query: user.userId,
+                          candidateUserId: String(user.id),
+                          candidateName: current.candidateName || user.userId,
+                          race: normalizeRace(user.race) ?? current.race,
+                          selectedUser: user,
+                        }));
+                      }}
                     />
                     <Input
                       value={candidateForm.candidateUserId}
@@ -1759,16 +2614,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                       }}
                       placeholder="candidateUserId"
                     />
-                    <Button
-                      disabled={
-                        pendingAction !== null || !candidateForm.loginId.trim()
-                      }
-                      onClick={() => {
-                        void handleSearchCandidate();
-                      }}
-                    >
-                      {pendingAction === "search-candidate" ? "검색 중" : "검색"}
-                    </Button>
                   </div>
 
                   <Input
@@ -1828,28 +2673,26 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                       void handleCreateCandidate();
                     }}
                   >
-                    {pendingAction === "create-candidate" ? "등록 중" : "후보 등록"}
+                    {pendingAction === "candidate-create" ? "등록 중" : "후보 등록"}
                   </Button>
                 </div>
 
-                {candidateForm.result ? (
+                {candidateForm.selectedUser ? (
                   <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
                     <p className="text-sm font-semibold text-foreground">
-                      검색 결과: {candidateForm.result.userId}
+                      선택됨: {candidateForm.selectedUser.userId}
                     </p>
                     <p className="mt-1 text-sm text-muted">
-                      {candidateForm.result.name ?? "이름 없음"}
-                      {candidateForm.result.tier
-                        ? ` · ${candidateForm.result.tier}`
+                      {candidateForm.selectedUser.name ?? "이름 없음"}
+                      {candidateForm.selectedUser.tier
+                        ? ` · ${candidateForm.selectedUser.tier}`
                         : ""}
-                      {candidateForm.result.race
-                        ? ` · ${candidateForm.result.race}`
+                      {candidateForm.selectedUser.race
+                        ? ` · ${candidateForm.selectedUser.race}`
                         : ""}
                     </p>
                     <p className="mt-2 text-xs leading-6 text-muted">
-                      {candidateForm.result.resolvedUserPk
-                        ? `응답에서 userPk ${candidateForm.result.resolvedUserPk}를 찾았다.`
-                        : "응답에 userPk가 없으면 candidateUserId를 직접 넣어야 한다."}
+                      userPk {candidateForm.selectedUser.id}이 자동으로 입력되었다.
                     </p>
                   </div>
                 ) : null}
@@ -1862,36 +2705,28 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   </div>
                 ) : (
                   sortedCandidates.map((candidate) => (
-                    <div
+                    <CandidateRow
                       key={candidate.candidateUserId}
-                      className="rounded-[24px] border border-line bg-surface-strong px-4 py-4"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">
-                            {candidate.candidateName}
-                          </p>
-                          <p className="mt-1 text-xs text-muted">
-                            userPk {candidate.candidateUserId}
-                            {candidate.race ? ` · ${candidate.race}` : ""}
-                          </p>
-                        </div>
-                        <span
-                          className={cn(
-                            "rounded-full px-3 py-1 text-xs font-semibold",
-                            getCandidateStatusClassName(candidate.status),
-                          )}
-                        >
-                          {candidate.status}
-                        </span>
-                      </div>
-                      {candidate.pickedDraftTeamName ? (
-                        <p className="mt-3 text-sm text-muted">
-                          지명 팀 {candidate.pickedDraftTeamName} ·{" "}
-                          {formatDateTime(candidate.pickedAt)}
-                        </p>
-                      ) : null}
-                    </div>
+                      candidate={candidate}
+                      editState={
+                        candidateEdits[candidate.candidateUserId] ?? {
+                          candidateName: candidate.candidateName,
+                          race: normalizeRace(candidate.race) ?? "TERRAN",
+                          status: candidate.status,
+                          pickedDraftTeamId: candidate.pickedDraftTeamId
+                            ? String(candidate.pickedDraftTeamId)
+                            : "",
+                          pickedAt: toDateTimeLocalValue(candidate.pickedAt),
+                        }
+                      }
+                      pendingAction={pendingAction}
+                      teams={sortedTeams}
+                      onChange={(patch) => {
+                        updateCandidateEdit(candidate.candidateUserId, patch);
+                      }}
+                      onDelete={() => handleDeleteCandidate(candidate.candidateUserId)}
+                      onSave={() => handleSaveCandidate(candidate.candidateUserId)}
+                    />
                   ))
                 )}
               </div>
@@ -1903,11 +2738,11 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-foreground">
-                5. 드래프트 순서 등록
+                순서 등록 / 수정 / 삭제
               </p>
               <p className="mt-2 text-sm leading-7 text-muted">
-                기본값은 팀 displayOrder 기준 반복 순서로 자동 채워진다. 필요하면
-                roundNo, pickNo, 팀을 직접 바꿔서 등록하면 된다.
+                기본값은 현재 팀 수와 pickNo를 기준으로 자동 계산한다. 필요하면
+                roundNo, pickNo, 팀을 직접 바꿔서 저장하면 된다.
               </p>
             </div>
             <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
@@ -1917,7 +2752,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
           {!selectedSessionDetail ? (
             <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-              세션을 먼저 선택해줘.
+              세션을 먼저 선택해 주세요.
             </div>
           ) : sortedTeams.length === 0 ? (
             <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
@@ -1987,7 +2822,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                         void handleCreateOrder();
                       }}
                     >
-                      {pendingAction === "create-order" ? "등록 중" : "순서 등록"}
+                      {pendingAction === "order-create" ? "등록 중" : "순서 등록"}
                     </Button>
                   </div>
                 </div>
@@ -2000,22 +2835,24 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   </div>
                 ) : (
                   sortedOrders.map((order) => (
-                    <div
+                    <OrderRow
                       key={order.pickNo}
-                      className="rounded-[24px] border border-line bg-surface-strong px-4 py-4"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-foreground">
-                          Pick {order.pickNo}
-                        </p>
-                        <span className="rounded-full bg-surface px-3 py-1 text-xs text-muted">
-                          Round {order.roundNo}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm text-muted">
-                        {order.draftTeamName} · teamId {order.draftTeamId}
-                      </p>
-                    </div>
+                      editState={
+                        orderEdits[order.pickNo] ?? {
+                          roundNo: String(order.roundNo),
+                          pickNo: String(order.pickNo),
+                          draftTeamId: String(order.draftTeamId),
+                        }
+                      }
+                      order={order}
+                      pendingAction={pendingAction}
+                      teams={sortedTeams}
+                      onChange={(patch) => {
+                        updateOrderEdit(order.pickNo, patch);
+                      }}
+                      onDelete={() => handleDeleteOrder(order.pickNo)}
+                      onSave={() => handleSaveOrder(order.pickNo)}
+                    />
                   ))
                 )}
               </div>
@@ -2027,67 +2864,38 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       <SurfaceCard className="p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-foreground">
-              6. 세션 시작 / 제어
-            </p>
+            <p className="text-sm font-semibold text-foreground">픽 기록 정리</p>
             <p className="mt-2 text-sm leading-7 text-muted">
-              시작만 하려면 팀 + 순서가 있으면 된다. 실제 라이브 픽까지 하려면
-              운영자, 픽커, 후보도 채워두는 편이 맞다.
+              잘못 들어간 픽은 여기서 삭제하고, 바로 위 후보/순서 섹션에서 상태를
+              보정하면 된다. 삭제 후에는 기존 refreshSelectedSession 흐름으로 즉시
+              재동기화한다.
             </p>
           </div>
-          <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm leading-7 text-muted">
-            <p>시작 가능: {canStartSession ? "예" : "아니오"}</p>
-            <p>라이브 픽 준비: {readyForLivePick ? "예" : "아니오"}</p>
+          <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
+            총 {sortedPicks.length}개
           </div>
         </div>
 
         {!selectedSessionDetail ? (
           <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-            세션을 먼저 선택해줘.
+            세션을 먼저 선택해 주세요.
           </div>
         ) : (
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Button
-              variant="accent"
-              disabled={pendingAction !== null || !canStartSession}
-              onClick={() => {
-                void handleStartSession();
-              }}
-            >
-              {pendingAction === "start-session" ? "시작 중" : "세션 시작"}
-            </Button>
-            <Button
-              disabled={
-                pendingAction !== null || selectedSessionDetail.status !== "PAUSED"
-              }
-              onClick={() => {
-                void handleResumeSession();
-              }}
-            >
-              {pendingAction === "resume-session" ? "재개 중" : "세션 재개"}
-            </Button>
-            <Button
-              variant="danger"
-              disabled={
-                pendingAction !== null || selectedSessionDetail.status !== "LIVE"
-              }
-              onClick={() => {
-                void handlePauseSession();
-              }}
-            >
-              {pendingAction === "pause-session" ? "정지 중" : "일시정지"}
-            </Button>
-            <Button
-              variant="danger"
-              disabled={
-                pendingAction !== null || selectedSessionDetail.status === "FINISHED"
-              }
-              onClick={() => {
-                void handleFinishSession();
-              }}
-            >
-              {pendingAction === "finish-session" ? "종료 중" : "완전 종료"}
-            </Button>
+          <div className="mt-5 space-y-3">
+            {sortedPicks.length === 0 ? (
+              <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+                아직 기록된 픽이 없다.
+              </div>
+            ) : (
+              sortedPicks.map((pick) => (
+                <PickRow
+                  key={pick.pickNo}
+                  pick={pick}
+                  pendingAction={pendingAction}
+                  onDelete={() => handleDeletePick(pick.pickNo)}
+                />
+              ))
+            )}
           </div>
         )}
       </SurfaceCard>

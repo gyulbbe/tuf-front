@@ -189,6 +189,8 @@ export type DraftCandidateRequest = {
   candidateName: string;
   race: string;
   status: string;
+  pickedDraftTeamId?: number | null;
+  pickedAt?: string | null;
 };
 
 export type DraftOrderRequest = {
@@ -198,19 +200,23 @@ export type DraftOrderRequest = {
   draftTeamId: number;
 };
 
-export type DraftUserLookup = {
-  id: number | null;
-  userPk: number | null;
-  resolvedUserPk: number | null;
+export type DraftPickRequest = {
+  draftSessionId: number;
+  roundNo: number;
+  pickNo: number;
+  draftTeamId: number;
+  candidateUserId: number;
+  pickedByUserId: number;
+  pickedAt?: string | null;
+};
+
+export type DraftUserSearchResult = {
+  id: number;
   userId: string;
   name: string | null;
   tier: string | null;
   race: string | null;
   photo: string | null;
-  battleTag: string | null;
-  coin: number | null;
-  win: number | null;
-  lose: number | null;
 };
 
 function readErrorMessage(data: unknown, fallback: string) {
@@ -256,43 +262,27 @@ async function unwrapResponse<T>(
   return body.data;
 }
 
-function readNullableNumber(value: unknown) {
-  return typeof value === "number" ? value : null;
-}
+async function unwrapVoidResponse(
+  request: Promise<{ status: number; data: ApiEnvelope<null> | ErrorResponseBody }>,
+  fallback: string,
+) {
+  const response = await request;
 
-function readNullableString(value: unknown) {
-  return typeof value === "string" ? value : null;
-}
-
-function readUserLookupPayload(data: unknown): DraftUserLookup {
-  if (!data || typeof data !== "object") {
-    throw new Error("유저 검색 응답 형식이 올바르지 않습니다.");
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(readErrorMessage(response.data, fallback));
   }
 
-  const body = data as Record<string, unknown>;
-  const userId = readNullableString(body.userId);
+  const body = response.data as ApiEnvelope<null>;
+  const responseStatus =
+    typeof body.status === "number" ? body.status : response.status;
 
-  if (!userId) {
-    throw new Error("유저 아이디를 찾지 못했습니다.");
+  if (responseStatus >= 400) {
+    throw new Error(
+      typeof body.message === "string" && body.message.trim()
+        ? body.message
+        : fallback,
+    );
   }
-
-  const resolvedUserPk =
-    readNullableNumber(body.userPk) ?? readNullableNumber(body.id);
-
-  return {
-    id: readNullableNumber(body.id),
-    userPk: readNullableNumber(body.userPk),
-    resolvedUserPk,
-    userId,
-    name: readNullableString(body.name),
-    tier: readNullableString(body.tier),
-    race: readNullableString(body.race),
-    photo: readNullableString(body.photo),
-    battleTag: readNullableString(body.battleTag),
-    coin: readNullableNumber(body.coin),
-    win: readNullableNumber(body.win),
-    lose: readNullableNumber(body.lose),
-  };
 }
 
 export async function listDraftSessions() {
@@ -422,7 +412,7 @@ export async function assignDraftPicker(teamId: number, operatorUserId: number) 
         validateStatus: () => true,
       },
     ),
-    "픽 권한자를 지정하지 못했습니다.",
+    "픽커를 지정하지 못했습니다.",
   );
 }
 
@@ -460,12 +450,39 @@ export async function updateDraftSession(
   );
 }
 
+export async function deleteDraftSession(sessionId: number) {
+  return unwrapVoidResponse(
+    apiClient.delete<ApiEnvelope<null>>(`/draft/sessions/${sessionId}`, {
+      validateStatus: () => true,
+    }),
+    "드래프트 세션을 삭제하지 못했습니다.",
+  );
+}
+
 export async function createDraftTeam(payload: DraftTeamRequest) {
   return unwrapResponse(
     apiClient.post<ApiEnvelope<DraftTeamRecord>>("/draft/teams", payload, {
       validateStatus: () => true,
     }),
     "팀을 생성하지 못했습니다.",
+  );
+}
+
+export async function updateDraftTeam(teamId: number, payload: DraftTeamRequest) {
+  return unwrapResponse(
+    apiClient.put<ApiEnvelope<DraftTeamRecord>>(`/draft/teams/${teamId}`, payload, {
+      validateStatus: () => true,
+    }),
+    "팀을 수정하지 못했습니다.",
+  );
+}
+
+export async function deleteDraftTeam(teamId: number) {
+  return unwrapVoidResponse(
+    apiClient.delete<ApiEnvelope<null>>(`/draft/teams/${teamId}`, {
+      validateStatus: () => true,
+    }),
+    "팀을 삭제하지 못했습니다.",
   );
 }
 
@@ -476,27 +493,7 @@ export async function createDraftTeamOperator(
     apiClient.post<ApiEnvelope<DraftTeamOperator>>("/draft/team-operators", payload, {
       validateStatus: () => true,
     }),
-    "팀 운영자를 추가하지 못했습니다.",
-  );
-}
-
-export async function createDraftCandidate(
-  payload: DraftCandidateRequest,
-) {
-  return unwrapResponse(
-    apiClient.post<ApiEnvelope<DraftCandidate>>("/draft/candidates", payload, {
-      validateStatus: () => true,
-    }),
-    "후보를 등록하지 못했습니다.",
-  );
-}
-
-export async function createDraftOrder(payload: DraftOrderRequest) {
-  return unwrapResponse(
-    apiClient.post<ApiEnvelope<DraftOrder>>("/draft/orders", payload, {
-      validateStatus: () => true,
-    }),
-    "드래프트 순서를 등록하지 못했습니다.",
+    "팀 운영자를 등록하지 못했습니다.",
   );
 }
 
@@ -521,7 +518,7 @@ export async function deleteDraftTeamOperator(
   teamId: number,
   operatorUserId: number,
 ) {
-  return unwrapResponse(
+  return unwrapVoidResponse(
     apiClient.delete<ApiEnvelope<null>>(
       `/draft/teams/${teamId}/operators/${operatorUserId}`,
       {
@@ -532,19 +529,127 @@ export async function deleteDraftTeamOperator(
   );
 }
 
-export async function searchDraftUserByLoginId(userId: string) {
-  const response = await apiClient.get(
-    `/user/get/${encodeURIComponent(userId)}`,
-    {
+export async function createDraftCandidate(
+  payload: DraftCandidateRequest,
+) {
+  return unwrapResponse(
+    apiClient.post<ApiEnvelope<DraftCandidate>>("/draft/candidates", payload, {
       validateStatus: () => true,
-    },
+    }),
+    "후보를 등록하지 못했습니다.",
   );
+}
 
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error("아이디로 유저를 찾지 못했습니다.");
-  }
+export async function updateDraftCandidate(
+  sessionId: number,
+  candidateUserId: number,
+  payload: DraftCandidateRequest,
+) {
+  return unwrapResponse(
+    apiClient.put<ApiEnvelope<DraftCandidate>>(
+      `/draft/sessions/${sessionId}/candidates/${candidateUserId}`,
+      payload,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "후보를 수정하지 못했습니다.",
+  );
+}
 
-  return readUserLookupPayload(response.data);
+export async function deleteDraftCandidate(
+  sessionId: number,
+  candidateUserId: number,
+) {
+  return unwrapVoidResponse(
+    apiClient.delete<ApiEnvelope<null>>(
+      `/draft/sessions/${sessionId}/candidates/${candidateUserId}`,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "후보를 삭제하지 못했습니다.",
+  );
+}
+
+export async function createDraftOrder(payload: DraftOrderRequest) {
+  return unwrapResponse(
+    apiClient.post<ApiEnvelope<DraftOrder>>("/draft/orders", payload, {
+      validateStatus: () => true,
+    }),
+    "드래프트 순서를 등록하지 못했습니다.",
+  );
+}
+
+export async function updateDraftOrder(
+  sessionId: number,
+  pickNo: number,
+  payload: DraftOrderRequest,
+) {
+  return unwrapResponse(
+    apiClient.put<ApiEnvelope<DraftOrder>>(
+      `/draft/sessions/${sessionId}/orders/${pickNo}`,
+      payload,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "드래프트 순서를 수정하지 못했습니다.",
+  );
+}
+
+export async function deleteDraftOrder(sessionId: number, pickNo: number) {
+  return unwrapVoidResponse(
+    apiClient.delete<ApiEnvelope<null>>(
+      `/draft/sessions/${sessionId}/orders/${pickNo}`,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "드래프트 순서를 삭제하지 못했습니다.",
+  );
+}
+
+export async function updateDraftPick(
+  sessionId: number,
+  pickNo: number,
+  payload: DraftPickRequest,
+) {
+  return unwrapResponse(
+    apiClient.put<ApiEnvelope<DraftPick>>(
+      `/draft/sessions/${sessionId}/picks/${pickNo}`,
+      payload,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "픽 기록을 수정하지 못했습니다.",
+  );
+}
+
+export async function deleteDraftPick(sessionId: number, pickNo: number) {
+  return unwrapVoidResponse(
+    apiClient.delete<ApiEnvelope<null>>(
+      `/draft/sessions/${sessionId}/picks/${pickNo}`,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "픽 기록을 삭제하지 못했습니다.",
+  );
+}
+
+export async function searchDraftUsers(keyword: string, limit = 8) {
+  return unwrapResponse(
+    apiClient.get<ApiEnvelope<DraftUserSearchResult[]>>("/user/search", {
+      params: {
+        keyword,
+        limit,
+      },
+      validateStatus: () => true,
+    }),
+    "유저 검색 결과를 불러오지 못했습니다.",
+  );
 }
 
 export function buildDraftWebSocketUrl() {

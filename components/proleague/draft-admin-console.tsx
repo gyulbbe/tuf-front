@@ -59,6 +59,7 @@ type TeamLookupState = {
   operatorUserId: string;
   role: string;
   isActive: string;
+  showManualIdInput: boolean;
   selectedUser: DraftUserSearchResult | null;
 };
 
@@ -68,6 +69,7 @@ type CandidateFormState = {
   candidateName: string;
   race: string;
   status: string;
+  showManualIdInput: boolean;
   selectedUser: DraftUserSearchResult | null;
 };
 
@@ -159,6 +161,7 @@ const EMPTY_CANDIDATE_FORM: CandidateFormState = {
   candidateName: "",
   race: "TERRAN",
   status: "WAITING",
+  showManualIdInput: false,
   selectedUser: null,
 };
 
@@ -354,6 +357,7 @@ function createEmptyTeamLookupState(): TeamLookupState {
     operatorUserId: "",
     role: "OPERATOR",
     isActive: "Y",
+    showManualIdInput: false,
     selectedUser: null,
   };
 }
@@ -664,17 +668,20 @@ function UserAutocompleteInput({
       ) : null}
 
       {isOpen && value.trim() ? (
-        <div className="absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-[22px] border border-line bg-surface shadow-[0_18px_60px_-40px_rgba(31,42,40,0.7)]">
+        <div className="absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-[20px] border border-line bg-surface shadow-[0_18px_60px_-40px_rgba(31,42,40,0.7)]">
+          <div className="border-b border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+            matching user_id
+          </div>
           {results.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-muted">검색 결과가 없습니다.</div>
+            <div className="px-3 py-3 text-xs text-muted">일치하는 아이디가 없다.</div>
           ) : (
-            <div className="max-h-72 overflow-y-auto py-2">
+            <div className="max-h-64 overflow-y-auto py-1">
               {results.map((user, index) => (
                 <button
                   key={`${user.id}:${user.userId}`}
                   type="button"
                   className={cn(
-                    "flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors",
+                    "flex w-full items-start justify-between gap-3 px-3 py-2 text-left transition-colors",
                     index === activeIndex
                       ? "bg-surface-strong"
                       : "hover:bg-surface-strong",
@@ -685,16 +692,16 @@ function UserAutocompleteInput({
                   }}
                 >
                   <div>
-                    <p className="text-sm font-semibold text-foreground">
+                    <p className="text-xs font-semibold text-foreground">
                       {user.userId}
                     </p>
-                    <p className="mt-1 text-xs text-muted">
+                    <p className="mt-1 text-[11px] text-muted">
                       {user.name ?? "이름 없음"}
                       {user.tier ? ` · ${user.tier}` : ""}
                       {user.race ? ` · ${user.race}` : ""}
                     </p>
                   </div>
-                  <span className="rounded-full bg-surface-strong px-3 py-1 text-xs text-muted">
+                  <span className="rounded-full bg-surface-strong px-2.5 py-1 text-[11px] text-muted">
                     id {user.id}
                   </span>
                 </button>
@@ -965,10 +972,10 @@ function TeamOperatorManager({
         </div>
 
         <div className="mt-4 grid gap-3">
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+          <div className="grid gap-3">
             <UserAutocompleteInput
               value={lookupState.query}
-              placeholder="userId 검색"
+              placeholder="user_id 입력 후 검색"
               onValueChange={(value) => {
                 onChangeLookup(draftTeam.id, {
                   query: value,
@@ -983,16 +990,70 @@ function TeamOperatorManager({
                 });
               }}
             />
+          </div>
+
+          <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
+            {lookupState.selectedUser ? (
+              <>
+                <p className="font-semibold text-foreground">
+                  선택된 user_id: {lookupState.selectedUser.userId}
+                </p>
+                <p className="mt-1">
+                  내부 연결값은 자동으로 잡혔다. 바로 등록하면 된다.
+                </p>
+              </>
+            ) : lookupState.operatorUserId ? (
+              <>
+                <p className="font-semibold text-foreground">
+                  수동 입력된 내부 연결값이 있다.
+                </p>
+                <p className="mt-1">검색 결과가 없으면 아래 직접 입력을 써도 된다.</p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-foreground">
+                  user_id를 입력하면 아래에 일치하는 아이디 목록이 뜬다.
+                </p>
+                <p className="mt-1">
+                  그중 하나를 고르면 등록 대상이 자동으로 선택된다.
+                </p>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="text-xs font-semibold text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              onClick={() => {
+                onChangeLookup(draftTeam.id, {
+                  showManualIdInput: !lookupState.showManualIdInput,
+                });
+              }}
+            >
+              {lookupState.showManualIdInput
+                ? "직접 입력 닫기"
+                : "검색이 안 되면 userPk 직접 입력"}
+            </button>
+            {lookupState.operatorUserId ? (
+              <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
+                연결값 {lookupState.operatorUserId}
+              </span>
+            ) : null}
+          </div>
+
+          {lookupState.showManualIdInput ? (
             <Input
               value={lookupState.operatorUserId}
               onChange={(event) => {
                 onChangeLookup(draftTeam.id, {
                   operatorUserId: event.target.value,
+                  selectedUser: null,
                 });
               }}
-              placeholder="userPk"
+              placeholder="userPk 직접 입력"
             />
-          </div>
+          ) : null}
 
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px] xl:grid-cols-[minmax(0,1fr)_120px_auto]">
             <select
@@ -1053,7 +1114,7 @@ function TeamOperatorManager({
                 : ""}
             </p>
             <p className="mt-2 text-xs leading-6 text-muted">
-              userPk {lookupState.selectedUser.id}이 자동으로 입력되었다.
+              검색한 user_id 기준으로 내부 연결값 {lookupState.selectedUser.id}이 자동으로 선택되었다.
             </p>
           </div>
         ) : null}
@@ -2607,10 +2668,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
             <>
               <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
                 <div className="grid gap-3">
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+                  <div className="grid gap-3">
                     <UserAutocompleteInput
                       value={candidateForm.query}
-                      placeholder="userId 검색"
+                      placeholder="user_id 입력 후 검색"
                       onValueChange={(value) => {
                         setCandidateForm((current) => ({
                           ...current,
@@ -2629,17 +2690,72 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                         }));
                       }}
                     />
+                  </div>
+
+                  <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
+                    {candidateForm.selectedUser ? (
+                      <>
+                        <p className="font-semibold text-foreground">
+                          선택된 user_id: {candidateForm.selectedUser.userId}
+                        </p>
+                        <p className="mt-1">
+                          이 user_id를 기준으로 후보 연결값이 자동 선택되었다.
+                        </p>
+                      </>
+                    ) : candidateForm.candidateUserId ? (
+                      <>
+                        <p className="font-semibold text-foreground">
+                          수동 입력된 내부 연결값이 있다.
+                        </p>
+                        <p className="mt-1">검색 결과가 없으면 아래 직접 입력을 써도 된다.</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-semibold text-foreground">
+                          user_id 일부를 치면 아래에 포함된 아이디 리스트가 펼쳐진다.
+                        </p>
+                        <p className="mt-1">
+                          목록에서 고르면 후보 user_id가 바로 연결된다.
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                      onClick={() => {
+                        setCandidateForm((current) => ({
+                          ...current,
+                          showManualIdInput: !current.showManualIdInput,
+                        }));
+                      }}
+                    >
+                      {candidateForm.showManualIdInput
+                        ? "직접 입력 닫기"
+                        : "검색이 안 되면 userPk 직접 입력"}
+                    </button>
+                    {candidateForm.candidateUserId ? (
+                      <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
+                        연결값 {candidateForm.candidateUserId}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {candidateForm.showManualIdInput ? (
                     <Input
                       value={candidateForm.candidateUserId}
                       onChange={(event) => {
                         setCandidateForm((current) => ({
                           ...current,
                           candidateUserId: event.target.value,
+                          selectedUser: null,
                         }));
                       }}
-                      placeholder="candidateUserId"
+                      placeholder="candidate userPk 직접 입력"
                     />
-                  </div>
+                  ) : null}
 
                   <Input
                     value={candidateForm.candidateName}
@@ -2717,7 +2833,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                         : ""}
                     </p>
                     <p className="mt-2 text-xs leading-6 text-muted">
-                      userPk {candidateForm.selectedUser.id}이 자동으로 입력되었다.
+                      검색한 user_id 기준으로 내부 연결값 {candidateForm.selectedUser.id}이 자동으로 선택되었다.
                     </p>
                   </div>
                 ) : null}

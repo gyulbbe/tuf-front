@@ -219,6 +219,30 @@ export type DraftUserSearchResult = {
   photo: string | null;
 };
 
+function readArray<T>(value: unknown, fallback: T[] = []) {
+  return Array.isArray(value) ? (value as T[]) : fallback;
+}
+
+function normalizeDraftTeam(value: DraftLiveTeam | DraftTeamRecord): DraftLiveTeam {
+  return {
+    ...value,
+    operators: readArray<DraftTeamOperator>(value.operators),
+    roster: readArray<DraftLiveRosterItem>((value as DraftLiveTeam).roster),
+  };
+}
+
+function normalizeDraftSessionDetail(value: DraftSessionDetail): DraftSessionDetail {
+  return {
+    ...value,
+    teams: readArray<DraftLiveTeam>(value.teams).map((team) =>
+      normalizeDraftTeam(team),
+    ),
+    candidates: readArray<DraftCandidate>(value.candidates),
+    orders: readArray<DraftOrder>(value.orders),
+    picks: readArray<DraftPick>(value.picks),
+  };
+}
+
 function readErrorMessage(data: unknown, fallback: string) {
   if (!data || typeof data !== "object") {
     return fallback;
@@ -417,12 +441,14 @@ export async function assignDraftPicker(teamId: number, operatorUserId: number) 
 }
 
 export async function getDraftSessionDetail(sessionId: number) {
-  return unwrapResponse(
+  const detail = await unwrapResponse(
     apiClient.get<ApiEnvelope<DraftSessionDetail>>(`/draft/sessions/${sessionId}`, {
       validateStatus: () => true,
     }),
     "드래프트 세션 상세를 불러오지 못했습니다.",
   );
+
+  return normalizeDraftSessionDetail(detail);
 }
 
 export async function createDraftSession(payload: DraftSessionRequest) {

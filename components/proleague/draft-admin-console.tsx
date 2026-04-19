@@ -722,6 +722,9 @@ function TeamRow({
   onDelete: () => Promise<void>;
   onSave: () => Promise<void>;
 }) {
+  const operatorCount = draftTeam.operators?.length ?? 0;
+  const rosterCount = draftTeam.roster?.length ?? 0;
+
   return (
     <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -730,7 +733,7 @@ function TeamRow({
             teamId {draftTeam.id}
           </p>
           <p className="mt-1 text-xs text-muted">
-            운영자 {draftTeam.operators.length}명 · 로스터 {draftTeam.roster.length}명
+            운영자 {operatorCount}명 · 로스터 {rosterCount}명
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/auth/login-form";
 import { SurfaceCard } from "@/components/site/surface-card";
@@ -9,8 +8,21 @@ export const metadata: Metadata = {
   title: "로그인",
 };
 
-export default async function LoginPage() {
+type LoginPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function readFirstValue(value?: string | string[]) {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+
+  return value ?? null;
+}
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
   const session = await getServerAuthSession();
+  const resolvedSearchParams = await searchParams;
 
   if (session) {
     redirect("/notice");
@@ -38,15 +50,10 @@ export default async function LoginPage() {
             아이디와 비밀번호를 입력하면 2시간짜리 JWT를 저장하고, 만료되거나
             401이 오면 자동으로 로그아웃된다.
           </p>
-          <Suspense
-            fallback={
-              <p className="mt-6 text-sm leading-7 text-muted">
-                로그인 폼을 불러오는 중...
-              </p>
-            }
-          >
-            <LoginForm />
-          </Suspense>
+          <LoginForm
+            redirectTo={readFirstValue(resolvedSearchParams.redirect)}
+            reason={readFirstValue(resolvedSearchParams.reason)}
+          />
         </SurfaceCard>
       </div>
     </div>

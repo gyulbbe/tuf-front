@@ -2,20 +2,28 @@
 
 import Link from "next/link";
 import { startTransition, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { AuthSubmitButton } from "@/components/auth/auth-submit-button";
 import { useAuth } from "@/components/auth/auth-provider";
 import { sanitizeRedirectTarget } from "@/lib/auth/auth-navigation";
+import type { AuthRedirectReason } from "@/lib/auth/auth-types";
 
 const INITIAL_FORM = {
   username: "",
   password: "",
 };
 
-const reasonMessages: Record<string, string> = {
+const reasonMessages: Partial<Record<AuthRedirectReason, string>> = {
   "login-required": "로그인이 필요한 페이지입니다.",
   "session-expired": "세션이 만료돼 다시 로그인해야 합니다.",
   unauthorized: "인증이 만료돼 다시 로그인해야 합니다.",
+};
+
+type LoginFormProps = {
+  redirectTo?: string | null;
+  reason?: string | null;
+  onSuccess?: () => void;
+  showReturnLink?: boolean;
 };
 
 function validateForm(form: typeof INITIAL_FORM) {
@@ -37,17 +45,23 @@ function validateForm(form: typeof INITIAL_FORM) {
   return null;
 }
 
-export function LoginForm() {
+export function LoginForm({
+  redirectTo,
+  reason,
+  onSuccess,
+  showReturnLink = true,
+}: LoginFormProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { login, isAuthenticated, status } = useAuth();
   const [form, setForm] = useState(INITIAL_FORM);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const redirectTo = sanitizeRedirectTarget(searchParams.get("redirect"));
-  const fallbackRedirect = redirectTo ?? "/notice";
-  const reasonMessage = reasonMessages[searchParams.get("reason") ?? ""] ?? null;
+  const fallbackRedirect = sanitizeRedirectTarget(redirectTo) ?? "/notice";
+  const reasonMessage =
+    typeof reason === "string"
+      ? (reasonMessages[reason as AuthRedirectReason] ?? null)
+      : null;
 
   useEffect(() => {
     if (status !== "authenticated") {
@@ -80,6 +94,8 @@ export function LoginForm() {
             username: form.username.trim(),
             password: form.password,
           });
+
+          onSuccess?.();
 
           startTransition(() => {
             router.replace(fallbackRedirect);
@@ -166,14 +182,16 @@ export function LoginForm() {
         pending={isSubmitting}
       />
 
-      <div className="pt-2 text-sm text-muted">
-        <Link
-          href="/notice"
-          className="transition-colors hover:text-foreground"
-        >
-          공지사항으로 돌아가기
-        </Link>
-      </div>
+      {showReturnLink ? (
+        <div className="pt-2 text-sm text-muted">
+          <Link
+            href="/notice"
+            className="transition-colors hover:text-foreground"
+          >
+            공지사항으로 돌아가기
+          </Link>
+        </div>
+      ) : null}
     </form>
   );
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { SiteTab } from "@/content/site";
+import { cn } from "@/lib/utils";
 
 type SiteTabsProps = {
   tabs: SiteTab[];
@@ -15,12 +16,12 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
     <nav className="flex flex-wrap gap-2" aria-label="Primary tabs">
       {tabs.map((tab) => {
         const isActive = !tab.external && pathname === tab.href;
-        const baseClass = [
+        const tabClassName = cn(
           "rounded-full px-4 py-2 text-sm transition-colors",
           isActive
             ? "bg-accent text-white"
             : "border border-line text-muted hover:border-accent-soft hover:bg-surface-strong hover:text-foreground",
-        ].join(" ");
+        );
 
         if (tab.external) {
           if (tab.href) {
@@ -31,7 +32,7 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                 target="_blank"
                 rel="noreferrer noopener"
                 title={tab.description}
-                className={baseClass}
+                className={tabClassName}
               >
                 {tab.label}
               </a>
@@ -54,7 +55,7 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
             key={tab.href}
             href={tab.href ?? "/notice"}
             title={tab.description}
-            className={baseClass}
+            className={tabClassName}
           >
             {tab.label}
           </Link>

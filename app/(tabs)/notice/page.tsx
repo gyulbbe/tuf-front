@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { InfoList } from "@/components/site/info-list";
+import { SectionCard } from "@/components/site/section-card";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { TabPageShell } from "@/components/site/tab-page-shell";
 
@@ -37,16 +39,7 @@ export default function NoticePage() {
         <>
           <SurfaceCard className="p-6">
             <p className="text-sm font-semibold text-foreground">바로 이어질 기능</p>
-            <ul className="mt-4 space-y-3 text-sm leading-7 text-muted">
-              {quickLinks.map((item) => (
-                <li
-                  key={item}
-                  className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground"
-                >
-                  {item}
-                </li>
-              ))}
-            </ul>
+            <InfoList items={quickLinks} />
           </SurfaceCard>
 
           <SurfaceCard className="p-6">
@@ -61,17 +54,11 @@ export default function NoticePage() {
     >
       <div className="grid gap-4 md:grid-cols-3">
         {notices.map((notice) => (
-          <article
+          <SectionCard
             key={notice.title}
-            className="rounded-[24px] border border-line bg-surface-strong px-5 py-5"
-          >
-            <h2 className="text-lg font-semibold text-foreground">
-              {notice.title}
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-muted">
-              {notice.description}
-            </p>
-          </article>
+            title={notice.title}
+            description={notice.description}
+          />
         ))}
       </div>
     </TabPageShell>

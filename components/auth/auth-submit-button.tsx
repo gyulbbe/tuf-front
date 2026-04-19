@@ -1,6 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
+import { Button } from "@/components/ui/button";
 
 type AuthSubmitButtonProps = {
   idleText: string;
@@ -17,12 +18,13 @@ export function AuthSubmitButton({
   const isPending = pendingOverride ?? pending;
 
   return (
-    <button
+    <Button
       type="submit"
       disabled={isPending}
-      className="inline-flex w-full items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-ink disabled:cursor-not-allowed disabled:bg-accent/70"
+      variant="accent"
+      fullWidth
     >
       {isPending ? pendingText : idleText}
-    </button>
+    </Button>
   );
 }

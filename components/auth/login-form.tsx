@@ -5,6 +5,7 @@ import { startTransition, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthSubmitButton } from "@/components/auth/auth-submit-button";
 import { useAuth } from "@/components/auth/auth-provider";
+import { Input } from "@/components/ui/input";
 import { sanitizeRedirectTarget } from "@/lib/auth/auth-navigation";
 import type { AuthRedirectReason } from "@/lib/auth/auth-types";
 
@@ -135,7 +136,7 @@ export function LoginForm({
         <span className="mb-2 block text-sm font-medium text-foreground">
           아이디
         </span>
-        <input
+        <Input
           required
           minLength={3}
           maxLength={50}
@@ -149,7 +150,7 @@ export function LoginForm({
             }));
           }}
           placeholder="아이디 입력"
-          className="w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent-soft focus:bg-white"
+          aria-invalid={Boolean(error)}
         />
       </label>
 
@@ -157,7 +158,7 @@ export function LoginForm({
         <span className="mb-2 block text-sm font-medium text-foreground">
           비밀번호
         </span>
-        <input
+        <Input
           required
           minLength={1}
           maxLength={100}
@@ -172,7 +173,7 @@ export function LoginForm({
             }));
           }}
           placeholder="비밀번호 입력"
-          className="w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent-soft focus:bg-white"
+          aria-invalid={Boolean(error)}
         />
       </label>
 

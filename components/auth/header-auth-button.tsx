@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { LoginForm } from "@/components/auth/login-form";
 import { useAuth } from "@/components/auth/auth-provider";
+import { Button } from "@/components/ui/button";
 
 export function HeaderAuthButton() {
   const pathname = usePathname();
@@ -49,18 +50,16 @@ export function HeaderAuthButton() {
         <span className="inline-flex rounded-full border border-line px-4 py-2 text-sm text-foreground">
           {user.username}
         </span>
-        <button
-          type="button"
+        <Button
           onClick={() => {
             logout();
             startTransition(() => {
               router.replace("/notice");
             });
           }}
-          className="inline-flex rounded-full border border-line px-4 py-2 text-sm text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground"
         >
           로그아웃
-        </button>
+        </Button>
       </div>
     );
   }
@@ -86,14 +85,13 @@ export function HeaderAuthButton() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
+                <Button
                   onClick={() => setOpen(false)}
-                  className="rounded-full border border-line px-3 py-1 text-sm text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground"
+                  size="sm"
                   aria-label="닫기"
                 >
                   닫기
-                </button>
+                </Button>
               </div>
 
               <LoginForm
@@ -109,13 +107,11 @@ export function HeaderAuthButton() {
 
   return (
     <>
-      <button
-        type="button"
+      <Button
         onClick={() => setOpen(true)}
-        className="inline-flex rounded-full border border-line px-4 py-2 text-sm text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground"
       >
         로그인
-      </button>
+      </Button>
 
       {modal}
     </>

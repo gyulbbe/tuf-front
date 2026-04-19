@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { InfoList } from "@/components/site/info-list";
+import { SectionCard } from "@/components/site/section-card";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { requireServerAuth } from "@/lib/auth/server-auth";
 
@@ -22,6 +24,12 @@ const adminSections = [
     description:
       "공지 노출, 봇 연동, 리그 운영 설정 같은 관리자 전용 기능을 단계적으로 추가할 수 있습니다.",
   },
+];
+
+const adminChecklist = [
+  "서버에서 로그인 상태를 먼저 확인",
+  "`role=admin` 일 때만 관리자 화면 노출",
+  "JWT 만료/401 시 자동 로그아웃",
 ];
 
 function isAdminRole(role: string) {
@@ -64,17 +72,11 @@ export default async function AdminPage() {
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {adminSections.map((section) => (
-            <article
+            <SectionCard
               key={section.title}
-              className="rounded-[24px] border border-line bg-surface-strong px-5 py-5"
-            >
-              <h2 className="text-lg font-semibold text-foreground">
-                {section.title}
-              </h2>
-              <p className="mt-3 text-sm leading-7 text-muted">
-                {section.description}
-              </p>
-            </article>
+              title={section.title}
+              description={section.description}
+            />
           ))}
         </div>
       </SurfaceCard>
@@ -82,17 +84,7 @@ export default async function AdminPage() {
       <div className="grid gap-4">
         <SurfaceCard className="p-6">
           <p className="text-sm font-semibold text-foreground">현재 기준</p>
-          <ul className="mt-4 space-y-3 text-sm leading-7 text-muted">
-            <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-              서버에서 로그인 상태를 먼저 확인
-            </li>
-            <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-              `role=admin` 일 때만 관리자 화면 노출
-            </li>
-            <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-              JWT 만료/401 시 자동 로그아웃
-            </li>
-          </ul>
+          <InfoList items={adminChecklist} />
         </SurfaceCard>
 
         <SurfaceCard className="p-6">

@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { InfoList } from "@/components/site/info-list";
+import { SectionCard } from "@/components/site/section-card";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { TabPageShell } from "@/components/site/tab-page-shell";
 
@@ -17,6 +19,8 @@ const gallerySections = [
   },
 ];
 
+const uploadChecklist = ["썸네일 정책", "카테고리 체계", "업로드 권한 분리"];
+
 export const metadata: Metadata = {
   title: "터프갤러리",
 };
@@ -31,17 +35,7 @@ export default function GalleryPage() {
         <>
           <SurfaceCard className="p-6">
             <p className="text-sm font-semibold text-foreground">업로드 준비 항목</p>
-            <ul className="mt-4 space-y-3 text-sm leading-7 text-muted">
-              <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-                썸네일 정책
-              </li>
-              <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-                카테고리 체계
-              </li>
-              <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-                업로드 권한 분리
-              </li>
-            </ul>
+            <InfoList items={uploadChecklist} />
           </SurfaceCard>
 
           <SurfaceCard className="p-6">
@@ -56,17 +50,11 @@ export default function GalleryPage() {
     >
       <div className="grid gap-4 md:grid-cols-3">
         {gallerySections.map((section) => (
-          <article
+          <SectionCard
             key={section.title}
-            className="rounded-[24px] border border-line bg-surface-strong px-5 py-5"
-          >
-            <h2 className="text-lg font-semibold text-foreground">
-              {section.title}
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-muted">
-              {section.description}
-            </p>
-          </article>
+            title={section.title}
+            description={section.description}
+          />
         ))}
       </div>
     </TabPageShell>

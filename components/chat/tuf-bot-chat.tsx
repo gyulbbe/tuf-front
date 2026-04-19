@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { requestTufBotChat } from "@/lib/api/chat";
+import { cn } from "@/lib/utils";
 
 type ChatMessageState = "complete" | "thinking" | "streaming" | "error";
 
@@ -195,24 +198,21 @@ export function TufBotChat() {
       >
         {messages.map((message) => {
           const isAssistant = message.role === "assistant";
-          const bubbleClass = [
+          const bubbleClassName = cn(
             "max-w-[88%] rounded-[24px] px-4 py-3 shadow-[0_12px_40px_-32px_rgba(31,42,40,0.75)]",
             isAssistant
               ? message.state === "error"
                 ? "border border-danger-ink/20 bg-danger-soft text-danger-ink"
                 : "border border-line bg-surface-strong text-foreground"
               : "bg-accent text-white",
-          ].join(" ");
+          );
 
           return (
             <div
               key={message.id}
-              className={[
-                "flex",
-                isAssistant ? "justify-start" : "justify-end",
-              ].join(" ")}
+              className={cn("flex", isAssistant ? "justify-start" : "justify-end")}
             >
-              <div className={bubbleClass}>
+              <div className={bubbleClassName}>
                 {message.state === "thinking" && !message.text ? (
                   <ThinkingDots />
                 ) : (
@@ -234,7 +234,7 @@ export function TufBotChat() {
         className="border-t border-line bg-white/55 p-4 sm:p-5"
       >
         <div className="rounded-[26px] border border-line bg-surface-strong p-3 shadow-[0_18px_50px_-36px_rgba(31,42,40,0.7)]">
-          <textarea
+          <Textarea
             value={composer}
             onChange={(event) => setComposer(event.target.value)}
             onKeyDown={(event) => {
@@ -246,17 +246,18 @@ export function TufBotChat() {
             placeholder="메시지를 입력하세요"
             rows={3}
             disabled={isBusy}
-            className="w-full resize-none bg-transparent px-1 py-1 text-sm leading-7 text-foreground outline-none placeholder:text-muted/70 disabled:cursor-not-allowed"
+            className="resize-none border-none bg-transparent px-1 py-1 shadow-none focus:border-none focus:bg-transparent"
           />
 
           <div className="mt-3 flex justify-end border-t border-line pt-3">
-            <button
+            <Button
               type="submit"
               disabled={!composer.trim() || isBusy}
-              className="inline-flex min-w-24 items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-accent-ink disabled:cursor-not-allowed disabled:bg-accent/45"
+              variant="accent"
+              className="min-w-24"
             >
               전송
-            </button>
+            </Button>
           </div>
         </div>
       </form>

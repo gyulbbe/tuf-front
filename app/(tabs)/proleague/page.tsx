@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { InfoList } from "@/components/site/info-list";
+import { SectionCard } from "@/components/site/section-card";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { TabPageShell } from "@/components/site/tab-page-shell";
 
@@ -17,6 +19,12 @@ const leagueCards = [
   },
 ];
 
+const operationsNotes = [
+  "일정과 결과를 같은 탭 안에서 관리",
+  "시즌별 데이터 분리 가능하게 설계",
+  "경기 상세는 후속 페이지로 확장",
+];
+
 export const metadata: Metadata = {
   title: "프로리그",
 };
@@ -31,17 +39,7 @@ export default function ProleaguePage() {
         <>
           <SurfaceCard className="p-6">
             <p className="text-sm font-semibold text-foreground">운영 기준</p>
-            <ul className="mt-4 space-y-3 text-sm leading-7 text-muted">
-              <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-                일정과 결과를 같은 탭 안에서 관리
-              </li>
-              <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-                시즌별 데이터 분리 가능하게 설계
-              </li>
-              <li className="rounded-2xl bg-surface-muted px-4 py-3 text-foreground">
-                경기 상세는 후속 페이지로 확장
-              </li>
-            </ul>
+            <InfoList items={operationsNotes} />
           </SurfaceCard>
 
           <SurfaceCard className="p-6">
@@ -56,17 +54,11 @@ export default function ProleaguePage() {
     >
       <div className="grid gap-4 md:grid-cols-3">
         {leagueCards.map((card) => (
-          <article
+          <SectionCard
             key={card.title}
-            className="rounded-[24px] border border-line bg-surface-strong px-5 py-5"
-          >
-            <h2 className="text-lg font-semibold text-foreground">
-              {card.title}
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-muted">
-              {card.description}
-            </p>
-          </article>
+            title={card.title}
+            description={card.description}
+          />
         ))}
       </div>
     </TabPageShell>

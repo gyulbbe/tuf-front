@@ -24,7 +24,7 @@ export const siteTabs: SiteTab[] = [
   },
   {
     label: "터프봇",
-    href: "/tuf-bot",
+    href: "/chat",
     description: "봇 기능과 자동화 흐름을 정리합니다.",
   },
   {

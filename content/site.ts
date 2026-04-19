@@ -1,8 +1,12 @@
-export type SiteTab = {
+export type SiteSubTab = {
   label: string;
   href?: string;
   description: string;
   external?: boolean;
+};
+
+export type SiteTab = SiteSubTab & {
+  items?: SiteSubTab[];
 };
 
 const externalSiteLinks = {
@@ -13,34 +17,41 @@ const externalSiteLinks = {
 export const siteConfig = {
   name: "Starcraft TuF Clan",
   description:
-    "공지, 봇, 리그, 갤러리, 계정, 관리자 기능을 탭 단위로 나눠 관리하는 Starcraft TuF Clan 사이트입니다.",
+    "공지, 채팅, 프로리그, 갤러리, 계정, 관리자 기능을 한 화면에서 관리하는 Starcraft TuF Clan 사이트입니다.",
 };
 
 export const siteTabs: SiteTab[] = [
   {
     label: "공지사항",
     href: "/notice",
-    description: "운영 공지와 업데이트를 정리합니다.",
+    description: "운영 공지와 업데이트를 확인합니다.",
   },
   {
-    label: "터프봇",
+    label: "투프챗",
     href: "/chat",
-    description: "봇 기능과 자동화 흐름을 정리합니다.",
+    description: "채팅 기능과 자동 응답 흐름을 확인합니다.",
   },
   {
     label: "프로리그",
     href: "/proleague",
-    description: "리그 일정과 운영 상태를 다룹니다.",
+    description: "리그 운영 상태와 세부 기능으로 이동합니다.",
+    items: [
+      {
+        label: "드래프트",
+        href: "/proleague/draft",
+        description: "실시간 드래프트 화면으로 이동합니다.",
+      },
+    ],
   },
   {
-    label: "터프갤러리",
+    label: "투프갤러리",
     href: "/gallery",
     description: "이미지와 기록을 아카이브합니다.",
   },
   {
     label: "내정보",
     href: "/me",
-    description: "로그인, 로그아웃, 계정 상태를 확인합니다.",
+    description: "로그인 상태와 계정 정보를 확인합니다.",
   },
   {
     label: "관리자",

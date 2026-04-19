@@ -6,8 +6,8 @@ export const metadata: Metadata = {
   title: "프로리그 드래프트",
 };
 
-export default async function ProleaguePage() {
-  await requireServerAuth("/proleague");
+export default async function ProleagueDraftPage() {
+  await requireServerAuth("/proleague/draft");
 
   return <DraftLiveDashboard />;
 }

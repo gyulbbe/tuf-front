@@ -10,10 +10,10 @@ export const metadata: Metadata = {
 
 const adminTools = [
   {
-    href: "/admin/proleague",
-    title: "프로리그 드래프트",
+    href: "/admin/draft",
+    title: "드래프트",
     description:
-      "드래프트 세션 상태 확인, 시작/일시정지/재개, 시간 연장, 강제 스킵, 픽 권한자 지정까지 한 화면에서 처리합니다.",
+      "드래프트 관리와 드래프트 이력을 나눠서 보고, 준비 작업과 기록 정리를 깔끔하게 처리한다.",
   },
   {
     href: "/proleague/draft",
@@ -53,8 +53,8 @@ export default async function AdminPage() {
           관리자 작업 공간
         </h1>
         <p className="mt-4 max-w-3xl text-base leading-8 text-muted">
-          드래프트 운영과 검수 동선을 관리자 메뉴 아래로 모아둔다. 지금은 프로리그
-          드래프트 관리 화면부터 연결해 둔 상태다.
+          드래프트 운영과 검수 동선을 관리자 메뉴 아래로 모아둔다. 지금은 드래프트 메뉴를
+          관리 탭과 이력 탭으로 나눠서 연결해 둔 상태다.
         </p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">
@@ -79,7 +79,7 @@ export default async function AdminPage() {
               관리자 탭은 관리자 권한 계정에게만 노출된다.
             </p>
             <p className="rounded-[22px] bg-surface-muted px-4 py-4">
-              관리자 하위 메뉴의 `프로리그`에서 드래프트를 제어한다.
+              관리자 하위 메뉴의 `드래프트`에서 관리 탭과 이력 탭으로 들어간다.
             </p>
             <p className="rounded-[22px] bg-surface-muted px-4 py-4">
               라이브 드래프트 화면과 관리자 제어 화면은 같은 백엔드 스냅샷을 사용한다.

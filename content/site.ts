@@ -61,9 +61,9 @@ export const siteTabs: SiteTab[] = [
     requiresAdmin: true,
     items: [
       {
-        label: "프로리그",
-        href: "/admin/proleague",
-        description: "프로리그 드래프트를 관리합니다.",
+        label: "드래프트",
+        href: "/admin/draft",
+        description: "드래프트 관리와 이력을 확인합니다.",
         requiresAdmin: true,
       },
     ],

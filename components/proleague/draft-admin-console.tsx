@@ -351,6 +351,40 @@ function createOperatorKey(teamId: number, operatorUserId: number) {
   return `${teamId}:${operatorUserId}`;
 }
 
+function isOperatorTeamActionPending(
+  pendingAction: string | null,
+  teamId: number,
+) {
+  if (!pendingAction) {
+    return false;
+  }
+
+  return (
+    pendingAction === `operator-add:${teamId}` ||
+    pendingAction.startsWith(`operator-save:${teamId}:`) ||
+    pendingAction.startsWith(`operator-delete:${teamId}:`) ||
+    pendingAction.startsWith(`operator-picker:${teamId}:`)
+  );
+}
+
+function isOperatorRowActionPending(
+  pendingAction: string | null,
+  teamId: number,
+  operatorUserId: number,
+) {
+  if (!pendingAction) {
+    return false;
+  }
+
+  const actionKey = createOperatorKey(teamId, operatorUserId);
+
+  return (
+    pendingAction === `operator-save:${actionKey}` ||
+    pendingAction === `operator-delete:${actionKey}` ||
+    pendingAction === `operator-picker:${actionKey}`
+  );
+}
+
 function createEmptyTeamLookupState(): TeamLookupState {
   return {
     query: "",
@@ -808,6 +842,11 @@ function OperatorRow({
   onSave: () => Promise<void>;
 }) {
   const actionKey = createOperatorKey(draftTeamId, operator.operatorUserId);
+  const isRowBusy = isOperatorRowActionPending(
+    pendingAction,
+    draftTeamId,
+    operator.operatorUserId,
+  );
 
   return (
     <div className="rounded-[24px] border border-line bg-surface px-4 py-4">
@@ -825,7 +864,7 @@ function OperatorRow({
           <Button
             size="sm"
             variant={operator.canPick === "Y" ? "accent" : "outline"}
-            disabled={pendingAction !== null}
+            disabled={isRowBusy}
             onClick={() => {
               void onAssignPicker();
             }}
@@ -836,7 +875,7 @@ function OperatorRow({
           </Button>
           <Button
             size="sm"
-            disabled={pendingAction !== null}
+            disabled={isRowBusy}
             onClick={() => {
               void onSave();
             }}
@@ -846,7 +885,7 @@ function OperatorRow({
           <Button
             size="sm"
             variant="danger"
-            disabled={pendingAction !== null}
+            disabled={isRowBusy}
             onClick={() => {
               void onDelete();
             }}
@@ -864,6 +903,7 @@ function OperatorRow({
           <select
             className={SELECT_CLASS_NAME}
             value={editState.role}
+            disabled={isRowBusy}
             onChange={(event) => {
               onChange({ role: event.target.value });
             }}
@@ -882,6 +922,7 @@ function OperatorRow({
           <select
             className={SELECT_CLASS_NAME}
             value={editState.isActive}
+            disabled={isRowBusy}
             onChange={(event) => {
               onChange({ isActive: event.target.value });
             }}
@@ -931,6 +972,8 @@ function TeamOperatorManager({
 }) {
   const picker = draftTeam.operators.find((operator) => operator.canPick === "Y");
   const operatorCount = draftTeam.operators?.length ?? 0;
+  const isTeamBusy = isOperatorTeamActionPending(pendingAction, draftTeam.id);
+  const isTeamAddPending = pendingAction === `operator-add:${draftTeam.id}`;
 
   return (
     <article className="rounded-[28px] border border-line bg-surface-strong px-5 py-5 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
@@ -974,6 +1017,7 @@ function TeamOperatorManager({
         <div className="mt-4 grid gap-3">
           <div className="grid gap-3">
             <UserAutocompleteInput
+              disabled={isTeamAddPending}
               value={lookupState.query}
               placeholder="user_id 입력 후 검색"
               onValueChange={(value) => {
@@ -1025,6 +1069,7 @@ function TeamOperatorManager({
             <button
               type="button"
               className="text-xs font-semibold text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              disabled={isTeamAddPending}
               onClick={() => {
                 onChangeLookup(draftTeam.id, {
                   showManualIdInput: !lookupState.showManualIdInput,
@@ -1044,6 +1089,7 @@ function TeamOperatorManager({
 
           {lookupState.showManualIdInput ? (
             <Input
+              disabled={isTeamAddPending}
               value={lookupState.operatorUserId}
               onChange={(event) => {
                 onChangeLookup(draftTeam.id, {
@@ -1059,6 +1105,7 @@ function TeamOperatorManager({
             <select
               className={SELECT_CLASS_NAME}
               value={lookupState.role}
+              disabled={isTeamAddPending}
               onChange={(event) => {
                 onChangeLookup(draftTeam.id, {
                   role: event.target.value,
@@ -1074,6 +1121,7 @@ function TeamOperatorManager({
             <select
               className={SELECT_CLASS_NAME}
               value={lookupState.isActive}
+              disabled={isTeamAddPending}
               onChange={(event) => {
                 onChangeLookup(draftTeam.id, {
                   isActive: event.target.value,
@@ -1089,12 +1137,12 @@ function TeamOperatorManager({
             <Button
               variant="accent"
               className="whitespace-nowrap"
-              disabled={pendingAction !== null || !lookupState.operatorUserId.trim()}
+              disabled={isTeamBusy || !lookupState.operatorUserId.trim()}
               onClick={() => {
                 void onAddOperator(draftTeam.id);
               }}
             >
-              {pendingAction === `operator-add:${draftTeam.id}` ? "등록 중" : "운영자 등록"}
+              {isTeamAddPending ? "등록 중" : "운영자 등록"}
             </Button>
           </div>
         </div>

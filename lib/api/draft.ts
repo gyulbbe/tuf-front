@@ -162,11 +162,40 @@ export type DraftSessionRequest = {
   endedAt?: string | null;
 };
 
+export type DraftTeamRecord = {
+  id: number;
+  draftSessionId: number;
+  teamName: string;
+  displayOrder: number;
+  operators: DraftTeamOperator[];
+};
+
+export type DraftTeamRequest = {
+  draftSessionId: number;
+  teamName: string;
+  displayOrder: number;
+};
+
 export type DraftTeamOperatorRequest = {
   draftTeamId: number;
   operatorUserId: number;
   role: string;
   isActive: string;
+};
+
+export type DraftCandidateRequest = {
+  draftSessionId: number;
+  candidateUserId: number;
+  candidateName: string;
+  race: string;
+  status: string;
+};
+
+export type DraftOrderRequest = {
+  draftSessionId: number;
+  roundNo: number;
+  pickNo: number;
+  draftTeamId: number;
 };
 
 export type DraftUserLookup = {
@@ -431,6 +460,15 @@ export async function updateDraftSession(
   );
 }
 
+export async function createDraftTeam(payload: DraftTeamRequest) {
+  return unwrapResponse(
+    apiClient.post<ApiEnvelope<DraftTeamRecord>>("/draft/teams", payload, {
+      validateStatus: () => true,
+    }),
+    "팀을 생성하지 못했습니다.",
+  );
+}
+
 export async function createDraftTeamOperator(
   payload: DraftTeamOperatorRequest,
 ) {
@@ -439,6 +477,26 @@ export async function createDraftTeamOperator(
       validateStatus: () => true,
     }),
     "팀 운영자를 추가하지 못했습니다.",
+  );
+}
+
+export async function createDraftCandidate(
+  payload: DraftCandidateRequest,
+) {
+  return unwrapResponse(
+    apiClient.post<ApiEnvelope<DraftCandidate>>("/draft/candidates", payload, {
+      validateStatus: () => true,
+    }),
+    "후보를 등록하지 못했습니다.",
+  );
+}
+
+export async function createDraftOrder(payload: DraftOrderRequest) {
+  return unwrapResponse(
+    apiClient.post<ApiEnvelope<DraftOrder>>("/draft/orders", payload, {
+      validateStatus: () => true,
+    }),
+    "드래프트 순서를 등록하지 못했습니다.",
   );
 }
 

@@ -1,8 +1,13 @@
 "use client";
 
-import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
 import {
-  assignDraftPicker,
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
   extendDraftTurn,
   finishDraftSession,
   getDraftSnapshot,
@@ -46,15 +51,6 @@ const STATUS_LABELS: Record<string, string> = {
   FINISHED: "종료",
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  ROLE_MASTER: "마스터",
-  ROLE_MANAGER: "매니저",
-  ROLE_ADMIN: "관리자",
-  ROLE_SYSTEM: "시스템",
-  CAPTAIN: "팀장",
-  VICE_CAPTAIN: "부팀장",
-};
-
 const CONNECTION_LABELS: Record<ConnectionState, string> = {
   connecting: "소켓 연결 중",
   connected: "실시간 연결됨",
@@ -71,12 +67,27 @@ function formatDraftStatus(status: string | null | undefined) {
   return STATUS_LABELS[status] ?? status;
 }
 
-function formatRole(role: string | null | undefined) {
-  if (!role) {
-    return "관전자";
+function formatMyRole(role: string | null | undefined) {
+  if (role === "PICKER") {
+    return "PICKER";
   }
 
-  return ROLE_LABELS[role] ?? role;
+  return "권한 없음";
+}
+
+function formatUserRole(role: string | null | undefined) {
+  switch (role) {
+    case "ROLE_MASTER":
+      return "마스터";
+    case "ROLE_MANAGER":
+      return "매니저";
+    case "ROLE_ADMIN":
+      return "관리자";
+    case "ROLE_SYSTEM":
+      return "시스템";
+    default:
+      return role ?? "일반 사용자";
+  }
 }
 
 function readErrorMessage(error: unknown) {
@@ -163,6 +174,16 @@ function sortSessions(sessions: DraftSessionSummary[]) {
   });
 }
 
+function sortTeams(teams: DraftLiveTeam[]) {
+  return [...teams].sort((left, right) => {
+    if (left.displayOrder !== right.displayOrder) {
+      return left.displayOrder - right.displayOrder;
+    }
+
+    return left.id - right.id;
+  });
+}
+
 function chooseInitialSessionId(sessions: DraftSessionSummary[]) {
   return sessions[0]?.id ?? null;
 }
@@ -246,20 +267,16 @@ function parsePositiveSeconds(value: string, fallback?: number) {
       return fallback;
     }
 
-    throw new Error("초 단위를 입력해 주세요.");
+    throw new Error("초 단위를 입력해 달라.");
   }
 
   const parsed = Number(trimmed);
 
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error("1초 이상의 정수를 입력해 주세요.");
+    throw new Error("1초 이상의 정수를 입력해 달라.");
   }
 
   return parsed;
-}
-
-function canAssignPicker(role: string, isActive: string) {
-  return isActive === "Y" && (role === "CAPTAIN" || role === "VICE_CAPTAIN");
 }
 
 function getToneClassName(tone: NoticeTone) {
@@ -288,17 +305,11 @@ function getStatusBadgeClassName(status: string | null | undefined) {
 }
 
 function TeamCard({
-  canControl,
   currentTeamId,
   draftTeam,
-  onAssignPicker,
-  pendingAction,
 }: {
-  canControl: boolean;
   currentTeamId: number | null;
   draftTeam: DraftLiveTeam;
-  onAssignPicker: (teamId: number, operatorUserId: number) => Promise<void>;
-  pendingAction: string | null;
 }) {
   const isCurrentTeam = draftTeam.id === currentTeamId;
 
@@ -315,7 +326,7 @@ function TeamCard({
         <div>
           <p className="text-lg font-semibold text-foreground">{draftTeam.teamName}</p>
           <p className="mt-1 text-sm text-muted">
-            라인업 {draftTeam.roster.length}명
+            로스터 {draftTeam.roster.length}명
             {isCurrentTeam ? " · 현재 차례" : ""}
           </p>
         </div>
@@ -324,64 +335,23 @@ function TeamCard({
         </span>
       </div>
 
-      <div className="mt-4 space-y-2">
-        {draftTeam.operators.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-line px-4 py-3 text-sm text-muted">
-            등록된 운영자가 없습니다.
-          </p>
-        ) : (
-          draftTeam.operators.map((operator) => {
-            const assignable = canAssignPicker(operator.role, operator.isActive);
-            const actionKey = `picker-${draftTeam.id}-${operator.operatorUserId}`;
-
-            return (
-              <div
-                key={operator.operatorUserId}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line/80 bg-surface px-4 py-3"
-              >
-                <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    {operator.operatorName}
-                  </p>
-                  <p className="mt-1 text-xs text-muted">
-                    {formatRole(operator.role)}
-                    {operator.isActive === "Y" ? "" : " · 비활성"}
-                    {operator.canPick === "Y" ? " · 픽 권한자" : ""}
-                  </p>
-                </div>
-
-                {canControl && assignable ? (
-                  <Button
-                    size="sm"
-                    variant={operator.canPick === "Y" ? "accent" : "outline"}
-                    disabled={pendingAction !== null}
-                    onClick={() => {
-                      void onAssignPicker(draftTeam.id, operator.operatorUserId);
-                    }}
-                    className="min-w-24"
-                  >
-                    {pendingAction === actionKey
-                      ? "적용 중"
-                      : operator.canPick === "Y"
-                        ? "지정됨"
-                        : "권한 지정"}
-                  </Button>
-                ) : (
-                  <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-muted">
-                    {operator.canPick === "Y" ? "픽 담당" : "조회 전용"}
-                  </span>
-                )}
-              </div>
-            );
-          })
-        )}
+      <div className="mt-4 rounded-2xl border border-line/80 bg-surface px-4 py-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+          Picker
+        </p>
+        <p className="mt-2 text-sm font-semibold text-foreground">
+          {draftTeam.pickerName ?? "미지정"}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {draftTeam.pickerUserId ? `pickerUserId ${draftTeam.pickerUserId}` : "아직 지정되지 않음"}
+        </p>
       </div>
 
       <div className="mt-5 space-y-2">
         <p className="text-sm font-semibold text-foreground">현재 로스터</p>
         {draftTeam.roster.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-line px-4 py-4 text-sm text-muted">
-            아직 지명된 팀원이 없습니다.
+            아직 지명한 선수가 없다.
           </p>
         ) : (
           draftTeam.roster.map((player) => (
@@ -429,7 +399,7 @@ function CandidateCard({
             {candidate.candidateName}
           </p>
           <p className="mt-1 text-sm text-muted">
-            {candidate.race || "종족 미지정"} · ID {candidate.candidateUserId}
+            {candidate.race || "종족 미정"} · ID {candidate.candidateUserId}
           </p>
         </div>
         <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-muted">
@@ -439,7 +409,7 @@ function CandidateCard({
 
       <div className="mt-5 flex items-center justify-between gap-3">
         <p className="text-sm text-muted">
-          현재 턴 권한자가 선택하면 바로 로스터에 반영된다.
+          현재 픽 권한이 있으면 바로 로스터에 반영된다.
         </p>
         <Button
           variant="accent"
@@ -529,7 +499,7 @@ export function DraftLiveDashboard({
         if (nextSessions.length === 0) {
           setNotice({
             tone: "neutral",
-            text: "등록된 드래프트 세션이 없습니다. 세팅 API로 세션을 먼저 생성해 주세요.",
+            text: "등록된 드래프트 세션이 없다. 관리자 콘솔에서 먼저 세션을 만들어 달라.",
           });
         }
       } catch (error) {
@@ -553,7 +523,7 @@ export function DraftLiveDashboard({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshSignal]);
 
   useEffect(() => {
     if (selectedSessionId === null) {
@@ -665,7 +635,7 @@ export function DraftLiveDashboard({
 
               setNotice({
                 tone: "error",
-                text: "이벤트 동기화 후 권한 정보를 다시 불러오지 못했다.",
+                text: "이벤트 수신 후 최신 스냅샷을 다시 불러오지 못했다.",
               });
             });
         }
@@ -717,41 +687,6 @@ export function DraftLiveDashboard({
     }
   }
 
-  async function handlePickerAssign(teamId: number, operatorUserId: number) {
-    if (selectedSessionId === null) {
-      return;
-    }
-
-    const sessionId = selectedSessionId;
-    const actionKey = `picker-${teamId}-${operatorUserId}`;
-    setPendingAction(actionKey);
-    setNotice(null);
-
-    try {
-      await assignDraftPicker(teamId, operatorUserId);
-      const nextSnapshot = await getDraftSnapshot(sessionId);
-
-      startTransition(() => {
-        setSnapshot(nextSnapshot);
-        setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
-        setSessions((currentSessions) =>
-          mergeSessionSummary(currentSessions, nextSnapshot.session),
-        );
-      });
-      setNotice({
-        tone: "success",
-        text: "픽 권한자를 변경했다.",
-      });
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
-      });
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
   async function handlePick(candidateUserId: number, candidateName: string) {
     if (selectedSessionId === null) {
       return;
@@ -761,184 +696,115 @@ export function DraftLiveDashboard({
     await runSnapshotAction(
       `pick-${candidateUserId}`,
       () => pickDraftCandidate(sessionId, candidateUserId),
-      `${candidateName} 지명을 완료했다.`,
+      `${candidateName} 지명을 반영했다.`,
     );
   }
 
-  async function handleRefresh() {
-    if (selectedSessionId === null) {
-      return;
-    }
-
-    const sessionId = selectedSessionId;
-    setPendingAction("refresh");
-    setNotice(null);
-
-    try {
-      const [nextSessions, nextSnapshot] = await Promise.all([
-        listDraftSessions(),
-        getDraftSnapshot(sessionId),
-      ]);
-
-      startTransition(() => {
-        setSessions(sortSessions(nextSessions));
-        setSnapshot(nextSnapshot);
-        setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
-      });
-      setNotice({
-        tone: "success",
-        text: "최신 스냅샷으로 동기화했다.",
-      });
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
-      });
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  const teams = snapshot
-    ? [...snapshot.teams].sort((left, right) => left.displayOrder - right.displayOrder)
-    : [];
-  const currentTeamId =
-    snapshot?.currentTurn?.teamId ?? snapshot?.session.currentDraftTeamId ?? null;
-  const currentTeam =
-    teams.find((team) => team.id === currentTeamId) ?? null;
-  const myTeam =
-    teams.find((team) => team.id === snapshot?.permissions?.myTeamId) ?? null;
-  const remainingSeconds = calculateRemainingSeconds(
-    snapshot,
-    nowTickMs,
-    serverOffsetMs,
-  );
-  const totalCandidates =
-    (snapshot?.availableCandidates.length ?? 0) +
-    (snapshot?.pickedCandidates.length ?? 0);
-  const filteredCandidates = (snapshot?.availableCandidates ?? []).filter((candidate) => {
+  const filteredCandidates = snapshot?.availableCandidates.filter((candidate) => {
     const keyword = deferredSearch.trim().toLowerCase();
 
     if (!keyword) {
       return true;
     }
 
-    return (
-      candidate.candidateName.toLowerCase().includes(keyword) ||
-      (candidate.race ?? "").toLowerCase().includes(keyword) ||
-      String(candidate.candidateUserId).includes(keyword)
-    );
-  });
+    const haystacks = [
+      candidate.candidateName,
+      candidate.race ?? "",
+      String(candidate.candidateUserId),
+    ];
+
+    return haystacks.some((value) => value.toLowerCase().includes(keyword));
+  }) ?? [];
+
+  const teams = sortTeams(snapshot?.teams ?? []);
+  const totalCandidates =
+    (snapshot?.availableCandidates.length ?? 0) +
+    (snapshot?.pickedCandidates.length ?? 0);
+  const currentTeamId =
+    snapshot?.session.currentDraftTeamId ?? snapshot?.currentTurn?.teamId ?? null;
+  const currentTeam = teams.find((team) => team.id === currentTeamId) ?? null;
+  const myTeam = teams.find((team) => team.id === snapshot?.permissions?.myTeamId) ?? null;
   const canControl = snapshot?.permissions?.canControl ?? false;
   const canPick = snapshot?.permissions?.canPick ?? false;
   const isBusy = pendingAction !== null;
+  const remainingSeconds = calculateRemainingSeconds(
+    snapshot,
+    nowTickMs,
+    serverOffsetMs,
+  );
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
-      <SurfaceCard className="p-7 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-          Proleague Draft
-        </p>
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <SurfaceCard className="p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              프로리그 드래프트
-            </h1>
-            <p className="mt-4 max-w-3xl text-base leading-8 text-muted">
-              팀장과 부팀장 중 관리자가 지정한 한 명만 픽 버튼을 사용할 수 있다.
-              드래프트 진행은 스냅샷 기준으로 동기화하고, 소켓 이벤트가 오면 즉시 갱신한다.
-            </p>
-          </div>
-
-          <div className="rounded-[24px] border border-line bg-surface-strong px-5 py-4 text-right shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
-              Connection
-            </p>
-            <p className="mt-2 text-lg font-semibold text-foreground">
-              {CONNECTION_LABELS[connectionState]}
-            </p>
-            <p className="mt-1 text-sm text-muted">
-              {selectedSessionId === null ? "세션 선택 대기" : `세션 #${selectedSessionId}`}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
-            {loadingSessions && sessions.length === 0 ? (
-              <span className="rounded-full border border-line px-4 py-2 text-sm text-muted">
-                세션 불러오는 중...
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-semibold",
+                  getStatusBadgeClassName(snapshot?.session.status),
+                )}
+              >
+                {snapshot ? formatDraftStatus(snapshot.session.status) : "세션 선택 대기"}
               </span>
-            ) : null}
-
-            {sessions.map((session) => {
-              const isSelected = session.id === selectedSessionId;
-
-              return (
-                <button
-                  key={session.id}
-                  type="button"
-                  className={cn(
-                    "rounded-full border px-4 py-2 text-left text-sm transition-colors",
-                    isSelected
-                      ? "border-accent bg-accent text-white"
-                      : "border-line bg-surface-strong text-foreground hover:border-accent-soft hover:bg-white",
-                  )}
-                  onClick={() => {
-                    startTransition(() => {
-                      setSelectedSessionId(session.id);
-                      setSearch("");
-                    });
-                    setNotice(null);
-                  }}
-                >
-                  <span className="font-semibold">{session.title}</span>
-                  <span
-                    className={cn(
-                      "ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                      isSelected
-                        ? "bg-white/20 text-white"
-                        : getStatusBadgeClassName(session.status),
-                    )}
-                  >
-                    {formatDraftStatus(session.status)}
-                  </span>
-                </button>
-              );
-            })}
+              <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
+                {CONNECTION_LABELS[connectionState]}
+              </span>
+            </div>
+            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              {snapshot?.currentTurn
+                ? `${snapshot.currentTurn.roundNo}라운드 · ${snapshot.currentTurn.teamName} 차례`
+                : "진행 중인 차례 없음"}
+            </h2>
+            <p className="mt-3 text-sm leading-7 text-muted">
+              서버 시간 {formatDateTime(snapshot?.session.serverNow)}
+              {snapshot?.session.deadlineAt
+                ? ` · 마감 ${formatDateTime(snapshot.session.deadlineAt)}`
+                : ""}
+            </p>
           </div>
 
-          <Button
-            size="sm"
-            disabled={selectedSessionId === null || isBusy}
-            onClick={() => {
-              void handleRefresh();
-            }}
-          >
-            {pendingAction === "refresh" ? "동기화 중" : "수동 새로고침"}
-          </Button>
+          <div className="w-full max-w-sm space-y-3">
+            <select
+              className="w-full rounded-[20px] border border-line bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white"
+              value={selectedSessionId ?? ""}
+              onChange={(event) => {
+                const nextSessionId = event.target.value
+                  ? Number(event.target.value)
+                  : null;
+                setSelectedSessionId(nextSessionId);
+              }}
+            >
+              {loadingSessions && sessions.length === 0 ? (
+                <option value="">세션 목록 불러오는 중</option>
+              ) : sessions.length === 0 ? (
+                <option value="">세션 없음</option>
+              ) : null}
+
+              {sessions.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {session.title} · {formatDraftStatus(session.status)}
+                </option>
+              ))}
+            </select>
+
+            <div className="rounded-[24px] border border-line/70 bg-white/70 px-5 py-4 text-right">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                Remaining
+              </p>
+              <p className="mt-2 text-4xl font-semibold tracking-tight text-foreground">
+                {formatCountdown(remainingSeconds)}
+              </p>
+              <p className="mt-2 text-sm text-muted">
+                {currentTeam ? `${currentTeam.teamName} 응답 대기` : "대기 중"}
+              </p>
+            </div>
+          </div>
         </div>
 
         {notice ? (
-          <div
-            className={cn(
-              "mt-5 rounded-[22px] px-4 py-4 text-sm leading-7",
-              getToneClassName(notice.tone),
-            )}
-            aria-live="polite"
-          >
+          <div className={cn("mt-6 rounded-[24px] px-4 py-4 text-sm", getToneClassName(notice.tone))}>
             {notice.text}
-          </div>
-        ) : null}
-
-        {selectedSessionId === null && !loadingSessions ? (
-          <div className="mt-6 rounded-[28px] border border-dashed border-line px-6 py-12 text-center">
-            <p className="text-lg font-semibold text-foreground">
-              선택 가능한 드래프트 세션이 없다.
-            </p>
-            <p className="mt-3 text-sm leading-7 text-muted">
-              세션, 팀, 후보, 순번 세팅이 먼저 올라와야 라이브 화면이 동작한다.
-            </p>
           </div>
         ) : null}
 
@@ -953,54 +819,12 @@ export function DraftLiveDashboard({
                 </div>
               ) : snapshot ? (
                 <>
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={cn(
-                            "rounded-full px-3 py-1 text-xs font-semibold",
-                            getStatusBadgeClassName(snapshot.session.status),
-                          )}
-                        >
-                          {formatDraftStatus(snapshot.session.status)}
-                        </span>
-                        <span className="text-sm text-muted">
-                          {snapshot.session.title}
-                        </span>
-                      </div>
-
-                      <h2 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-                        {snapshot.currentTurn
-                          ? `${snapshot.currentTurn.roundNo}라운드 · ${snapshot.currentTurn.teamName} 차례`
-                          : "현재 진행 중인 차례 없음"}
-                      </h2>
-                      <p className="mt-3 text-sm leading-7 text-muted">
-                        서버 시간 {formatDateTime(snapshot.session.serverNow)}
-                        {snapshot.session.deadlineAt
-                          ? ` · 마감 ${formatDateTime(snapshot.session.deadlineAt)}`
-                          : ""}
-                      </p>
-                    </div>
-
-                    <div className="min-w-[170px] rounded-[24px] border border-line/70 bg-white/70 px-5 py-4 text-right">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
-                        Remaining
-                      </p>
-                      <p className="mt-2 text-4xl font-semibold tracking-tight text-foreground">
-                        {formatCountdown(remainingSeconds)}
-                      </p>
-                      <p className="mt-2 text-sm text-muted">
-                        {currentTeam ? `${currentTeam.teamName} 응답 대기` : "대기 중"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {[
                       {
                         label: "진행률",
                         value: `${snapshot.pickedCandidates.length}/${totalCandidates}`,
-                        subtext: "픽 완료 / 전체 후보",
+                        subtext: "완료 / 전체 후보",
                       },
                       {
                         label: "현재 픽",
@@ -1010,15 +834,16 @@ export function DraftLiveDashboard({
                           : "시작 대기",
                       },
                       {
-                        label: "내 권한",
+                        label: "픽 권한",
                         value: canPick
                           ? "지명 가능"
                           : canControl
                             ? "관리 가능"
                             : "관전",
-                        subtext: snapshot.permissions?.myRole
-                          ? formatRole(snapshot.permissions.myRole)
-                          : "권한 없음",
+                        subtext:
+                          snapshot.permissions?.myRole === "PICKER"
+                            ? "PICKER"
+                            : "권한 없음",
                       },
                       {
                         label: "내 팀",
@@ -1049,7 +874,7 @@ export function DraftLiveDashboard({
                 <div>
                   <h2 className="text-xl font-semibold text-foreground">후보 풀</h2>
                   <p className="mt-2 text-sm leading-7 text-muted">
-                    남은 후보를 검색하고 현재 턴 권한자가 바로 지명할 수 있다.
+                    후보를 검색하고 현재 픽 권한이 있으면 바로 지명할 수 있다.
                   </p>
                 </div>
 
@@ -1085,9 +910,9 @@ export function DraftLiveDashboard({
 
             <section className="rounded-[28px] border border-line bg-surface-strong px-5 py-5">
               <div>
-                <h2 className="text-xl font-semibold text-foreground">팀별 보드</h2>
+                <h2 className="text-xl font-semibold text-foreground">팀 보드</h2>
                 <p className="mt-2 text-sm leading-7 text-muted">
-                  운영자 상태, 현재 픽 권한자, 팀별 로스터를 한 번에 확인할 수 있다.
+                  각 팀의 현재 픽커와 로스터를 한 번에 확인할 수 있다.
                 </p>
               </div>
 
@@ -1095,11 +920,8 @@ export function DraftLiveDashboard({
                 {teams.map((team) => (
                   <TeamCard
                     key={team.id}
-                    canControl={canControl}
                     currentTeamId={currentTeamId}
                     draftTeam={team}
-                    onAssignPicker={handlePickerAssign}
-                    pendingAction={pendingAction}
                   />
                 ))}
               </div>
@@ -1110,9 +932,9 @@ export function DraftLiveDashboard({
 
       <div className="grid gap-4">
         <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">운영 패널</p>
+          <p className="text-sm font-semibold text-foreground">운영 정보</p>
           <p className="mt-3 text-sm leading-7 text-muted">
-            관리자만 세션 제어와 권한자 변경을 수행할 수 있다.
+            관리자는 세션 제어를, 픽커는 실제 지명을 담당한다.
           </p>
 
           {snapshot ? (
@@ -1122,7 +944,10 @@ export function DraftLiveDashboard({
                   {user?.username ?? "로그인 사용자"}
                 </p>
                 <p className="mt-1 text-sm text-muted">
-                  {formatRole(user?.role)} · {formatRole(snapshot.permissions?.myRole)}
+                  계정 권한: {formatUserRole(user?.role)}
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  드래프트 권한: {formatMyRole(snapshot.permissions?.myRole)}
                 </p>
                 <p className="mt-1 text-sm text-muted">
                   {myTeam?.teamName ?? "소속 팀 없음"}
@@ -1299,13 +1124,13 @@ export function DraftLiveDashboard({
               {!canControl ? (
                 <p className="rounded-[18px] bg-surface-muted px-4 py-3 text-sm leading-7 text-muted">
                   이 계정은 세션 제어 권한이 없다. `ROLE_MASTER`, `ROLE_MANAGER`,
-                  `ROLE_ADMIN` 계정만 운영 패널을 사용할 수 있다.
+                  `ROLE_ADMIN` 계정만 사용할 수 있다.
                 </p>
               ) : null}
             </div>
           ) : (
             <p className="mt-4 text-sm leading-7 text-muted">
-              세션을 선택하면 운영 패널이 활성화된다.
+              세션을 선택하면 운영 정보가 표시된다.
             </p>
           )}
         </SurfaceCard>
@@ -1337,7 +1162,7 @@ export function DraftLiveDashboard({
               ))
             ) : (
               <p className="rounded-[22px] border border-dashed border-line px-4 py-6 text-sm text-muted">
-                아직 기록된 픽이 없다.
+                아직 기록된 지명이 없다.
               </p>
             )}
           </div>
@@ -1362,13 +1187,15 @@ export function DraftLiveDashboard({
 
             <div className="rounded-[22px] bg-surface-muted px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-                Draft Clock
+                Current Picker
               </p>
               <p className="mt-2 text-lg font-semibold text-foreground">
-                {formatCountdown(remainingSeconds)}
+                {currentTeam?.pickerName ?? "-"}
               </p>
               <p className="mt-1 text-sm text-muted">
-                기본 {snapshot?.session.pickTimeSeconds ?? "-"}초
+                {currentTeam?.pickerUserId
+                  ? `pickerUserId ${currentTeam.pickerUserId}`
+                  : "미지정"}
               </p>
             </div>
 

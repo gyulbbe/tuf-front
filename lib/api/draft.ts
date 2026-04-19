@@ -25,15 +25,6 @@ export type DraftSessionSummary = {
   endedAt: string | null;
 };
 
-export type DraftTeamOperator = {
-  draftTeamId: number;
-  operatorUserId: number;
-  operatorName: string;
-  role: string;
-  isActive: string;
-  canPick: string;
-};
-
 export type DraftLiveRosterItem = {
   pickNo: number;
   roundNo: number;
@@ -49,7 +40,8 @@ export type DraftLiveTeam = {
   draftSessionId: number;
   teamName: string;
   displayOrder: number;
-  operators: DraftTeamOperator[];
+  pickerUserId?: number | null;
+  pickerName?: string | null;
   roster: DraftLiveRosterItem[];
 };
 
@@ -168,20 +160,14 @@ export type DraftTeamRecord = {
   draftSessionId: number;
   teamName: string;
   displayOrder: number;
-  operators: DraftTeamOperator[];
+  pickerUserId?: number | null;
+  pickerName?: string | null;
 };
 
 export type DraftTeamRequest = {
   draftSessionId: number;
   teamName: string;
   displayOrder: number;
-};
-
-export type DraftTeamOperatorRequest = {
-  draftTeamId: number;
-  operatorUserId: number;
-  role: string;
-  isActive: string;
 };
 
 export type DraftCandidateRequest = {
@@ -218,6 +204,12 @@ export type DraftUserSearchResult = {
   tier: string | null;
   race: string | null;
   photo: string | null;
+};
+
+export type DraftPickerResponse = {
+  draftTeamId: number;
+  pickerUserId: number | null;
+  pickerName: string | null;
 };
 
 export type DraftApiErrorInfo = {
@@ -325,9 +317,30 @@ function readArray<T>(value: unknown, fallback: T[] = []) {
 
 function normalizeDraftTeam(value: DraftLiveTeam | DraftTeamRecord): DraftLiveTeam {
   return {
-    ...value,
-    operators: readArray<DraftTeamOperator>(value.operators),
+    id: value.id,
+    draftSessionId: value.draftSessionId,
+    teamName: value.teamName,
+    displayOrder: value.displayOrder,
+    pickerUserId:
+      typeof value.pickerUserId === "number" ? value.pickerUserId : null,
+    pickerName:
+      typeof value.pickerName === "string" && value.pickerName.trim()
+        ? value.pickerName
+        : null,
     roster: readArray<DraftLiveRosterItem>((value as DraftLiveTeam).roster),
+  };
+}
+
+function normalizeDraftSnapshot(value: DraftLiveSnapshot): DraftLiveSnapshot {
+  return {
+    ...value,
+    teams: readArray<DraftLiveTeam>(value.teams).map((team) =>
+      normalizeDraftTeam(team),
+    ),
+    availableCandidates: readArray<DraftCandidate>(value.availableCandidates),
+    pickedCandidates: readArray<DraftCandidate>(value.pickedCandidates),
+    recentPicks: readArray<DraftPick>(value.recentPicks),
+    permissions: value.permissions ?? null,
   };
 }
 
@@ -376,10 +389,9 @@ async function unwrapResponse<T>(
 ) {
   try {
     const response = await request;
+    const body = response.data as ApiEnvelope<T>;
     const responseStatus =
-      typeof (response.data as ApiEnvelope<T>).status === "number"
-        ? (response.data as ApiEnvelope<T>).status ?? null
-        : response.status;
+      typeof body.status === "number" ? body.status ?? null : response.status;
     const normalizedResponseStatus = responseStatus ?? response.status;
     const responseMessage = readErrorMessage(response.data, fallback);
 
@@ -392,8 +404,6 @@ async function unwrapResponse<T>(
         responseStatus: normalizedResponseStatus,
       });
     }
-
-    const body = response.data as ApiEnvelope<T>;
 
     if (
       normalizedResponseStatus >= 400 ||
@@ -453,10 +463,9 @@ async function unwrapVoidResponse(
 ) {
   try {
     const response = await request;
+    const body = response.data as ApiEnvelope<null>;
     const responseStatus =
-      typeof (response.data as ApiEnvelope<null>).status === "number"
-        ? (response.data as ApiEnvelope<null>).status ?? null
-        : response.status;
+      typeof body.status === "number" ? body.status ?? null : response.status;
     const normalizedResponseStatus = responseStatus ?? response.status;
     const responseMessage = readErrorMessage(response.data, fallback);
 
@@ -517,7 +526,7 @@ export async function listDraftSessions() {
 }
 
 export async function getDraftSnapshot(sessionId: number) {
-  return unwrapResponse(
+  const snapshot = await unwrapResponse(
     apiClient.get<ApiEnvelope<DraftLiveSnapshot>>(
       `/draft/live/sessions/${sessionId}/snapshot`,
       {
@@ -526,13 +535,15 @@ export async function getDraftSnapshot(sessionId: number) {
     ),
     "드래프트 스냅샷을 불러오지 못했습니다.",
   );
+
+  return normalizeDraftSnapshot(snapshot);
 }
 
 export async function pickDraftCandidate(
   sessionId: number,
   candidateUserId: number,
 ) {
-  return unwrapResponse(
+  const snapshot = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftLiveSnapshot>>(
       `/draft/live/sessions/${sessionId}/pick`,
       { candidateUserId },
@@ -542,10 +553,12 @@ export async function pickDraftCandidate(
     ),
     "후보를 지명하지 못했습니다.",
   );
+
+  return normalizeDraftSnapshot(snapshot);
 }
 
 export async function startDraftSession(sessionId: number) {
-  return unwrapResponse(
+  const snapshot = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftLiveSnapshot>>(
       `/draft/admin/sessions/${sessionId}/start`,
       {},
@@ -555,10 +568,12 @@ export async function startDraftSession(sessionId: number) {
     ),
     "드래프트를 시작하지 못했습니다.",
   );
+
+  return normalizeDraftSnapshot(snapshot);
 }
 
 export async function pauseDraftSession(sessionId: number) {
-  return unwrapResponse(
+  const snapshot = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftLiveSnapshot>>(
       `/draft/admin/sessions/${sessionId}/pause`,
       {},
@@ -568,10 +583,12 @@ export async function pauseDraftSession(sessionId: number) {
     ),
     "드래프트를 일시정지하지 못했습니다.",
   );
+
+  return normalizeDraftSnapshot(snapshot);
 }
 
 export async function resumeDraftSession(sessionId: number, seconds?: number) {
-  return unwrapResponse(
+  const snapshot = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftLiveSnapshot>>(
       `/draft/admin/sessions/${sessionId}/resume`,
       typeof seconds === "number" ? { seconds } : {},
@@ -581,10 +598,12 @@ export async function resumeDraftSession(sessionId: number, seconds?: number) {
     ),
     "드래프트를 재개하지 못했습니다.",
   );
+
+  return normalizeDraftSnapshot(snapshot);
 }
 
 export async function extendDraftTurn(sessionId: number, seconds: number) {
-  return unwrapResponse(
+  const snapshot = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftLiveSnapshot>>(
       `/draft/admin/sessions/${sessionId}/extend-time`,
       { seconds },
@@ -592,12 +611,14 @@ export async function extendDraftTurn(sessionId: number, seconds: number) {
         validateStatus: () => true,
       },
     ),
-    "턴 시간을 연장하지 못했습니다.",
+    "현재 턴 시간을 연장하지 못했습니다.",
   );
+
+  return normalizeDraftSnapshot(snapshot);
 }
 
 export async function skipDraftTurn(sessionId: number, reason = "manual") {
-  return unwrapResponse(
+  const snapshot = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftLiveSnapshot>>(
       `/draft/admin/sessions/${sessionId}/force-skip`,
       { reason },
@@ -607,13 +628,15 @@ export async function skipDraftTurn(sessionId: number, reason = "manual") {
     ),
     "현재 턴을 스킵하지 못했습니다.",
   );
+
+  return normalizeDraftSnapshot(snapshot);
 }
 
 export async function finishDraftSession(
   sessionId: number,
   reason = "manual-finish",
 ) {
-  return unwrapResponse(
+  const snapshot = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftLiveSnapshot>>(
       `/draft/admin/sessions/${sessionId}/finish`,
       { reason },
@@ -623,13 +646,15 @@ export async function finishDraftSession(
     ),
     "드래프트를 종료하지 못했습니다.",
   );
+
+  return normalizeDraftSnapshot(snapshot);
 }
 
-export async function assignDraftPicker(teamId: number, operatorUserId: number) {
+export async function assignDraftPicker(teamId: number, pickerUserId: number) {
   return unwrapResponse(
-    apiClient.post<ApiEnvelope<DraftTeamOperator>>(
+    apiClient.post<ApiEnvelope<DraftPickerResponse>>(
       `/draft/admin/teams/${teamId}/picker`,
-      { operatorUserId },
+      { pickerUserId },
       {
         validateStatus: () => true,
       },
@@ -710,52 +735,7 @@ export async function deleteDraftTeam(teamId: number) {
   );
 }
 
-export async function createDraftTeamOperator(
-  payload: DraftTeamOperatorRequest,
-) {
-  return unwrapResponse(
-    apiClient.post<ApiEnvelope<DraftTeamOperator>>("/draft/team-operators", payload, {
-      validateStatus: () => true,
-    }),
-    "팀 운영자를 등록하지 못했습니다.",
-  );
-}
-
-export async function updateDraftTeamOperator(
-  teamId: number,
-  operatorUserId: number,
-  payload: Partial<Pick<DraftTeamOperatorRequest, "role" | "isActive">>,
-) {
-  return unwrapResponse(
-    apiClient.put<ApiEnvelope<DraftTeamOperator>>(
-      `/draft/teams/${teamId}/operators/${operatorUserId}`,
-      payload,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "팀 운영자 정보를 수정하지 못했습니다.",
-  );
-}
-
-export async function deleteDraftTeamOperator(
-  teamId: number,
-  operatorUserId: number,
-) {
-  return unwrapVoidResponse(
-    apiClient.delete<ApiEnvelope<null>>(
-      `/draft/teams/${teamId}/operators/${operatorUserId}`,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "팀 운영자를 삭제하지 못했습니다.",
-  );
-}
-
-export async function createDraftCandidate(
-  payload: DraftCandidateRequest,
-) {
+export async function createDraftCandidate(payload: DraftCandidateRequest) {
   return unwrapResponse(
     apiClient.post<ApiEnvelope<DraftCandidate>>("/draft/candidates", payload, {
       validateStatus: () => true,
@@ -879,7 +859,9 @@ export async function searchDraftUsers(keyword: string, limit = 8) {
 export function buildDraftWebSocketUrl() {
   const baseUrl =
     process.env.NEXT_PUBLIC_API_BASE_URL ??
-    (typeof window !== "undefined" ? window.location.origin : "http://localhost:8080");
+    (typeof window !== "undefined"
+      ? window.location.origin
+      : "http://localhost:8080");
   const url = new URL(baseUrl);
 
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";

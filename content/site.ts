@@ -3,6 +3,7 @@ export type SiteSubTab = {
   href?: string;
   description: string;
   external?: boolean;
+  requiresAdmin?: boolean;
 };
 
 export type SiteTab = SiteSubTab & {
@@ -57,6 +58,15 @@ export const siteTabs: SiteTab[] = [
     label: "관리자",
     href: "/admin",
     description: "관리자 작업 공간입니다.",
+    requiresAdmin: true,
+    items: [
+      {
+        label: "프로리그",
+        href: "/admin/proleague",
+        description: "프로리그 드래프트를 관리합니다.",
+        requiresAdmin: true,
+      },
+    ],
   },
   {
     label: "전적관리",

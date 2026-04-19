@@ -1,40 +1,27 @@
 import type { Metadata } from "next";
-import { InfoList } from "@/components/site/info-list";
-import { SectionCard } from "@/components/site/section-card";
+import Link from "next/link";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { requireServerAuth } from "@/lib/auth/server-auth";
+import { isAdminRole } from "@/lib/auth/roles";
 
 export const metadata: Metadata = {
   title: "관리자",
 };
 
-const adminSections = [
+const adminTools = [
   {
-    title: "계정 추가",
+    href: "/admin/proleague",
+    title: "프로리그 드래프트",
     description:
-      "사용자 계정은 관리자가 직접 등록하는 방식으로 운영합니다. 이후에는 이 탭에서 계정 생성과 초기 비밀번호 발급을 붙일 수 있습니다.",
+      "드래프트 세션 상태 확인, 시작/일시정지/재개, 시간 연장, 강제 스킵, 픽 권한자 지정까지 한 화면에서 처리합니다.",
   },
   {
-    title: "권한 관리",
+    href: "/proleague/draft",
+    title: "라이브 화면 확인",
     description:
-      "일반 사용자와 관리자 권한을 나누는 구조를 이 영역에서 확장할 수 있습니다.",
-  },
-  {
-    title: "운영 설정",
-    description:
-      "공지 노출, 봇 연동, 리그 운영 설정 같은 관리자 전용 기능을 단계적으로 추가할 수 있습니다.",
+      "실제 사용자 화면 기준으로 드래프트 진행 상태와 팀 보드를 확인합니다.",
   },
 ];
-
-const adminChecklist = [
-  "서버에서 로그인 상태를 먼저 확인",
-  "`role=admin` 일 때만 관리자 화면 노출",
-  "JWT 만료/401 시 자동 로그아웃",
-];
-
-function isAdminRole(role: string) {
-  return role.trim().toLowerCase() === "admin";
-}
 
 export default async function AdminPage() {
   const session = await requireServerAuth("/admin");
@@ -49,49 +36,61 @@ export default async function AdminPage() {
           접근 권한 없음
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-8 text-muted">
-          이 페이지는 `role=admin` 계정만 접근할 수 있다. 현재 JWT 권한으로는
-          관리자 기능을 볼 수 없다.
+          관리자 탭과 관리자 페이지는 `ROLE_MASTER`, `ROLE_MANAGER`, `ROLE_ADMIN`
+          권한 계정만 볼 수 있다.
         </p>
       </SurfaceCard>
     );
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
       <SurfaceCard className="p-7 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
           Admin
         </p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-          관리자
+          관리자 작업 공간
         </h1>
-        <p className="mt-4 max-w-2xl text-base leading-8 text-muted">
-          관리자 탭은 운영 전용 작업 공간이다. 서버에서 JWT 기반 로그인 상태를
-          먼저 확인한 뒤, `role` claim이 admin일 때만 관리자 기능을 보여준다.
+        <p className="mt-4 max-w-3xl text-base leading-8 text-muted">
+          드래프트 운영과 검수 동선을 관리자 메뉴 아래로 모아둔다. 지금은 프로리그
+          드래프트 관리 화면부터 연결해 둔 상태다.
         </p>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          {adminSections.map((section) => (
-            <SectionCard
-              key={section.title}
-              title={section.title}
-              description={section.description}
-            />
+        <div className="mt-8 grid gap-4 md:grid-cols-2">
+          {adminTools.map((tool) => (
+            <Link
+              key={tool.href}
+              href={tool.href}
+              className="rounded-[28px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.86)_100%)] px-6 py-6 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)] transition-colors hover:border-accent-soft hover:bg-white"
+            >
+              <p className="text-lg font-semibold text-foreground">{tool.title}</p>
+              <p className="mt-3 text-sm leading-7 text-muted">{tool.description}</p>
+            </Link>
           ))}
         </div>
       </SurfaceCard>
 
       <div className="grid gap-4">
         <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">현재 기준</p>
-          <InfoList items={adminChecklist} />
+          <p className="text-sm font-semibold text-foreground">현재 정책</p>
+          <div className="mt-4 space-y-3 text-sm leading-7 text-muted">
+            <p className="rounded-[22px] bg-surface-muted px-4 py-4">
+              관리자 탭은 관리자 권한 계정에게만 노출된다.
+            </p>
+            <p className="rounded-[22px] bg-surface-muted px-4 py-4">
+              관리자 하위 메뉴의 `프로리그`에서 드래프트를 제어한다.
+            </p>
+            <p className="rounded-[22px] bg-surface-muted px-4 py-4">
+              라이브 드래프트 화면과 관리자 제어 화면은 같은 백엔드 스냅샷을 사용한다.
+            </p>
+          </div>
         </SurfaceCard>
 
         <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">다음 작업 후보</p>
+          <p className="text-sm font-semibold text-foreground">접속 계정</p>
           <p className="mt-3 text-sm leading-7 text-muted">
-            계정 목록 조회, 비밀번호 초기화, 권한 변경, 공지 작성 권한 같은
-            운영 기능을 이 탭 기준으로 이어서 붙일 수 있다.
+            {session.user.username} · {session.user.role}
           </p>
         </SurfaceCard>
       </div>

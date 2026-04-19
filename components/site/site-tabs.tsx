@@ -4,7 +4,9 @@ import type { FocusEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useAuth } from "@/components/auth/auth-provider";
 import type { SiteSubTab, SiteTab } from "@/content/site";
+import { isAdminRole } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 
 type SiteTabsProps = {
@@ -160,9 +162,21 @@ function SubTabItem({
   );
 }
 
+function filterVisibleTabs(tabs: SiteTab[], canSeeAdminTab: boolean) {
+  return tabs
+    .filter((tab) => !tab.requiresAdmin || canSeeAdminTab)
+    .map((tab) => ({
+      ...tab,
+      items: tab.items?.filter((item) => !item.requiresAdmin || canSeeAdminTab),
+    }));
+}
+
 export function SiteTabs({ tabs }: SiteTabsProps) {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  const canSeeAdminTab = isAdminRole(user?.role);
+  const visibleTabs = filterVisibleTabs(tabs, canSeeAdminTab);
 
   function closeMenus() {
     setOpenMenuKey(null);
@@ -185,7 +199,7 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
 
   return (
     <nav className="flex flex-wrap gap-2" aria-label="Primary tabs">
-      {tabs.map((tab) => {
+      {visibleTabs.map((tab) => {
         const menuKey = tab.href ?? tab.label;
         const hasItems = Boolean(tab.items?.length);
         const isCurrentTabActive =

@@ -188,10 +188,10 @@ export function TufBotChat() {
   }
 
   return (
-    <div className="flex h-full min-h-[720px] flex-col bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(244,246,241,0.94)_100%)]">
+    <div className="flex h-full min-h-0 flex-col bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(244,246,241,0.94)_100%)]">
       <div
         ref={transcriptRef}
-        className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6"
       >
         {messages.map((message) => {
           const isAssistant = message.role === "assistant";

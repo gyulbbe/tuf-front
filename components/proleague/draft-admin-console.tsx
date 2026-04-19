@@ -70,12 +70,6 @@ type TeamEditState = {
   displayOrder: string;
 };
 
-type OrderFormState = {
-  roundNo: string;
-  pickNo: string;
-  draftTeamId: string;
-};
-
 type DraftAdminConsoleProps = {
   onDataChanged?: () => void;
 };
@@ -136,10 +130,13 @@ const EMPTY_CANDIDATE_FORM: CandidateFormState = {
   selectedUser: null,
 };
 
-const EMPTY_ORDER_FORM: OrderFormState = {
-  roundNo: "1",
-  pickNo: "1",
-  draftTeamId: "",
+type OrderGenerationMode = "basic" | "snake";
+
+type GeneratedOrderPlanItem = {
+  draftTeamId: number;
+  pickNo: number;
+  roundNo: number;
+  teamName: string;
 };
 
 function readErrorMessage(error: unknown) {
@@ -366,23 +363,51 @@ function createDefaultTeamForm(detail?: DraftSessionDetail | null): TeamFormStat
   };
 }
 
-function createDefaultOrderForm(detail?: DraftSessionDetail | null): OrderFormState {
-  if (!detail) {
-    return EMPTY_ORDER_FORM;
+function getOrderGenerationTargetCount(candidates: DraftCandidate[]) {
+  return candidates.filter((candidate) => candidate.status !== "EXCLUDED").length;
+}
+
+function buildGeneratedOrderPlan(
+  teams: DraftLiveTeam[],
+  totalPickCount: number,
+  mode: OrderGenerationMode,
+): GeneratedOrderPlanItem[] {
+  const orderedTeams = sortTeams(teams);
+
+  if (orderedTeams.length === 0 || totalPickCount <= 0) {
+    return [];
   }
 
-  const teams = sortTeams(detail.teams);
-  const nextPickNo = Math.max(0, ...detail.orders.map((order) => order.pickNo)) + 1;
-  const roundNo =
-    teams.length > 0 ? Math.floor((nextPickNo - 1) / teams.length) + 1 : 1;
-  const teamIndex = teams.length > 0 ? (nextPickNo - 1) % teams.length : -1;
-  const draftTeamId = teamIndex >= 0 ? String(teams[teamIndex].id) : "";
+  return Array.from({ length: totalPickCount }, (_, index) => {
+    const pickNo = index + 1;
+    const roundIndex = Math.floor(index / orderedTeams.length);
+    const teamSequence =
+      mode === "snake" && roundIndex % 2 === 1
+        ? [...orderedTeams].reverse()
+        : orderedTeams;
+    const team = teamSequence[index % orderedTeams.length];
 
-  return {
-    roundNo: String(roundNo),
-    pickNo: String(nextPickNo),
-    draftTeamId,
-  };
+    return {
+      draftTeamId: team.id,
+      pickNo,
+      roundNo: roundIndex + 1,
+      teamName: team.teamName,
+    };
+  });
+}
+
+function formatOrderGenerationMode(mode: OrderGenerationMode) {
+  return mode === "snake" ? "스네이크" : "기본";
+}
+
+function formatOrderPlanPreview(plan: GeneratedOrderPlanItem[]) {
+  if (plan.length === 0) {
+    return "-";
+  }
+
+  return plan
+    .map((item) => `#${item.pickNo} ${item.teamName}`)
+    .join(" → ");
 }
 
 function getNoticeClassName(tone: NoticeTone) {
@@ -959,9 +984,7 @@ function OrderRow({
     <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-foreground">
-            {order.roundNo}R · #{order.pickNo}
-          </p>
+          <p className="text-sm font-semibold text-foreground">#{order.pickNo}</p>
           <p className="mt-1 text-xs text-muted">
             {order.draftTeamName} · teamId {order.draftTeamId}
           </p>
@@ -978,13 +1001,7 @@ function OrderRow({
         </Button>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
-        <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-            Round
-          </p>
-          <p className="mt-2 font-semibold text-foreground">{order.roundNo}</p>
-        </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
             Pick No
@@ -1016,7 +1033,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   >({});
   const [candidateForm, setCandidateForm] =
     useState<CandidateFormState>(EMPTY_CANDIDATE_FORM);
-  const [orderForm, setOrderForm] = useState<OrderFormState>(EMPTY_ORDER_FORM);
   const [teamEdits, setTeamEdits] = useState<Record<number, TeamEditState>>({});
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -1037,6 +1053,21 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   const waitingCandidateCount = sortedCandidates.filter(
     (candidate) => candidate.status === "WAITING",
   ).length;
+  const orderGenerationTargetCount = getOrderGenerationTargetCount(sortedCandidates);
+  const basicOrderPreview = formatOrderPlanPreview(
+    buildGeneratedOrderPlan(
+      sortedTeams,
+      Math.min(orderGenerationTargetCount, 8),
+      "basic",
+    ),
+  );
+  const snakeOrderPreview = formatOrderPlanPreview(
+    buildGeneratedOrderPlan(
+      sortedTeams,
+      Math.min(orderGenerationTargetCount, 8),
+      "snake",
+    ),
+  );
 
   function notifyChange() {
     onDataChanged?.();
@@ -1073,7 +1104,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       setTeamForm(createDefaultTeamForm());
       setTeamLookups({});
       setCandidateForm(EMPTY_CANDIDATE_FORM);
-      setOrderForm(EMPTY_ORDER_FORM);
       setTeamEdits({});
     });
   }
@@ -1089,7 +1119,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       setTeamForm(createDefaultTeamForm(detail));
       setTeamLookups(createInitialTeamLookups(detail));
       setCandidateForm(EMPTY_CANDIDATE_FORM);
-      setOrderForm(createDefaultOrderForm(detail));
       setTeamEdits(createInitialTeamEdits(detail));
     });
   }
@@ -1543,32 +1572,59 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     }
   }
 
-  async function handleCreateOrder() {
+  async function handleGenerateOrders(mode: OrderGenerationMode) {
     if (selectedSessionId === null) {
       return;
     }
 
-    setPendingAction("order-create");
+    setPendingAction(`order-generate:${mode}`);
     setNotice(null);
 
     try {
-      const payload = {
-        draftSessionId: selectedSessionId,
-        roundNo: parsePositiveInt(orderForm.roundNo, "roundNo"),
-        pickNo: parsePositiveInt(orderForm.pickNo, "pickNo"),
-        draftTeamId: parsePositiveInt(orderForm.draftTeamId, "팀"),
-      };
+      if (!selectedSessionDetail || sortedTeams.length === 0) {
+        throw new Error("순서를 만들려면 먼저 팀이 있어야 한다.");
+      }
 
-      await createDraftOrder(payload);
-      const detail = await refreshSelectedSession(selectedSessionId);
-      setOrderForm(createDefaultOrderForm(detail));
+      if (orderGenerationTargetCount === 0) {
+        throw new Error("순서를 자동 생성하려면 EXCLUDED 제외 후보가 1명 이상 있어야 한다.");
+      }
+
+      if (sortedPicks.length > 0) {
+        throw new Error(
+          "이미 픽 기록이 있어서 자동 생성 전에 드래프트 이력 탭에서 기록을 먼저 정리해야 한다.",
+        );
+      }
+
+      const plan = buildGeneratedOrderPlan(
+        sortedTeams,
+        orderGenerationTargetCount,
+        mode,
+      );
+      const existingOrders = [...sortedOrders].sort((left, right) => right.pickNo - left.pickNo);
+
+      for (const order of existingOrders) {
+        await deleteDraftOrder(selectedSessionId, order.pickNo);
+      }
+
+      for (const order of plan) {
+        await createDraftOrder({
+          draftSessionId: selectedSessionId,
+          roundNo: order.roundNo,
+          pickNo: order.pickNo,
+          draftTeamId: order.draftTeamId,
+        });
+      }
+
+      await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "순서를 등록했다.",
+        text: `${formatOrderGenerationMode(mode)} 방식으로 순서 ${plan.length}개를 다시 만들었다.`,
       });
     } catch (error) {
-      handleActionError("순서 등록", error, {
-        form: orderForm,
+      await refreshSelectedSession(selectedSessionId).catch(() => undefined);
+      handleActionError(`${formatOrderGenerationMode(mode)} 순서 자동 생성`, error, {
+        candidateCount: orderGenerationTargetCount,
+        mode,
         sessionId: selectedSessionId,
       });
     } finally {
@@ -1586,8 +1642,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
     try {
       await deleteDraftOrder(selectedSessionId, pickNo);
-      const detail = await refreshSelectedSession(selectedSessionId);
-      setOrderForm(createDefaultOrderForm(detail));
+      await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
         text: "순서를 삭제했다.",
@@ -2192,18 +2247,19 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         <SurfaceCard className="p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-foreground">
-                순서 등록 / 삭제
-              </p>
+            <p className="text-sm font-semibold text-foreground">
+              순서 등록 / 삭제
+            </p>
               <p className="mt-2 text-sm leading-7 text-muted">
-                기본값은 현재 팀 수와 마지막 pickNo를 기준으로 자동 계산한다. 목록은
-                읽기 전용으로 보여주고, 수정 저장 버튼은 제거했다.
+                순서는 후보 수 기준으로 자동 생성한다. 버튼을 누르면 기존 순서를 전부 지우고
+                `pickNo`만 다시 1번부터 맞춘다. 기본은 팀 순서를 반복하고, 스네이크는
+                한 바퀴마다 방향을 뒤집는다.
               </p>
-            </div>
-            <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
-              총 {sortedOrders.length}개
-            </div>
           </div>
+          <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
+            생성된 순서 {sortedOrders.length}개 · 대상 후보 {orderGenerationTargetCount}명
+          </div>
+        </div>
 
           {!selectedSessionDetail ? (
             <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
@@ -2218,68 +2274,48 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
                 <div className="grid gap-3">
                   <div className="grid gap-3 md:grid-cols-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      value={orderForm.roundNo}
-                      onChange={(event) => {
-                        setOrderForm((current) => ({
-                          ...current,
-                          roundNo: event.target.value,
-                        }));
-                      }}
-                      placeholder="roundNo"
-                    />
-                    <Input
-                      type="number"
-                      min={1}
-                      value={orderForm.pickNo}
-                      onChange={(event) => {
-                        setOrderForm((current) => ({
-                          ...current,
-                          pickNo: event.target.value,
-                        }));
-                      }}
-                      placeholder="pickNo"
-                    />
+                    <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                        기본 미리보기
+                      </p>
+                      <p className="mt-2 leading-7 text-foreground">{basicOrderPreview}</p>
+                    </div>
+                    <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                        스네이크 미리보기
+                      </p>
+                      <p className="mt-2 leading-7 text-foreground">{snakeOrderPreview}</p>
+                    </div>
                   </div>
-                  <select
-                    className={SELECT_CLASS_NAME}
-                    value={orderForm.draftTeamId}
-                    onChange={(event) => {
-                      setOrderForm((current) => ({
-                        ...current,
-                        draftTeamId: event.target.value,
-                      }));
-                    }}
-                  >
-                    <option value="">팀 선택</option>
-                    {sortedTeams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.displayOrder}. {team.teamName} (teamId {team.id})
-                      </option>
-                    ))}
-                  </select>
 
                   <div className="flex flex-wrap gap-2">
                     <Button
-                      disabled={pendingAction !== null}
+                      variant="accent"
+                      disabled={pendingAction !== null || orderGenerationTargetCount === 0}
                       onClick={() => {
-                        setOrderForm(createDefaultOrderForm(selectedSessionDetail));
+                        void handleGenerateOrders("basic");
                       }}
                     >
-                      기본값 다시 채우기
+                      {pendingAction === "order-generate:basic"
+                        ? "생성 중"
+                        : "기본 방식 생성"}
                     </Button>
                     <Button
-                      variant="accent"
-                      disabled={pendingAction !== null || !orderForm.draftTeamId}
+                      disabled={pendingAction !== null || orderGenerationTargetCount === 0}
                       onClick={() => {
-                        void handleCreateOrder();
+                        void handleGenerateOrders("snake");
                       }}
                     >
-                      {pendingAction === "order-create" ? "등록 중" : "순서 등록"}
+                      {pendingAction === "order-generate:snake"
+                        ? "생성 중"
+                        : "스네이크 방식 생성"}
                     </Button>
                   </div>
+
+                  <p className="text-sm leading-7 text-muted">
+                    자동 생성 기준은 현재 등록된 후보 수이며, `EXCLUDED` 상태는 제외한다.
+                    이미 픽 기록이 있으면 먼저 이력 탭에서 정리한 뒤 다시 생성해야 한다.
+                  </p>
                 </div>
               </div>
 

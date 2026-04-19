@@ -364,7 +364,7 @@ function TeamCard({
                   {player.candidateName}
                 </p>
                 <span className="text-xs font-semibold text-muted">
-                  {player.roundNo}R · #{player.pickNo}
+                  #{player.pickNo}
                 </span>
               </div>
               <p className="mt-1 text-xs text-muted">
@@ -753,7 +753,7 @@ export function DraftLiveDashboard({
             </div>
             <h2 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               {snapshot?.currentTurn
-                ? `${snapshot.currentTurn.roundNo}라운드 · ${snapshot.currentTurn.teamName} 차례`
+                ? `${snapshot.currentTurn.teamName} 차례`
                 : "진행 중인 차례 없음"}
             </h2>
             <p className="mt-3 text-sm leading-7 text-muted">
@@ -830,7 +830,7 @@ export function DraftLiveDashboard({
                         label: "현재 픽",
                         value: snapshot.session.currentPickNo ?? "-",
                         subtext: snapshot.currentTurn
-                          ? `라운드 ${snapshot.currentTurn.roundNo}`
+                          ? `${snapshot.currentTurn.teamName} 차례`
                           : "시작 대기",
                       },
                       {
@@ -1149,7 +1149,7 @@ export function DraftLiveDashboard({
                       {pick.candidateName}
                     </p>
                     <span className="text-xs font-semibold text-muted">
-                      {pick.roundNo}R · #{pick.pickNo}
+                      #{pick.pickNo}
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-muted">
@@ -1180,7 +1180,7 @@ export function DraftLiveDashboard({
               </p>
               <p className="mt-1 text-sm text-muted">
                 {snapshot?.currentTurn
-                  ? `${snapshot.currentTurn.roundNo}라운드 · ${snapshot.currentTurn.pickNo}번째 픽`
+                  ? `${snapshot.currentTurn.pickNo}번째 픽`
                   : "대기 중"}
               </p>
             </div>

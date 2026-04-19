@@ -923,6 +923,7 @@ function TeamOperatorManager({
   ) => void;
 }) {
   const picker = draftTeam.operators.find((operator) => operator.canPick === "Y");
+  const operatorCount = draftTeam.operators?.length ?? 0;
 
   return (
     <article className="rounded-[28px] border border-line bg-surface-strong px-5 py-5 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
@@ -934,7 +935,7 @@ function TeamOperatorManager({
           </p>
         </div>
         <div className="rounded-[20px] bg-surface px-4 py-3 text-xs leading-6 text-muted">
-          <p>운영자 {draftTeam.operators.length}명</p>
+          <p>운영자 {operatorCount}명</p>
           <p>픽커 {picker ? picker.operatorName : "미지정"}</p>
         </div>
       </div>
@@ -948,72 +949,93 @@ function TeamOperatorManager({
           채워지고, 필요하면 직접 수정할 수 있다.
         </p>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_140px_140px_120px_auto]">
-          <UserAutocompleteInput
-            value={lookupState.query}
-            placeholder="userId 검색"
-            onValueChange={(value) => {
-              onChangeLookup(draftTeam.id, {
-                query: value,
-                selectedUser: null,
-              });
-            }}
-            onSelect={(user) => {
-              onChangeLookup(draftTeam.id, {
-                query: user.userId,
-                operatorUserId: String(user.id),
-                selectedUser: user,
-              });
-            }}
-          />
-          <Input
-            value={lookupState.operatorUserId}
-            onChange={(event) => {
-              onChangeLookup(draftTeam.id, {
-                operatorUserId: event.target.value,
-              });
-            }}
-            placeholder="userPk"
-          />
-          <select
-            className={SELECT_CLASS_NAME}
-            value={lookupState.role}
-            onChange={(event) => {
-              onChangeLookup(draftTeam.id, {
-                role: event.target.value,
-              });
-            }}
-          >
-            {ROLE_OPTIONS.map((role) => (
-              <option key={role} value={role}>
-                {role}
-              </option>
-            ))}
-          </select>
-          <select
-            className={SELECT_CLASS_NAME}
-            value={lookupState.isActive}
-            onChange={(event) => {
-              onChangeLookup(draftTeam.id, {
-                isActive: event.target.value,
-              });
-            }}
-          >
-            {ACTIVE_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-          <Button
-            variant="accent"
-            disabled={pendingAction !== null || !lookupState.operatorUserId.trim()}
-            onClick={() => {
-              void onAddOperator(draftTeam.id);
-            }}
-          >
-            {pendingAction === `operator-add:${draftTeam.id}` ? "등록 중" : "등록"}
-          </Button>
+        <div className="mt-4 grid gap-3 rounded-[20px] bg-surface-muted px-4 py-4 text-xs leading-6 text-muted md:grid-cols-3">
+          <p>
+            <span className="font-semibold text-foreground">운영자</span>
+            {" "}이 팀 드래프트를 관리하거나 참여할 사람
+          </p>
+          <p>
+            <span className="font-semibold text-foreground">Role</span>
+            {" "}팀장, 부팀장, 일반 운영자 구분
+          </p>
+          <p>
+            <span className="font-semibold text-foreground">Active</span>
+            {" "}이번 드래프트에서 사용할지 여부
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-3">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+            <UserAutocompleteInput
+              value={lookupState.query}
+              placeholder="userId 검색"
+              onValueChange={(value) => {
+                onChangeLookup(draftTeam.id, {
+                  query: value,
+                  selectedUser: null,
+                });
+              }}
+              onSelect={(user) => {
+                onChangeLookup(draftTeam.id, {
+                  query: user.userId,
+                  operatorUserId: String(user.id),
+                  selectedUser: user,
+                });
+              }}
+            />
+            <Input
+              value={lookupState.operatorUserId}
+              onChange={(event) => {
+                onChangeLookup(draftTeam.id, {
+                  operatorUserId: event.target.value,
+                });
+              }}
+              placeholder="userPk"
+            />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px] xl:grid-cols-[minmax(0,1fr)_120px_auto]">
+            <select
+              className={SELECT_CLASS_NAME}
+              value={lookupState.role}
+              onChange={(event) => {
+                onChangeLookup(draftTeam.id, {
+                  role: event.target.value,
+                });
+              }}
+            >
+              {ROLE_OPTIONS.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+            <select
+              className={SELECT_CLASS_NAME}
+              value={lookupState.isActive}
+              onChange={(event) => {
+                onChangeLookup(draftTeam.id, {
+                  isActive: event.target.value,
+                });
+              }}
+            >
+              {ACTIVE_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="accent"
+              className="whitespace-nowrap"
+              disabled={pendingAction !== null || !lookupState.operatorUserId.trim()}
+              onClick={() => {
+                void onAddOperator(draftTeam.id);
+              }}
+            >
+              {pendingAction === `operator-add:${draftTeam.id}` ? "등록 중" : "운영자 등록"}
+            </Button>
+          </div>
         </div>
 
         {lookupState.selectedUser ? (
@@ -1038,7 +1060,7 @@ function TeamOperatorManager({
       </div>
 
       <div className="mt-5 space-y-3">
-        {draftTeam.operators.length === 0 ? (
+        {operatorCount === 0 ? (
           <p className="rounded-[22px] border border-dashed border-line px-4 py-6 text-sm text-muted">
             아직 등록된 운영자가 없다.
           </p>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DraftLiveDashboard } from "@/components/proleague/draft-live-dashboard";
+import { AdminProleagueWorkspace } from "@/components/proleague/admin-proleague-workspace";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { requireServerAuth } from "@/lib/auth/server-auth";
 import { isAdminRole } from "@/lib/auth/roles";
@@ -62,7 +62,7 @@ export default async function AdminProleaguePage() {
         </div>
       </SurfaceCard>
 
-      <DraftLiveDashboard />
+      <AdminProleagueWorkspace />
     </div>
   );
 }

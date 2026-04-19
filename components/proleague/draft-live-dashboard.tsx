@@ -456,7 +456,13 @@ function CandidateCard({
   );
 }
 
-export function DraftLiveDashboard() {
+type DraftLiveDashboardProps = {
+  refreshSignal?: number;
+};
+
+export function DraftLiveDashboard({
+  refreshSignal = 0,
+}: DraftLiveDashboardProps) {
   const { user } = useAuth();
   const [sessions, setSessions] = useState<DraftSessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
@@ -484,7 +490,7 @@ export function DraftLiveDashboard() {
     return () => {
       window.clearInterval(timer);
     };
-  }, []);
+  }, [refreshSignal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -601,7 +607,7 @@ export function DraftLiveDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [selectedSessionId]);
+  }, [selectedSessionId, refreshSignal]);
 
   useEffect(() => {
     if (selectedSessionId === null) {

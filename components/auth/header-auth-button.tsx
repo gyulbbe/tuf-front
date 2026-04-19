@@ -1,15 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LoginForm } from "@/components/auth/login-form";
 import { useAuth } from "@/components/auth/auth-provider";
 
 export function HeaderAuthButton() {
   const pathname = usePathname();
-  const { status, user } = useAuth();
+  const router = useRouter();
+  const { status, user, logout } = useAuth();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -45,12 +45,23 @@ export function HeaderAuthButton() {
 
   if (user) {
     return (
-      <Link
-        href="/me"
-        className="inline-flex rounded-full border border-line px-4 py-2 text-sm text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground"
-      >
-        {user.username}
-      </Link>
+      <div className="flex items-center gap-2">
+        <span className="inline-flex rounded-full border border-line px-4 py-2 text-sm text-foreground">
+          {user.username}
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            logout();
+            startTransition(() => {
+              router.replace("/notice");
+            });
+          }}
+          className="inline-flex rounded-full border border-line px-4 py-2 text-sm text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground"
+        >
+          로그아웃
+        </button>
+      </div>
     );
   }
 

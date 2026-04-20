@@ -8,9 +8,11 @@ import {
   useState,
 } from "react";
 import {
+  deleteDraftSession,
   extendDraftTurn,
   finishDraftSession,
   getDraftSnapshot,
+  isDraftApiError,
   listDraftSessions,
   pauseDraftSession,
   pickDraftCandidate,
@@ -88,6 +90,24 @@ function readErrorMessage(error: unknown) {
   }
 
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+}
+
+function isMissingSessionError(error: unknown) {
+  if (!isDraftApiError(error)) {
+    return false;
+  }
+
+  const status = error.info.responseStatus ?? error.info.httpStatus;
+  return status === 404;
+}
+
+function buildSessionDeleteConfirmText(sessionTitle: string) {
+  return [
+    `"${sessionTitle}" 세션을 전체 삭제한다.`,
+    "",
+    "팀, 드래프트 인원, 순서, 픽 기록과 세션에 연결된 데이터가 함께 삭제된다.",
+    "삭제 후에는 되돌릴 수 없다. 계속할까?",
+  ].join("\n");
 }
 
 function toTimestamp(value: string | null | undefined) {
@@ -412,10 +432,12 @@ function CandidateCard({
 }
 
 type DraftLiveDashboardProps = {
+  adminMode?: boolean;
   refreshSignal?: number;
 };
 
 export function DraftLiveDashboard({
+  adminMode = false,
   refreshSignal = 0,
 }: DraftLiveDashboardProps) {
   const { user } = useAuth();
@@ -510,6 +532,23 @@ export function DraftLiveDashboard({
     };
   }, [refreshSignal]);
 
+  async function syncAfterSessionRemoval(missingSessionId: number) {
+    const nextSessions = sortSessions(await listDraftSessions());
+    const nextSelectedSessionId = chooseInitialSessionId(nextSessions);
+
+    startTransition(() => {
+      setSessions(nextSessions);
+      setSelectedSessionId((currentSessionId) =>
+        currentSessionId === missingSessionId ? nextSelectedSessionId : currentSessionId,
+      );
+      setSnapshot((currentSnapshot) =>
+        currentSnapshot?.session.id === missingSessionId ? null : currentSnapshot,
+      );
+      setServerOffsetMs(0);
+      setConnectionState("disconnected");
+    });
+  }
+
   useEffect(() => {
     if (selectedSessionId === null) {
       startTransition(() => {
@@ -543,6 +582,15 @@ export function DraftLiveDashboard({
         });
       } catch (error) {
         if (cancelled || snapshotRequestRef.current !== requestId) {
+          return;
+        }
+
+        if (isMissingSessionError(error)) {
+          await syncAfterSessionRemoval(sessionId).catch(() => undefined);
+          setNotice({
+            tone: "neutral",
+            text: "선택한 세션이 삭제되어 목록에서 제거했습니다.",
+          });
           return;
         }
 
@@ -613,8 +661,17 @@ export function DraftLiveDashboard({
                 );
               });
             })
-            .catch(() => {
+            .catch(async (error) => {
               if (disposed) {
+                return;
+              }
+
+              if (isMissingSessionError(error)) {
+                await syncAfterSessionRemoval(sessionId).catch(() => undefined);
+                setNotice({
+                  tone: "neutral",
+                  text: "선택한 세션이 삭제되어 목록에서 제거했습니다.",
+                });
                 return;
               }
 
@@ -663,6 +720,59 @@ export function DraftLiveDashboard({
         text: successText,
       });
     } catch (error) {
+      if (selectedSessionId !== null && isMissingSessionError(error)) {
+        await syncAfterSessionRemoval(selectedSessionId).catch(() => undefined);
+        setNotice({
+          tone: "neutral",
+          text: "선택한 세션이 삭제되어 목록에서 제거했습니다.",
+        });
+        return;
+      }
+
+      setNotice({
+        tone: "error",
+        text: readErrorMessage(error),
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleDeleteSession() {
+    if (selectedSessionId === null) {
+      return;
+    }
+
+    const sessionId = selectedSessionId;
+    const sessionTitle =
+      snapshot?.session.title ??
+      sessions.find((session) => session.id === sessionId)?.title ??
+      `세션 ${sessionId}`;
+
+    if (!window.confirm(buildSessionDeleteConfirmText(sessionTitle))) {
+      return;
+    }
+
+    setPendingAction("session-delete");
+    setNotice(null);
+
+    try {
+      await deleteDraftSession(sessionId);
+      await syncAfterSessionRemoval(sessionId);
+      setNotice({
+        tone: "success",
+        text: "세션과 연결된 팀, 드래프트 인원, 순서, 픽 기록을 함께 삭제했습니다.",
+      });
+    } catch (error) {
+      if (isMissingSessionError(error)) {
+        await syncAfterSessionRemoval(sessionId).catch(() => undefined);
+        setNotice({
+          tone: "neutral",
+          text: "선택한 세션이 이미 삭제되어 목록에서 제거했습니다.",
+        });
+        return;
+      }
+
       setNotice({
         tone: "error",
         text: readErrorMessage(error),
@@ -916,6 +1026,28 @@ export function DraftLiveDashboard({
 
           {snapshot ? (
             <div className="mt-5 space-y-4">
+              {adminMode ? (
+                <div className="rounded-[22px] border border-danger-ink/15 bg-danger-soft px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-danger-ink">세션 전체 삭제</p>
+                      <p className="mt-1 text-sm leading-6 text-danger-ink/80">
+                        이 세션을 지우면 팀, 드래프트 인원, 순서, 픽 기록이 함께 삭제된다.
+                      </p>
+                    </div>
+                    <Button
+                      variant="danger"
+                      disabled={!canControl || isBusy}
+                      onClick={() => {
+                        void handleDeleteSession();
+                      }}
+                    >
+                      {pendingAction === "session-delete" ? "삭제 중" : "세션 전체 삭제"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button
                   variant="accent"

@@ -20,6 +20,7 @@ import {
   deleteDraftTeam,
   getDraftErrorDebugInfo,
   getDraftSessionDetail,
+  isDraftApiError,
   listDraftSessions,
   searchDraftUsers,
   updateDraftSession,
@@ -161,6 +162,24 @@ function readErrorMessage(error: unknown) {
   }
 
   return "요청을 처리하지 못했다. 잠시 후 다시 시도해 달라.";
+}
+
+function isMissingSessionError(error: unknown) {
+  if (!isDraftApiError(error)) {
+    return false;
+  }
+
+  const status = error.info.responseStatus ?? error.info.httpStatus;
+  return status === 404;
+}
+
+function buildSessionDeleteConfirmText(sessionTitle: string) {
+  return [
+    `"${sessionTitle}" 세션을 전체 삭제한다.`,
+    "",
+    "이 작업을 실행하면 팀, 드래프트 인원, 순서, 픽 기록과 세션에 연결된 데이터가 함께 삭제된다.",
+    "삭제 후에는 되돌릴 수 없다. 계속할까?",
+  ].join("\n");
 }
 
 function logDraftAdminIssue(
@@ -1599,10 +1618,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   }
 
   async function refreshSelectedSession(sessionId: number) {
-    const [nextSessions, detail] = await Promise.all([
-      listDraftSessions(),
-      getDraftSessionDetail(sessionId),
-    ]);
+    const nextSessions = await listDraftSessions();
     const filteredSessions = sortSessions(filterManageableSessions(nextSessions));
     const nextSelectedSessionId = chooseSessionId(filteredSessions, sessionId, null);
 
@@ -1617,13 +1633,24 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return null;
     }
 
-    applyDetail(detail);
-    notifyChange();
+    try {
+      const detail = await getDraftSessionDetail(sessionId);
 
-    return detail;
+      applyDetail(detail);
+      notifyChange();
+
+      return detail;
+    } catch (error) {
+      if (isMissingSessionError(error)) {
+        await syncAfterSessionRemoval();
+        return null;
+      }
+
+      throw error;
+    }
   }
 
-  async function syncAfterSessionDelete() {
+  async function syncAfterSessionRemoval() {
     const nextSessions = sortSessions(filterManageableSessions(await listDraftSessions()));
     const nextSelectedSessionId = chooseSessionId(nextSessions, null, null);
 
@@ -1702,6 +1729,18 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         applyDetail(detail);
       } catch (error) {
         if (cancelled) {
+          return;
+        }
+
+        if (isMissingSessionError(error)) {
+          await syncAfterSessionRemoval().catch(() => undefined);
+
+          if (!cancelled) {
+            setNotice({
+              tone: "neutral",
+              text: "선택한 세션이 이미 삭제되어 목록에서 제거했다.",
+            });
+          }
           return;
         }
 
@@ -1814,19 +1853,36 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
+    const sessionId = selectedSessionId;
+    const sessionTitle =
+      (selectedSessionDetail?.title ?? editForm.title.trim()) || `세션 ${sessionId}`;
+
+    if (!window.confirm(buildSessionDeleteConfirmText(sessionTitle))) {
+      return;
+    }
+
     setPendingAction("session-delete");
     setNotice(null);
 
     try {
-      await deleteDraftSession(selectedSessionId);
-      await syncAfterSessionDelete();
+      await deleteDraftSession(sessionId);
+      await syncAfterSessionRemoval();
       setNotice({
         tone: "success",
-        text: "세션을 삭제했다.",
+        text: "세션과 연결된 팀, 드래프트 인원, 순서, 픽 기록을 함께 삭제했다.",
       });
     } catch (error) {
+      if (isMissingSessionError(error)) {
+        await syncAfterSessionRemoval().catch(() => undefined);
+        setNotice({
+          tone: "neutral",
+          text: "선택한 세션이 이미 삭제되어 목록에서 제거했다.",
+        });
+        return;
+      }
+
       handleActionError("세션 삭제", error, {
-        sessionId: selectedSessionId,
+        sessionId,
       });
     } finally {
       setPendingAction(null);
@@ -2377,9 +2433,13 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   void handleDeleteSession();
                 }}
               >
-                {pendingAction === "session-delete" ? "삭제 중" : "세션 삭제"}
+                {pendingAction === "session-delete" ? "삭제 중" : "세션 전체 삭제"}
               </Button>
             </div>
+            <p className="text-sm leading-7 text-danger-ink">
+              세션 전체 삭제를 누르면 이 세션에 연결된 팀, 드래프트 인원, 순서, 픽 기록이
+              함께 지워진다.
+            </p>
           </div>
         </SurfaceCard>
       </div>

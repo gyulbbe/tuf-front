@@ -16,7 +16,7 @@ export default function AdminDraftLivePage() {
           skip, finish와 실제 픽 진행은 여기서만 처리하면 된다.
         </p>
       </SurfaceCard>
-      <DraftLiveDashboard />
+      <DraftLiveDashboard adminMode />
     </div>
   );
 }

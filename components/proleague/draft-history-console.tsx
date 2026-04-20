@@ -6,6 +6,7 @@ import {
   deleteDraftPick,
   getDraftErrorDebugInfo,
   getDraftSessionDetail,
+  isDraftApiError,
   listDraftSessions,
   type DraftPick,
   type DraftSessionDetail,
@@ -31,6 +32,15 @@ function readErrorMessage(error: unknown) {
   }
 
   return "요청을 처리하지 못했다. 잠시 후 다시 시도해라.";
+}
+
+function isMissingSessionError(error: unknown) {
+  if (!isDraftApiError(error)) {
+    return false;
+  }
+
+  const status = error.info.responseStatus ?? error.info.httpStatus;
+  return status === 404;
 }
 
 function logDraftHistoryIssue(
@@ -185,10 +195,7 @@ export function DraftHistoryConsole() {
   const latestPick = sortedPicks.at(-1) ?? null;
 
   async function refreshSelectedSession(sessionId: number) {
-    const [nextSessions, detail] = await Promise.all([
-      listDraftSessions(),
-      getDraftSessionDetail(sessionId),
-    ]);
+    const nextSessions = await listDraftSessions();
     const filteredSessions = sortSessions(filterHistoricalSessions(nextSessions));
     const nextSelectedSessionId = chooseSessionId(filteredSessions, sessionId, null);
 
@@ -202,9 +209,36 @@ export function DraftHistoryConsole() {
       return null;
     }
 
-    setSelectedSessionDetail(detail);
+    try {
+      const detail = await getDraftSessionDetail(sessionId);
+      setSelectedSessionDetail(detail);
 
-    return detail;
+      return detail;
+    } catch (error) {
+      if (isMissingSessionError(error)) {
+        await syncAfterSessionRemoval();
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  async function syncAfterSessionRemoval() {
+    const nextSessions = sortSessions(filterHistoricalSessions(await listDraftSessions()));
+    const nextSelectedSessionId = chooseSessionId(nextSessions, null, null);
+
+    startTransition(() => {
+      setSessions(nextSessions);
+      setSelectedSessionId(nextSelectedSessionId);
+      setSelectedSessionDetail(null);
+    });
+
+    if (nextSelectedSessionId === null) {
+      return;
+    }
+
+    await refreshSelectedSession(nextSelectedSessionId);
   }
 
   useEffect(() => {
@@ -275,6 +309,18 @@ export function DraftHistoryConsole() {
         setSelectedSessionDetail(detail);
       } catch (error) {
         if (cancelled) {
+          return;
+        }
+
+        if (isMissingSessionError(error)) {
+          await syncAfterSessionRemoval().catch(() => undefined);
+
+          if (!cancelled) {
+            setNotice({
+              tone: "neutral",
+              text: "보고 있던 세션이 삭제되어 이력 목록에서 제거했다.",
+            });
+          }
           return;
         }
 

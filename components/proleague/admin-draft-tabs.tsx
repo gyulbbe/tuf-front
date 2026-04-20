@@ -11,6 +11,11 @@ const ADMIN_DRAFT_TABS = [
     description: "세션, 팀, 픽커, 드래프트 인원, 순서를 준비한다.",
   },
   {
+    href: "/admin/draft/live",
+    label: "드래프트 라이브",
+    description: "실시간 제어와 픽 진행을 처리한다.",
+  },
+  {
     href: "/admin/draft/history",
     label: "드래프트 이력",
     description: "픽 기록을 정리하고 다시 맞춘다.",
@@ -21,7 +26,7 @@ export function AdminDraftTabs() {
   const pathname = usePathname();
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid gap-3 md:grid-cols-3">
       {ADMIN_DRAFT_TABS.map((tab) => {
         const isActive =
           pathname === tab.href ||

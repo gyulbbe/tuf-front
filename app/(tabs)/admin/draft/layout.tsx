@@ -41,8 +41,8 @@ export default async function AdminDraftLayout({
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
               관리자 메뉴 아래에서 드래프트 관련 화면을 탭 단위로 나눴다. 여기서는 준비와
-              이력을 나눠서 보고, 실제 실시간 제어와 픽 진행은 관리 탭 아래 라이브 보드에서
-              이어서 처리하면 된다.
+              라이브, 이력을 나눠서 본다. 준비는 관리 탭에서, 실시간 제어와 픽 진행은
+              라이브 탭에서, 기록 정리는 이력 탭에서 이어서 처리하면 된다.
             </p>
           </div>
 

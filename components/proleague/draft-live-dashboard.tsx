@@ -343,7 +343,7 @@ function TeamCard({
           {draftTeam.pickerName ?? "미지정"}
         </p>
         <p className="mt-1 text-xs text-muted">
-          {draftTeam.pickerUserId ? `pickerUserId ${draftTeam.pickerUserId}` : "아직 지정되지 않음"}
+          {draftTeam.pickerName ? "지정됨" : "아직 지정되지 않음"}
         </p>
       </div>
 
@@ -1197,9 +1197,7 @@ export function DraftLiveDashboard({
                 {currentTeam?.pickerName ?? "-"}
               </p>
               <p className="mt-1 text-sm text-muted">
-                {currentTeam?.pickerUserId
-                  ? `pickerUserId ${currentTeam.pickerUserId}`
-                  : "미지정"}
+                {currentTeam?.pickerName ? "지정됨" : "미지정"}
               </p>
             </div>
 

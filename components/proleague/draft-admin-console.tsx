@@ -1,6 +1,13 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import {
+  startTransition,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import {
   assignDraftPicker,
   createDraftCandidate,
@@ -650,9 +657,6 @@ function UserAutocompleteInput({
                       {user.race ? ` · ${user.race}` : ""}
                     </p>
                   </div>
-                  <span className="rounded-full bg-surface-strong px-2.5 py-1 text-[11px] text-muted">
-                    id {user.id}
-                  </span>
                 </button>
               ))}
             </div>
@@ -685,7 +689,7 @@ function TeamRow({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-foreground">
-            teamId {draftTeam.id}
+            {draftTeam.teamName}
           </p>
           <p className="mt-1 text-xs text-muted">
             픽커 {draftTeam.pickerName ?? "미지정"} · 로스터 {rosterCount}명
@@ -756,16 +760,15 @@ function TeamPickerManager({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-lg font-semibold text-foreground">{draftTeam.teamName}</p>
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-1 text-sm text-muted">displayOrder {draftTeam.displayOrder}</p>{/*
             displayOrder {draftTeam.displayOrder} · teamId {draftTeam.id}
-          </p>
+          */}
         </div>
         <div className="rounded-[20px] bg-surface px-4 py-3 text-xs leading-6 text-muted">
           <p>현재 픽커</p>
           <p className="font-semibold text-foreground">
             {draftTeam.pickerName ?? "미지정"}
           </p>
-          {draftTeam.pickerUserId ? <p>pickerUserId {draftTeam.pickerUserId}</p> : null}
         </div>
       </div>
 
@@ -839,11 +842,6 @@ function TeamPickerManager({
                 ? "직접 입력 접기"
                 : "검색이 안 되면 pickerUserId 직접 입력"}
             </button>
-            {lookupState.pickerUserId ? (
-              <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
-                pickerUserId {lookupState.pickerUserId}
-              </span>
-            ) : null}
           </div>
 
           {lookupState.showManualIdInput ? (
@@ -879,8 +877,11 @@ function TeamPickerManager({
 
         {lookupState.selectedUser ? (
           <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
-            <p className="text-sm font-semibold text-foreground">
+            <p className="text-sm font-semibold text-foreground">순서</p><p className="hidden">
               선택됨: {lookupState.selectedUser.userId}
+            </p>
+            <p className="hidden">
+              각 팀에 픽커를 1명 지정할 수 있다. user_id 자동완성으로 바로 찾고 지정한다.
             </p>
             <p className="mt-1 text-sm text-muted">
               {lookupState.selectedUser.name ?? "이름 없음"}
@@ -981,8 +982,8 @@ function OrderRow({
   const isDeleting = pendingAction === `order-delete:${order.pickNo}`;
 
   return (
-    <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex items-center gap-2 rounded-[18px] border border-line bg-surface-strong px-3 py-2 text-sm"><span className="shrink-0 font-semibold text-muted">#{order.pickNo}</span><span className="truncate font-semibold text-foreground">{order.draftTeamName}</span>
+      <div className="hidden">
         <div>
           <p className="text-sm font-semibold text-foreground">#{order.pickNo}</p>
           <p className="mt-1 text-xs text-muted">
@@ -1001,7 +1002,7 @@ function OrderRow({
         </Button>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <div className="hidden">
         <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
             Pick No
@@ -1016,6 +1017,409 @@ function OrderRow({
           <p className="mt-1">teamId {order.draftTeamId}</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TeamPickerManagerClean({
+  draftTeam,
+  lookupState,
+  pendingAction,
+  onChangeLookup,
+  onAssignPicker,
+}: {
+  draftTeam: DraftLiveTeam;
+  lookupState: TeamPickerLookupState;
+  pendingAction: string | null;
+  onChangeLookup: (teamId: number, patch: Partial<TeamPickerLookupState>) => void;
+  onAssignPicker: (teamId: number) => Promise<void>;
+}) {
+  const isAssignPending = pendingAction === `picker-assign:${draftTeam.id}`;
+
+  return (
+    <article className="rounded-[28px] border border-line bg-surface-strong px-5 py-5 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-lg font-semibold text-foreground">{draftTeam.teamName}</p>
+          <p className="mt-1 text-sm text-muted">
+            displayOrder {draftTeam.displayOrder}
+          </p>
+        </div>
+        <div className="rounded-[20px] bg-surface px-4 py-3 text-xs leading-6 text-muted">
+          <p>현재 픽커</p>
+          <p className="font-semibold text-foreground">
+            {draftTeam.pickerName ?? "미지정"}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 rounded-[24px] border border-line bg-surface px-4 py-4">
+        <p className="text-sm font-semibold text-foreground">
+          user_id 자동완성으로 픽커 지정
+        </p>
+        <p className="mt-2 text-sm leading-7 text-muted">
+          user_id 일부만 입력해도 검색 결과가 내려온다. 결과를 고르면 선택값이
+          자동으로 채워지고, 필요하면 직접 입력할 수도 있다.
+        </p>
+
+        <div className="mt-4 grid gap-3">
+          <UserAutocompleteInput
+            disabled={pendingAction !== null}
+            value={lookupState.query}
+            placeholder="picker user_id 입력 후 검색"
+            onValueChange={(value) => {
+              onChangeLookup(draftTeam.id, {
+                query: value,
+                pickerUserId: "",
+                selectedUser: null,
+              });
+            }}
+            onSelect={(user) => {
+              onChangeLookup(draftTeam.id, {
+                query: user.userId,
+                pickerUserId: String(user.id),
+                selectedUser: user,
+              });
+            }}
+          />
+
+          <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
+            {lookupState.selectedUser ? (
+              <>
+                <p className="font-semibold text-foreground">
+                  선택한 user_id: {lookupState.selectedUser.userId}
+                </p>
+                <p className="mt-1">이 유저를 현재 팀의 픽커로 지정한다.</p>
+              </>
+            ) : lookupState.pickerUserId ? (
+              <>
+                <p className="font-semibold text-foreground">직접 입력한 값이 있다.</p>
+                <p className="mt-1">검색 결과가 없으면 아래 입력칸에 직접 넣을 수 있다.</p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-foreground">
+                  팀마다 픽커는 1명만 지정할 수 있다.
+                </p>
+                <p className="mt-1">다른 사람을 지정하면 현재 픽커가 새 사람으로 바뀐다.</p>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="text-xs font-semibold text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              disabled={pendingAction !== null}
+              onClick={() => {
+                onChangeLookup(draftTeam.id, {
+                  showManualIdInput: !lookupState.showManualIdInput,
+                });
+              }}
+            >
+              {lookupState.showManualIdInput ? "직접 입력 닫기" : "검색이 안 되면 직접 입력"}
+            </button>
+          </div>
+
+          {lookupState.showManualIdInput ? (
+            <Input
+              disabled={pendingAction !== null}
+              value={lookupState.pickerUserId}
+              onChange={(event) => {
+                onChangeLookup(draftTeam.id, {
+                  pickerUserId: event.target.value,
+                  selectedUser: null,
+                });
+              }}
+              placeholder="픽커 값 직접 입력"
+            />
+          ) : null}
+
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
+              선택한 유저를 이 팀의 픽커로 지정한다.
+            </div>
+            <Button
+              variant="accent"
+              className="whitespace-nowrap"
+              disabled={pendingAction !== null || !lookupState.pickerUserId.trim()}
+              onClick={() => {
+                void onAssignPicker(draftTeam.id);
+              }}
+            >
+              {isAssignPending ? "지정 중" : "픽커 지정"}
+            </Button>
+          </div>
+        </div>
+
+        {lookupState.selectedUser ? (
+          <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
+            <p className="text-sm font-semibold text-foreground">선택한 유저</p>
+            <p className="mt-1 text-sm text-muted">
+              {lookupState.selectedUser.name ?? "이름 없음"}
+              {lookupState.selectedUser.tier
+                ? ` · ${lookupState.selectedUser.tier}`
+                : ""}
+              {lookupState.selectedUser.race
+                ? ` · ${lookupState.selectedUser.race}`
+                : ""}
+            </p>
+            <p className="mt-2 text-xs leading-6 text-muted">
+              검색한 user_id 기준으로 이 유저가 자동 선택됐다.
+            </p>
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function CandidateComposerClean({
+  candidateForm,
+  pendingAction,
+  setCandidateForm,
+  onCreate,
+}: {
+  candidateForm: CandidateFormState;
+  pendingAction: string | null;
+  setCandidateForm: Dispatch<SetStateAction<CandidateFormState>>;
+  onCreate: () => Promise<void>;
+}) {
+  return (
+    <>
+      <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+        <div className="grid gap-3">
+          <UserAutocompleteInput
+            value={candidateForm.query}
+            placeholder="user_id 입력 후 검색"
+            onValueChange={(value) => {
+              setCandidateForm((current) => ({
+                ...current,
+                query: value,
+                candidateUserId: "",
+                selectedUser: null,
+              }));
+            }}
+            onSelect={(user) => {
+              setCandidateForm((current) => ({
+                ...current,
+                query: user.userId,
+                candidateUserId: String(user.id),
+                candidateName: current.candidateName || user.userId,
+                race: normalizeRace(user.race) ?? current.race,
+                selectedUser: user,
+              }));
+            }}
+          />
+
+          <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
+            {candidateForm.selectedUser ? (
+              <>
+                <p className="font-semibold text-foreground">
+                  선택한 user_id: {candidateForm.selectedUser.userId}
+                </p>
+                <p className="mt-1">이 유저를 후보로 등록한다.</p>
+              </>
+            ) : candidateForm.candidateUserId ? (
+              <>
+                <p className="font-semibold text-foreground">직접 입력한 값이 있다.</p>
+                <p className="mt-1">검색 결과가 없으면 아래 입력칸에 직접 넣을 수 있다.</p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-foreground">
+                  user_id를 치면 아래에 일치하는 유저 목록이 내려온다.
+                </p>
+                <p className="mt-1">목록에서 고르면 후보가 자동 선택된다.</p>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="text-xs font-semibold text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              onClick={() => {
+                setCandidateForm((current) => ({
+                  ...current,
+                  showManualIdInput: !current.showManualIdInput,
+                }));
+              }}
+            >
+              {candidateForm.showManualIdInput ? "직접 입력 닫기" : "검색이 안 되면 직접 입력"}
+            </button>
+          </div>
+
+          {candidateForm.showManualIdInput ? (
+            <Input
+              value={candidateForm.candidateUserId}
+              onChange={(event) => {
+                setCandidateForm((current) => ({
+                  ...current,
+                  candidateUserId: event.target.value,
+                  selectedUser: null,
+                }));
+              }}
+              placeholder="후보 값 직접 입력"
+            />
+          ) : null}
+
+          <Input
+            value={candidateForm.candidateName}
+            onChange={(event) => {
+              setCandidateForm((current) => ({
+                ...current,
+                candidateName: event.target.value,
+              }));
+            }}
+            placeholder="candidateName"
+          />
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <select
+              className={SELECT_CLASS_NAME}
+              value={candidateForm.race}
+              onChange={(event) => {
+                setCandidateForm((current) => ({
+                  ...current,
+                  race: event.target.value,
+                }));
+              }}
+            >
+              {RACE_OPTIONS.map((race) => (
+                <option key={race} value={race}>
+                  {race}
+                </option>
+              ))}
+            </select>
+            <select
+              className={SELECT_CLASS_NAME}
+              value={candidateForm.status}
+              onChange={(event) => {
+                setCandidateForm((current) => ({
+                  ...current,
+                  status: event.target.value,
+                }));
+              }}
+            >
+              {CANDIDATE_STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <Button
+            variant="accent"
+            disabled={
+              pendingAction !== null ||
+              !candidateForm.candidateUserId.trim() ||
+              !candidateForm.candidateName.trim()
+            }
+            onClick={() => {
+              void onCreate();
+            }}
+          >
+            {pendingAction === "candidate-create" ? "등록 중" : "후보 등록"}
+          </Button>
+        </div>
+
+        {candidateForm.selectedUser ? (
+          <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
+            <p className="text-sm font-semibold text-foreground">선택한 유저</p>
+            <p className="mt-1 text-sm text-muted">
+              {candidateForm.selectedUser.name ?? "이름 없음"}
+              {candidateForm.selectedUser.tier
+                ? ` · ${candidateForm.selectedUser.tier}`
+                : ""}
+              {candidateForm.selectedUser.race
+                ? ` · ${candidateForm.selectedUser.race}`
+                : ""}
+            </p>
+            <p className="mt-2 text-xs leading-6 text-muted">
+              검색한 user_id 기준으로 이 유저가 자동 선택됐다.
+            </p>
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function CandidateRowClean({
+  candidate,
+  pendingAction,
+  onDelete,
+}: {
+  candidate: DraftCandidate;
+  pendingAction: string | null;
+  onDelete: () => Promise<void>;
+}) {
+  const isDeleting = pendingAction === `candidate-delete:${candidate.candidateUserId}`;
+
+  return (
+    <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-foreground">
+              {candidate.candidateName}
+            </p>
+            <span
+              className={cn(
+                "rounded-full px-3 py-1 text-[11px] font-semibold",
+                getCandidateStatusClassName(candidate.status),
+              )}
+            >
+              {formatCandidateStatus(candidate.status)}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            {candidate.race ?? "종족 미정"}
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="danger"
+          disabled={pendingAction !== null}
+          onClick={() => {
+            void onDelete();
+          }}
+        >
+          {isDeleting ? "삭제 중" : "삭제"}
+        </Button>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+            Candidate
+          </p>
+          <p className="mt-2 font-semibold text-foreground">{candidate.candidateName}</p>
+          <p className="mt-1">{candidate.race ?? "종족 미정"}</p>
+        </div>
+        <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+            Picked Info
+          </p>
+          <p className="mt-2 font-semibold text-foreground">
+            {candidate.pickedDraftTeamName ?? "-"}
+          </p>
+          <p className="mt-1">{formatDateTime(candidate.pickedAt)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderRowCompact({ order }: { order: DraftOrder }) {
+  return (
+    <div className="flex items-center gap-2 rounded-[18px] border border-line bg-surface-strong px-3 py-2 text-sm">
+      <span className="shrink-0 font-semibold text-muted">#{order.pickNo}</span>
+      <span className="truncate font-semibold text-foreground">
+        {order.draftTeamName}
+      </span>
     </div>
   );
 }
@@ -1665,7 +2069,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
             <p className="text-sm font-semibold text-foreground">
               관리자 드래프트 준비 / 정리 콘솔
             </p>
-            <p className="mt-2 text-sm leading-7 text-muted">
+            <p className="hidden">
               세션, 팀, 픽커, 후보, 순서를 준비하고 보정하는 화면이다. 실시간 start /
               pause / resume / extend / skip / finish는 아래 라이브 보드에서 처리하고,
               여기서는 CRUD와 재동기화에 집중한다.
@@ -1995,8 +2399,8 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           <div>
             <p className="text-sm font-semibold text-foreground">팀별 픽커 지정</p>
             <p className="mt-2 text-sm leading-7 text-muted">
-              운영진 목록 없이 팀마다 pickerUserId 기준으로 픽커 1명만 관리한다.
-              자동완성으로 user_id를 찾아 바로 지정할 수 있다.
+              운영진 목록 없이 팀마다 픽커 1명만 관리한다. 자동완성으로 `user_id`를 찾아
+              바로 지정할 수 있다.
             </p>
           </div>
           {selectedSessionDetail ? (
@@ -2018,7 +2422,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           ) : (
             <div className="grid gap-4 xl:grid-cols-2">
               {sortedTeams.map((team) => (
-                <TeamPickerManager
+                <TeamPickerManagerClean
                   key={team.id}
                   draftTeam={team}
                   lookupState={teamLookups[team.id] ?? createEmptyTeamLookupState()}
@@ -2040,7 +2444,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                 후보 등록 / 삭제
               </p>
               <p className="mt-2 text-sm leading-7 text-muted">
-                후보는 userId 자동완성으로 검색할 수 있다. 목록은 읽기 전용으로 보여주고,
+                후보는 `user_id` 자동완성으로 검색할 수 있다. 목록은 읽기 전용으로 보여주고,
                 수정 저장 버튼은 제거했다.
               </p>
             </div>
@@ -2055,6 +2459,13 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
             </div>
           ) : (
             <>
+              <CandidateComposerClean
+                candidateForm={candidateForm}
+                pendingAction={pendingAction}
+                setCandidateForm={setCandidateForm}
+                onCreate={handleCreateCandidate}
+              />
+              <div className="hidden">
               <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
                 <div className="grid gap-3">
                   <UserAutocompleteInput
@@ -2223,15 +2634,16 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   </div>
                 ) : null}
               </div>
+              </div>
 
-              <div className="mt-5 space-y-3">
+              <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {sortedCandidates.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted sm:col-span-2 xl:col-span-3">
                     아직 등록한 후보가 없다.
                   </div>
                 ) : (
                   sortedCandidates.map((candidate) => (
-                    <CandidateRow
+                    <CandidateRowClean
                       key={candidate.candidateUserId}
                       candidate={candidate}
                       pendingAction={pendingAction}
@@ -2319,18 +2731,16 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                 </div>
               </div>
 
-              <div className="mt-5 space-y-3">
+              <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {sortedOrders.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted sm:col-span-2 xl:col-span-3">
                     아직 등록한 드래프트 순서가 없다.
                   </div>
                 ) : (
                   sortedOrders.map((order) => (
-                    <OrderRow
+                    <OrderRowCompact
                       key={order.pickNo}
                       order={order}
-                      pendingAction={pendingAction}
-                      onDelete={() => handleDeleteOrder(order.pickNo)}
                     />
                   ))
                 )}

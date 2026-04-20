@@ -392,32 +392,40 @@ function CandidateCard({
   const actionKey = `pick-${candidate.candidateUserId}`;
 
   return (
-    <article className="rounded-[24px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.78)_100%)] px-5 py-5 shadow-[0_18px_46px_-38px_rgba(31,42,40,0.8)]">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-lg font-semibold text-foreground">
+    <article className="rounded-[20px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.72)_100%)] px-4 py-4 shadow-[0_16px_40px_-34px_rgba(31,42,40,0.7)]">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] md:items-center">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+            아이디
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-foreground">
             {candidate.candidateName}
           </p>
-          <p className="mt-1 text-sm text-muted">
-            {candidate.race || "종족 미정"} · ID {candidate.candidateUserId}
+        </div>
+
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+            종족
+          </p>
+          <p className="mt-1 text-sm font-semibold text-foreground">
+            {candidate.race || "-"}
           </p>
         </div>
-        <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-muted">
-          대기
-        </span>
-      </div>
 
-      <div className="mt-5 flex items-center justify-between gap-3">
-        <p className="text-sm text-muted">
-          현재 픽 권한이 있으면 바로 로스터에 반영된다.
-        </p>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+            티어
+          </p>
+          <p className="mt-1 text-sm font-semibold text-foreground">-</p>
+        </div>
+
         <Button
           variant="accent"
           disabled={!canPick || pendingAction !== null}
           onClick={() => {
             void onPick(candidate.candidateUserId, candidate.candidateName);
           }}
-          className="min-w-24"
+          className="min-w-20 whitespace-nowrap"
         >
           {pendingAction === actionKey ? "지명 중" : "지명"}
         </Button>
@@ -707,13 +715,7 @@ export function DraftLiveDashboard({
       return true;
     }
 
-    const haystacks = [
-      candidate.candidateName,
-      candidate.race ?? "",
-      String(candidate.candidateUserId),
-    ];
-
-    return haystacks.some((value) => value.toLowerCase().includes(keyword));
+    return candidate.candidateName.toLowerCase().includes(keyword);
   }) ?? [];
 
   const teams = sortTeams(snapshot?.teams ?? []);
@@ -872,7 +874,9 @@ export function DraftLiveDashboard({
             <section className="rounded-[28px] border border-line bg-surface-strong px-5 py-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-xl font-semibold text-foreground">후보 풀</h2>
+                  <h2 className="text-xl font-semibold text-foreground">
+                    드래프트 선수 추가
+                  </h2>
                   <p className="mt-2 text-sm leading-7 text-muted">
                     후보를 검색하고 현재 픽 권한이 있으면 바로 지명할 수 있다.
                   </p>
@@ -882,12 +886,12 @@ export function DraftLiveDashboard({
                   <Input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="이름, 종족, ID 검색"
+                    placeholder="ID 검색"
                   />
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="mt-5 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
                 {filteredCandidates.length === 0 ? (
                   <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm leading-7 text-muted lg:col-span-2">
                     {snapshot && snapshot.availableCandidates.length === 0

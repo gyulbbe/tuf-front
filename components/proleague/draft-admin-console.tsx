@@ -97,14 +97,6 @@ const CANDIDATE_STATUS_OPTIONS = [
   "EXCLUDED",
 ] as const;
 
-const SESSION_STATUS_LABELS: Record<string, string> = {
-  READY: "준비",
-  LIVE: "진행 중",
-  PAUSED: "일시정지",
-  FINISHED: "종료",
-  CANCELLED: "취소",
-};
-
 const CANDIDATE_STATUS_LABELS: Record<string, string> = {
   WAITING: "대기",
   PICKED: "지명됨",
@@ -199,14 +191,6 @@ function formatDateTime(value: string | null | undefined) {
   }).format(timestamp);
 }
 
-function formatSessionStatus(status: string | null | undefined) {
-  if (!status) {
-    return "미정";
-  }
-
-  return SESSION_STATUS_LABELS[status] ?? status;
-}
-
 function formatCandidateStatus(status: string | null | undefined) {
   if (!status) {
     return "미정";
@@ -271,6 +255,10 @@ function sortSessions(sessions: DraftSessionSummary[]) {
 
     return right.id - left.id;
   });
+}
+
+function filterManageableSessions(sessions: DraftSessionSummary[]) {
+  return sessions.filter((session) => session.status === "READY");
 }
 
 function sortTeams(teams: DraftLiveTeam[]) {
@@ -652,8 +640,7 @@ function UserAutocompleteInput({
                       {user.userId}
                     </p>
                     <p className="mt-1 text-[11px] text-muted">
-                      {user.name ?? "이름 없음"}
-                      {user.tier ? ` · ${user.tier}` : ""}
+                      {user.tier ?? "-"}
                       {user.race ? ` · ${user.race}` : ""}
                     </p>
                   </div>
@@ -692,7 +679,7 @@ function TeamRow({
             {draftTeam.teamName}
           </p>
           <p className="mt-1 text-xs text-muted">
-            픽커 {draftTeam.pickerName ?? "미지정"} · 로스터 {rosterCount}명
+            픽커 {draftTeam.pickerName ? "지정됨" : "미지정"} · 로스터 {rosterCount}명
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -718,22 +705,13 @@ function TeamRow({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <div className="mt-4">
         <Input
           value={editState.teamName}
           onChange={(event) => {
             onChange({ teamName: event.target.value });
           }}
           placeholder="팀 이름"
-        />
-        <Input
-          type="number"
-          min={1}
-          value={editState.displayOrder}
-          onChange={(event) => {
-            onChange({ displayOrder: event.target.value });
-          }}
-          placeholder="displayOrder"
         />
       </div>
     </div>
@@ -765,9 +743,9 @@ function TeamPickerManager({
           */}
         </div>
         <div className="rounded-[20px] bg-surface px-4 py-3 text-xs leading-6 text-muted">
-          <p>현재 픽커</p>
+          <p>픽커</p>
           <p className="font-semibold text-foreground">
-            {draftTeam.pickerName ?? "미지정"}
+            {draftTeam.pickerName ? "지정됨" : "미지정"}
           </p>
         </div>
       </div>
@@ -884,7 +862,7 @@ function TeamPickerManager({
               각 팀에 픽커를 1명 지정할 수 있다. user_id 자동완성으로 바로 찾고 지정한다.
             </p>
             <p className="mt-1 text-sm text-muted">
-              {lookupState.selectedUser.name ?? "이름 없음"}
+              {lookupState.selectedUser.userId}
               {lookupState.selectedUser.tier
                 ? ` · ${lookupState.selectedUser.tier}`
                 : ""}
@@ -1041,14 +1019,11 @@ function TeamPickerManagerClean({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-lg font-semibold text-foreground">{draftTeam.teamName}</p>
-          <p className="mt-1 text-sm text-muted">
-            displayOrder {draftTeam.displayOrder}
-          </p>
         </div>
         <div className="rounded-[20px] bg-surface px-4 py-3 text-xs leading-6 text-muted">
-          <p>현재 픽커</p>
+          <p>픽커</p>
           <p className="font-semibold text-foreground">
-            {draftTeam.pickerName ?? "미지정"}
+            {draftTeam.pickerName ? "지정됨" : "미지정"}
           </p>
         </div>
       </div>
@@ -1156,7 +1131,7 @@ function TeamPickerManagerClean({
           <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
             <p className="text-sm font-semibold text-foreground">선택한 유저</p>
             <p className="mt-1 text-sm text-muted">
-              {lookupState.selectedUser.name ?? "이름 없음"}
+              {lookupState.selectedUser.userId}
               {lookupState.selectedUser.tier
                 ? ` · ${lookupState.selectedUser.tier}`
                 : ""}
@@ -1329,7 +1304,7 @@ function CandidateComposerClean({
           <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
             <p className="text-sm font-semibold text-foreground">선택한 유저</p>
             <p className="mt-1 text-sm text-muted">
-              {candidateForm.selectedUser.name ?? "이름 없음"}
+              {candidateForm.selectedUser.userId}
               {candidateForm.selectedUser.tier
                 ? ` · ${candidateForm.selectedUser.tier}`
                 : ""}
@@ -1532,11 +1507,19 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       listDraftSessions(),
       getDraftSessionDetail(sessionId),
     ]);
+    const filteredSessions = sortSessions(filterManageableSessions(nextSessions));
+    const nextSelectedSessionId = chooseSessionId(filteredSessions, sessionId, null);
 
     startTransition(() => {
-      setSessions(sortSessions(nextSessions));
-      setSelectedSessionId(sessionId);
+      setSessions(filteredSessions);
+      setSelectedSessionId(nextSelectedSessionId);
     });
+
+    if (nextSelectedSessionId !== sessionId) {
+      resetDetailState();
+      notifyChange();
+      return null;
+    }
 
     applyDetail(detail);
     notifyChange();
@@ -1545,7 +1528,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   }
 
   async function syncAfterSessionDelete() {
-    const nextSessions = sortSessions(await listDraftSessions());
+    const nextSessions = sortSessions(filterManageableSessions(await listDraftSessions()));
     const nextSelectedSessionId = chooseSessionId(nextSessions, null, null);
 
     startTransition(() => {
@@ -1569,7 +1552,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       setLoadingSessions(true);
 
       try {
-        const nextSessions = sortSessions(await listDraftSessions());
+        const nextSessions = sortSessions(filterManageableSessions(await listDraftSessions()));
 
         if (cancelled) {
           return;
@@ -2081,7 +2064,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               <p className="font-semibold text-foreground">
                 {selectedSessionDetail.title}
               </p>
-              <p>상태: {formatSessionStatus(selectedSessionDetail.status)}</p>
               <p>현재 픽: {selectedSessionDetail.currentPickNo ?? "-"}</p>
               <p>현재 팀: {selectedSessionDetail.currentDraftTeamId ?? "-"}</p>
             </div>
@@ -2216,12 +2198,12 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               {loadingSessions && sessions.length === 0 ? (
                 <option value="">세션 목록 불러오는 중</option>
               ) : sessions.length === 0 ? (
-                <option value="">세션 없음</option>
+                <option value="">준비중 세션 없음</option>
               ) : null}
 
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {session.title} · {formatSessionStatus(session.status)}
+                  {session.title}
                 </option>
               ))}
             </select>
@@ -2268,7 +2250,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
             {selectedSessionDetail ? (
               <div className="rounded-[22px] bg-surface-muted px-4 py-4 text-sm leading-7 text-muted">
-                <p>상태: {formatSessionStatus(selectedSessionDetail.status)}</p>
                 <p>시작: {formatDateTime(selectedSessionDetail.startedAt)}</p>
                 <p>종료: {formatDateTime(selectedSessionDetail.endedAt)}</p>
               </div>
@@ -2310,8 +2291,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               팀 생성 / 수정 / 삭제
             </p>
             <p className="mt-2 text-sm leading-7 text-muted">
-              팀은 세션 준비의 기본 데이터다. displayOrder를 조정하면 순서 기본값도
-              같이 맞춰진다.
+              팀은 세션 준비의 기본 데이터다. 팀 순서는 내부 값으로 자동 관리된다.
             </p>
           </div>
           {selectedSessionDetail ? (
@@ -2338,18 +2318,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                     }));
                   }}
                   placeholder="팀 이름"
-                />
-                <Input
-                  type="number"
-                  min={1}
-                  value={teamForm.displayOrder}
-                  onChange={(event) => {
-                    setTeamForm((current) => ({
-                      ...current,
-                      displayOrder: event.target.value,
-                    }));
-                  }}
-                  placeholder="displayOrder"
                 />
                 <Button
                   variant="accent"
@@ -2619,7 +2587,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                       선택됨: {candidateForm.selectedUser.userId}
                     </p>
                     <p className="mt-1 text-sm text-muted">
-                      {candidateForm.selectedUser.name ?? "이름 없음"}
+                      {candidateForm.selectedUser.userId}
                       {candidateForm.selectedUser.tier
                         ? ` · ${candidateForm.selectedUser.tier}`
                         : ""}

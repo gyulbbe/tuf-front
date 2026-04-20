@@ -22,14 +22,6 @@ type NoticeState = {
   text: string;
 };
 
-const SESSION_STATUS_LABELS: Record<string, string> = {
-  READY: "준비",
-  LIVE: "진행 중",
-  PAUSED: "일시정지",
-  FINISHED: "종료",
-  CANCELLED: "취소",
-};
-
 const SELECT_CLASS_NAME =
   "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
 
@@ -90,14 +82,6 @@ function formatDateTime(value: string | null | undefined) {
   }).format(timestamp);
 }
 
-function formatSessionStatus(status: string | null | undefined) {
-  if (!status) {
-    return "미정";
-  }
-
-  return SESSION_STATUS_LABELS[status] ?? status;
-}
-
 function sortSessions(sessions: DraftSessionSummary[]) {
   const priority = new Map([
     ["LIVE", 0],
@@ -117,6 +101,10 @@ function sortSessions(sessions: DraftSessionSummary[]) {
 
     return right.id - left.id;
   });
+}
+
+function filterHistoricalSessions(sessions: DraftSessionSummary[]) {
+  return sessions.filter((session) => session.status === "FINISHED");
 }
 
 function sortPicks(picks: DraftPick[]) {
@@ -201,11 +189,18 @@ export function DraftHistoryConsole() {
       listDraftSessions(),
       getDraftSessionDetail(sessionId),
     ]);
+    const filteredSessions = sortSessions(filterHistoricalSessions(nextSessions));
+    const nextSelectedSessionId = chooseSessionId(filteredSessions, sessionId, null);
 
     startTransition(() => {
-      setSessions(sortSessions(nextSessions));
-      setSelectedSessionId(sessionId);
+      setSessions(filteredSessions);
+      setSelectedSessionId(nextSelectedSessionId);
     });
+
+    if (nextSelectedSessionId !== sessionId) {
+      setSelectedSessionDetail(null);
+      return null;
+    }
 
     setSelectedSessionDetail(detail);
 
@@ -219,7 +214,7 @@ export function DraftHistoryConsole() {
       setLoadingSessions(true);
 
       try {
-        const nextSessions = sortSessions(await listDraftSessions());
+        const nextSessions = sortSessions(filterHistoricalSessions(await listDraftSessions()));
 
         if (cancelled) {
           return;
@@ -368,9 +363,6 @@ export function DraftHistoryConsole() {
             <p className="mt-4 text-2xl font-semibold tracking-tight text-foreground">
               {selectedSessionDetail?.title ?? "-"}
             </p>
-            <p className="mt-2 text-sm text-muted">
-              상태 {formatSessionStatus(selectedSessionDetail?.status)}
-            </p>
           </div>
           <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
             <p className="text-sm font-semibold text-foreground">픽 기록 수</p>
@@ -416,10 +408,16 @@ export function DraftHistoryConsole() {
                 }
               }}
             >
-              <option value="">세션 선택</option>
+              <option value="">
+                {loadingSessions
+                  ? "세션 목록 불러오는 중"
+                  : sessions.length === 0
+                    ? "종료된 세션 없음"
+                    : "세션 선택"}
+              </option>
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {session.title} · {formatSessionStatus(session.status)}
+                  {session.title}
                 </option>
               ))}
             </select>

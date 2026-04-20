@@ -67,14 +67,6 @@ function formatDraftStatus(status: string | null | undefined) {
   return STATUS_LABELS[status] ?? status;
 }
 
-function formatMyRole(role: string | null | undefined) {
-  if (role === "PICKER") {
-    return "PICKER";
-  }
-
-  return "권한 없음";
-}
-
 function formatUserRole(role: string | null | undefined) {
   switch (role) {
     case "ROLE_MASTER":
@@ -322,7 +314,7 @@ function TeamCard({
           : "border-line bg-surface-strong",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3">
         <div>
           <p className="text-lg font-semibold text-foreground">{draftTeam.teamName}</p>
           <p className="mt-1 text-sm text-muted">
@@ -330,9 +322,6 @@ function TeamCard({
             {isCurrentTeam ? " · 현재 차례" : ""}
           </p>
         </div>
-        <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-muted">
-          #{draftTeam.displayOrder}
-        </span>
       </div>
 
       <div className="mt-4 rounded-2xl border border-line/80 bg-surface px-4 py-4">
@@ -340,11 +329,9 @@ function TeamCard({
           Picker
         </p>
         <p className="mt-2 text-sm font-semibold text-foreground">
-          {draftTeam.pickerName ?? "미지정"}
+          {draftTeam.pickerName ? "지정됨" : "미지정"}
         </p>
-        <p className="mt-1 text-xs text-muted">
-          {draftTeam.pickerName ? "지정됨" : "아직 지정되지 않음"}
-        </p>
+        <p className="mt-1 text-xs text-muted">이름 비공개</p>
       </div>
 
       <div className="mt-5 space-y-2">
@@ -367,9 +354,7 @@ function TeamCard({
                   #{player.pickNo}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-muted">
-                {player.pickedByUserName} · {formatDateTime(player.pickedAt)}
-              </p>
+              <p className="mt-1 text-xs text-muted">{formatDateTime(player.pickedAt)}</p>
             </div>
           ))
         )}
@@ -387,48 +372,40 @@ function CandidateCard({
   canPick: boolean;
   candidate: DraftCandidate;
   pendingAction: string | null;
-  onPick: (candidateUserId: number, candidateName: string) => Promise<void>;
+  onPick: (candidateUserId: number) => Promise<void>;
 }) {
   const actionKey = `pick-${candidate.candidateUserId}`;
 
   return (
     <article className="rounded-[20px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.72)_100%)] px-4 py-4 shadow-[0_16px_40px_-34px_rgba(31,42,40,0.7)]">
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] md:items-center">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
             아이디
           </p>
-          <p className="mt-1 truncate text-sm font-semibold text-foreground">
+          <p className="mt-1 truncate text-base font-semibold text-foreground">
             {candidate.candidateName}
           </p>
         </div>
-
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-            종족
-          </p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
-            {candidate.race || "-"}
-          </p>
-        </div>
-
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-            티어
-          </p>
-          <p className="mt-1 text-sm font-semibold text-foreground">-</p>
-        </div>
-
         <Button
           variant="accent"
           disabled={!canPick || pendingAction !== null}
           onClick={() => {
-            void onPick(candidate.candidateUserId, candidate.candidateName);
+            void onPick(candidate.candidateUserId);
           }}
-          className="min-w-20 whitespace-nowrap"
+          className="shrink-0 min-w-20 whitespace-nowrap"
         >
           {pendingAction === actionKey ? "지명 중" : "지명"}
         </Button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <div className="rounded-full bg-surface px-3 py-1.5 text-sm text-muted">
+          종족 <span className="font-semibold text-foreground">{candidate.race || "-"}</span>
+        </div>
+        <div className="rounded-full bg-surface px-3 py-1.5 text-sm text-muted">
+          티어 <span className="font-semibold text-foreground">-</span>
+        </div>
       </div>
     </article>
   );
@@ -695,7 +672,7 @@ export function DraftLiveDashboard({
     }
   }
 
-  async function handlePick(candidateUserId: number, candidateName: string) {
+  async function handlePick(candidateUserId: number) {
     if (selectedSessionId === null) {
       return;
     }
@@ -704,7 +681,7 @@ export function DraftLiveDashboard({
     await runSnapshotAction(
       `pick-${candidateUserId}`,
       () => pickDraftCandidate(sessionId, candidateUserId),
-      `${candidateName} 지명을 반영했다.`,
+      "지명을 반영했다.",
     );
   }
 
@@ -728,6 +705,11 @@ export function DraftLiveDashboard({
   const myTeam = teams.find((team) => team.id === snapshot?.permissions?.myTeamId) ?? null;
   const canControl = snapshot?.permissions?.canControl ?? false;
   const canPick = snapshot?.permissions?.canPick ?? false;
+  const viewerRole = canControl
+    ? formatUserRole(user?.role)
+    : snapshot?.permissions?.myRole === "PICKER"
+      ? "PICKER"
+      : null;
   const isBusy = pendingAction !== null;
   const remainingSeconds = calculateRemainingSeconds(
     snapshot,
@@ -752,6 +734,12 @@ export function DraftLiveDashboard({
               <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
                 {CONNECTION_LABELS[connectionState]}
               </span>
+              {user?.username ? (
+                <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
+                  ID {user.username}
+                  {viewerRole ? ` · ${viewerRole}` : ""}
+                </span>
+              ) : null}
             </div>
             <h2 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               {snapshot?.currentTurn
@@ -821,7 +809,7 @@ export function DraftLiveDashboard({
                 </div>
               ) : snapshot ? (
                 <>
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {[
                       {
                         label: "진행률",
@@ -836,21 +824,9 @@ export function DraftLiveDashboard({
                           : "시작 대기",
                       },
                       {
-                        label: "픽 권한",
-                        value: canPick
-                          ? "지명 가능"
-                          : canControl
-                            ? "관리 가능"
-                            : "관전",
-                        subtext:
-                          snapshot.permissions?.myRole === "PICKER"
-                            ? "PICKER"
-                            : "권한 없음",
-                      },
-                      {
                         label: "내 팀",
                         value: myTeam?.teamName ?? "-",
-                        subtext: user?.username ? `${user.username}` : "로그인 사용자",
+                        subtext: canPick ? "지명 가능" : canControl ? "세션 제어 가능" : "관전",
                       },
                     ].map((stat) => (
                       <div
@@ -891,9 +867,9 @@ export function DraftLiveDashboard({
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+              <div className="mt-5 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {filteredCandidates.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm leading-7 text-muted lg:col-span-2">
+                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm leading-7 text-muted md:col-span-2 2xl:col-span-3">
                     {snapshot && snapshot.availableCandidates.length === 0
                       ? "남아 있는 후보가 없다."
                       : "검색 조건에 맞는 후보가 없다."}
@@ -936,28 +912,10 @@ export function DraftLiveDashboard({
 
       <div className="grid gap-4">
         <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">운영 정보</p>
-          <p className="mt-3 text-sm leading-7 text-muted">
-            관리자는 세션 제어를, 픽커는 실제 지명을 담당한다.
-          </p>
+          <p className="text-sm font-semibold text-foreground">세션 제어</p>
 
           {snapshot ? (
             <div className="mt-5 space-y-4">
-              <div className="rounded-[22px] bg-surface-muted px-4 py-4">
-                <p className="text-sm font-semibold text-foreground">
-                  {user?.username ?? "로그인 사용자"}
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  계정 권한: {formatUserRole(user?.role)}
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  드래프트 권한: {formatMyRole(snapshot.permissions?.myRole)}
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  {myTeam?.teamName ?? "소속 팀 없음"}
-                </p>
-              </div>
-
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button
                   variant="accent"
@@ -1127,15 +1085,12 @@ export function DraftLiveDashboard({
 
               {!canControl ? (
                 <p className="rounded-[18px] bg-surface-muted px-4 py-3 text-sm leading-7 text-muted">
-                  이 계정은 세션 제어 권한이 없다. `ROLE_MASTER`, `ROLE_MANAGER`,
-                  `ROLE_ADMIN` 계정만 사용할 수 있다.
+                  이 계정은 세션 제어 권한이 없다.
                 </p>
               ) : null}
             </div>
           ) : (
-            <p className="mt-4 text-sm leading-7 text-muted">
-              세션을 선택하면 운영 정보가 표시된다.
-            </p>
+            <p className="mt-4 text-sm leading-7 text-muted">세션을 선택해 달라.</p>
           )}
         </SurfaceCard>
 
@@ -1156,9 +1111,7 @@ export function DraftLiveDashboard({
                       #{pick.pickNo}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-muted">
-                    {pick.draftTeamName} · {pick.pickedByUserName}
-                  </p>
+                    <p className="mt-1 text-sm text-muted">{pick.draftTeamName}</p>
                   <p className="mt-1 text-xs text-muted">
                     {formatDateTime(pick.pickedAt)}
                   </p>
@@ -1194,11 +1147,9 @@ export function DraftLiveDashboard({
                 Current Picker
               </p>
               <p className="mt-2 text-lg font-semibold text-foreground">
-                {currentTeam?.pickerName ?? "-"}
-              </p>
-              <p className="mt-1 text-sm text-muted">
                 {currentTeam?.pickerName ? "지정됨" : "미지정"}
               </p>
+              <p className="mt-1 text-sm text-muted">이름 비공개</p>
             </div>
 
             <div className="rounded-[22px] bg-surface-muted px-4 py-4">

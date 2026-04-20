@@ -1,7 +1,11 @@
 "use client";
 
 import { readStoredToken } from "@/lib/auth/auth-storage";
-import { buildDraftWebSocketUrl, type DraftLiveEvent } from "@/lib/api/draft";
+import {
+  buildDraftWebSocketUrl,
+  type DraftLiveEvent,
+  type DraftLivePreviewPayload,
+} from "@/lib/api/draft";
 
 type ConnectionState =
   | "connecting"
@@ -23,11 +27,30 @@ type StompFrame = {
   body: string;
 };
 
+export type DraftSessionSubscription = {
+  sendPreview: (payload: DraftLivePreviewPayload) => boolean;
+  unsubscribe: () => void;
+};
+
 function buildFrame(command: string, headers: Record<string, string>, body = "") {
   const headerLines = Object.entries(headers).map(([key, value]) => `${key}:${value}`);
   const head = [command, ...headerLines].join("\n");
 
   return `${head}\n\n${body}\u0000`;
+}
+
+export function buildDraftPreviewSendFrame(
+  sessionId: number,
+  payload: DraftLivePreviewPayload,
+) {
+  return buildFrame(
+    "SEND",
+    {
+      destination: `/app/drafts/${sessionId}/preview`,
+      "content-type": "application/json",
+    },
+    JSON.stringify(payload),
+  );
 }
 
 function parseFrame(rawFrame: string) {
@@ -100,6 +123,7 @@ export function subscribeToDraftSession({
   let reconnectAttempt = 0;
   let pendingChunk = "";
   let disposed = false;
+  let stompConnected = false;
 
   function scheduleReconnect() {
     if (disposed) {
@@ -129,6 +153,7 @@ export function subscribeToDraftSession({
     }
 
     if (frame.command === "CONNECTED") {
+      stompConnected = true;
       reconnectAttempt = 0;
       onStateChange?.("connected");
       socket.send(
@@ -158,6 +183,7 @@ export function subscribeToDraftSession({
   function connect() {
     cleanupReconnectTimer();
     pendingChunk = "";
+    stompConnected = false;
     onStateChange?.(reconnectAttempt === 0 ? "connecting" : "reconnecting");
     socket = new WebSocket(wsUrl);
 
@@ -192,10 +218,12 @@ export function subscribeToDraftSession({
     };
 
     socket.onerror = () => {
+      stompConnected = false;
       onStateChange?.("error");
     };
 
     socket.onclose = () => {
+      stompConnected = false;
       socket = null;
 
       if (disposed) {
@@ -209,9 +237,24 @@ export function subscribeToDraftSession({
 
   connect();
 
-  return () => {
+  function sendPreview(payload: DraftLivePreviewPayload) {
+    if (
+      disposed ||
+      !socket ||
+      socket.readyState !== WebSocket.OPEN ||
+      !stompConnected
+    ) {
+      return false;
+    }
+
+    socket.send(buildDraftPreviewSendFrame(sessionId, payload));
+    return true;
+  }
+
+  function unsubscribe() {
     disposed = true;
     cleanupReconnectTimer();
+    stompConnected = false;
 
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(
@@ -224,5 +267,10 @@ export function subscribeToDraftSession({
     }
 
     socket?.close();
-  };
+  }
+
+  return {
+    sendPreview,
+    unsubscribe,
+  } satisfies DraftSessionSubscription;
 }

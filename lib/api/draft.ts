@@ -106,6 +106,29 @@ export type DraftLivePermissions = {
   myRole: string | null;
 };
 
+export type DraftLivePreviewPhase = "START" | "MOVE" | "END";
+
+export type DraftLivePreviewEndReason =
+  | "RELEASED"
+  | "CURSOR_LEFT"
+  | "TURN_CHANGED"
+  | "SESSION_PAUSED"
+  | "SESSION_FINISHED"
+  | "DISCONNECTED";
+
+export type DraftLiveNormalizedPosition = {
+  x: number;
+  y: number;
+};
+
+export type DraftLivePreviewPayload = {
+  candidateUserId: number;
+  phase: DraftLivePreviewPhase;
+  endReason?: DraftLivePreviewEndReason | null;
+  cursorPosition: DraftLiveNormalizedPosition | null;
+  cardPosition: DraftLiveNormalizedPosition | null;
+};
+
 export type DraftLiveSnapshot = {
   session: DraftLiveSessionInfo;
   currentTurn: DraftLiveCurrentTurn | null;
@@ -124,6 +147,7 @@ export type DraftLiveEvent = {
   actorUserId: number | null;
   message: string | null;
   snapshot: DraftLiveSnapshot | null;
+  preview?: DraftLivePreviewPayload | null;
 };
 
 export type DraftSessionDetail = {

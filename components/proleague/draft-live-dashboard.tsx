@@ -2,6 +2,7 @@
 
 import {
   startTransition,
+  type PointerEvent as ReactPointerEvent,
   useDeferredValue,
   useEffect,
   useRef,
@@ -20,6 +21,8 @@ import {
   skipDraftTurn,
   startDraftSession,
   type DraftCandidate,
+  type DraftLiveNormalizedPosition,
+  type DraftLivePreviewEndReason,
   type DraftLiveSessionInfo,
   type DraftLiveSnapshot,
   type DraftLiveTeam,
@@ -316,6 +319,185 @@ function getStatusBadgeClassName(status: string | null | undefined) {
   }
 }
 
+type LocalDraftPreviewState = {
+  candidateUserId: number;
+  candidateName: string;
+  race: string | null;
+  cursorPosition: DraftLiveNormalizedPosition;
+  cardPosition: DraftLiveNormalizedPosition;
+  cardWidth: number;
+  pointerOffsetPx: {
+    x: number;
+    y: number;
+  };
+};
+
+type RemoteDraftPreviewState = {
+  actorUserId: number;
+  candidateUserId: number;
+  cursorPosition: DraftLiveNormalizedPosition | null;
+  cardPosition: DraftLiveNormalizedPosition | null;
+  turnKey: string;
+};
+
+const REMOTE_PREVIEW_CARD_WIDTH_PX = 248;
+const MIN_PREVIEW_CARD_WIDTH_PX = 220;
+const MAX_PREVIEW_CARD_WIDTH_PX = 320;
+
+function clampNormalizedCoordinate(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
+
+function toViewportNormalizedPosition(
+  clientX: number,
+  clientY: number,
+): DraftLiveNormalizedPosition {
+  const viewportWidth = Math.max(window.innerWidth, 1);
+  const viewportHeight = Math.max(window.innerHeight, 1);
+
+  return {
+    x: clampNormalizedCoordinate(clientX / viewportWidth),
+    y: clampNormalizedCoordinate(clientY / viewportHeight),
+  };
+}
+
+function toViewportCardPosition(
+  clientX: number,
+  clientY: number,
+  pointerOffsetPx: {
+    x: number;
+    y: number;
+  },
+) {
+  return toViewportNormalizedPosition(
+    clientX - pointerOffsetPx.x,
+    clientY - pointerOffsetPx.y,
+  );
+}
+
+function resolvePreviewCardWidth(width: number) {
+  return Math.min(
+    MAX_PREVIEW_CARD_WIDTH_PX,
+    Math.max(MIN_PREVIEW_CARD_WIDTH_PX, Math.round(width)),
+  );
+}
+
+function readPreviewAutoEndReason(options: {
+  canPick: boolean;
+  connectionState: ConnectionState;
+  sessionStatus: string | null | undefined;
+}): DraftLivePreviewEndReason {
+  if (options.sessionStatus === "PAUSED") {
+    return "SESSION_PAUSED";
+  }
+
+  if (options.sessionStatus === "FINISHED") {
+    return "SESSION_FINISHED";
+  }
+
+  if (options.connectionState !== "connected") {
+    return "DISCONNECTED";
+  }
+
+  if (!options.canPick) {
+    return "TURN_CHANGED";
+  }
+
+  return "RELEASED";
+}
+
+function isBlockedPreviewTarget(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    Boolean(
+      target.closest(
+        "button, a, input, textarea, select, [data-no-preview-drag='true']",
+      ),
+    )
+  );
+}
+
+function PreviewCursor({
+  actorUserId,
+  position,
+}: {
+  actorUserId: number;
+  position: DraftLiveNormalizedPosition | null;
+}) {
+  if (!position) {
+    return null;
+  }
+
+  return (
+    <div
+      className="pointer-events-none fixed z-50 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
+      style={{
+        left: `${position.x * 100}vw`,
+        top: `${position.y * 100}vh`,
+      }}
+    >
+      <div className="h-3.5 w-3.5 rounded-full border-2 border-white bg-accent shadow-[0_10px_25px_-18px_rgba(31,42,40,0.9)]" />
+      <div className="mt-2 rounded-full bg-foreground px-2.5 py-1 text-[11px] font-semibold text-white">
+        Picker #{actorUserId}
+      </div>
+    </div>
+  );
+}
+
+function PreviewGhostCard({
+  actorLabel,
+  candidateName,
+  cardWidth,
+  position,
+  race,
+  tone = "remote",
+}: {
+  actorLabel: string;
+  candidateName: string;
+  cardWidth: number;
+  position: DraftLiveNormalizedPosition | null;
+  race: string | null;
+  tone?: "local" | "remote";
+}) {
+  if (!position) {
+    return null;
+  }
+
+  return (
+    <div
+      className="pointer-events-none fixed z-40"
+      style={{
+        left: `${position.x * 100}vw`,
+        top: `${position.y * 100}vh`,
+        width: `${cardWidth}px`,
+      }}
+    >
+      <div
+        className={cn(
+          "rounded-[20px] border px-4 py-4 shadow-[0_22px_60px_-40px_rgba(31,42,40,0.82)] backdrop-blur-sm",
+          tone === "local"
+            ? "border-accent/30 bg-white/92"
+            : "border-line/80 bg-white/90",
+        )}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+              {actorLabel}
+            </p>
+            <p className="mt-1 truncate text-base font-semibold text-foreground">
+              {candidateName}
+            </p>
+          </div>
+          <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-muted">
+            {race || "-"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TeamCard({
   currentTeamId,
   draftTeam,
@@ -385,19 +567,42 @@ function TeamCard({
 
 function CandidateCard({
   canPick,
+  canPreviewDrag,
   candidate,
+  isDragging,
   pendingAction,
   onPick,
+  onPreviewPointerDown,
 }: {
   canPick: boolean;
+  canPreviewDrag: boolean;
   candidate: DraftCandidate;
+  isDragging: boolean;
   pendingAction: string | null;
   onPick: (candidateUserId: number) => Promise<void>;
+  onPreviewPointerDown: (
+    event: ReactPointerEvent<HTMLElement>,
+    candidate: DraftCandidate,
+  ) => void;
 }) {
   const actionKey = `pick-${candidate.candidateUserId}`;
+  const canInteractPreview = canPreviewDrag && pendingAction === null;
 
   return (
-    <article className="rounded-[20px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.72)_100%)] px-4 py-4 shadow-[0_16px_40px_-34px_rgba(31,42,40,0.7)]">
+    <article
+      className={cn(
+        "rounded-[20px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.72)_100%)] px-4 py-4 shadow-[0_16px_40px_-34px_rgba(31,42,40,0.7)]",
+        canInteractPreview && "cursor-grab touch-none select-none",
+        isDragging && "cursor-grabbing opacity-45",
+      )}
+      onPointerDown={(event) => {
+        if (!canInteractPreview) {
+          return;
+        }
+
+        onPreviewPointerDown(event, candidate);
+      }}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
@@ -408,6 +613,7 @@ function CandidateCard({
           </p>
         </div>
         <Button
+          data-no-preview-drag="true"
           variant="accent"
           disabled={!canPick || pendingAction !== null}
           onClick={() => {
@@ -456,8 +662,196 @@ export function DraftLiveDashboard({
     useState<ConnectionState>("disconnected");
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const [nowTickMs, setNowTickMs] = useState(() => Date.now());
+  const [remotePreviews, setRemotePreviews] = useState<
+    Record<number, RemoteDraftPreviewState>
+  >({});
+  const [localPreview, setLocalPreview] = useState<LocalDraftPreviewState | null>(
+    null,
+  );
   const sessionsRequestRef = useRef(0);
   const snapshotRequestRef = useRef(0);
+  const draftSessionConnectionRef =
+    useRef<ReturnType<typeof subscribeToDraftSession> | null>(null);
+  const localPreviewRef = useRef<LocalDraftPreviewState | null>(null);
+  const pendingLocalPreviewRef = useRef<LocalDraftPreviewState | null>(null);
+  const localPreviewAnimationFrameRef = useRef<number | null>(null);
+  const localPreviewCleanupRef = useRef<(() => void) | null>(null);
+  const canPickRef = useRef(false);
+  const currentPreviewKeyRef = useRef<string | null>(null);
+
+  function clearLocalPreviewAnimationFrame() {
+    if (localPreviewAnimationFrameRef.current === null) {
+      return;
+    }
+
+    window.cancelAnimationFrame(localPreviewAnimationFrameRef.current);
+    localPreviewAnimationFrameRef.current = null;
+  }
+
+  function clearLocalPreviewListeners() {
+    if (!localPreviewCleanupRef.current) {
+      return;
+    }
+
+    localPreviewCleanupRef.current();
+    localPreviewCleanupRef.current = null;
+  }
+
+  function resetLocalPreviewState() {
+    clearLocalPreviewAnimationFrame();
+    clearLocalPreviewListeners();
+    pendingLocalPreviewRef.current = null;
+    localPreviewRef.current = null;
+    setLocalPreview(null);
+  }
+
+  function endLocalPreview(endReason: DraftLivePreviewEndReason) {
+    const activePreview = localPreviewRef.current;
+
+    clearLocalPreviewAnimationFrame();
+    clearLocalPreviewListeners();
+    pendingLocalPreviewRef.current = null;
+    localPreviewRef.current = null;
+    setLocalPreview(null);
+
+    if (!activePreview) {
+      return;
+    }
+
+    draftSessionConnectionRef.current?.sendPreview({
+      candidateUserId: activePreview.candidateUserId,
+      phase: "END",
+      endReason,
+      cursorPosition: activePreview.cursorPosition,
+      cardPosition: activePreview.cardPosition,
+    });
+  }
+
+  function scheduleLocalPreviewMove(clientX: number, clientY: number) {
+    const activePreview = localPreviewRef.current;
+
+    if (!activePreview) {
+      return;
+    }
+
+    pendingLocalPreviewRef.current = {
+      ...activePreview,
+      cursorPosition: toViewportNormalizedPosition(clientX, clientY),
+      cardPosition: toViewportCardPosition(
+        clientX,
+        clientY,
+        activePreview.pointerOffsetPx,
+      ),
+    };
+
+    if (localPreviewAnimationFrameRef.current !== null) {
+      return;
+    }
+
+    localPreviewAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      localPreviewAnimationFrameRef.current = null;
+      const nextPreview = pendingLocalPreviewRef.current;
+
+      if (!nextPreview) {
+        return;
+      }
+
+      pendingLocalPreviewRef.current = null;
+      localPreviewRef.current = nextPreview;
+      setLocalPreview(nextPreview);
+      draftSessionConnectionRef.current?.sendPreview({
+        candidateUserId: nextPreview.candidateUserId,
+        phase: "MOVE",
+        cursorPosition: nextPreview.cursorPosition,
+        cardPosition: nextPreview.cardPosition,
+      });
+    });
+  }
+
+  function handleCandidatePreviewPointerDown(
+    event: ReactPointerEvent<HTMLElement>,
+    candidate: DraftCandidate,
+  ) {
+    if (isBlockedPreviewTarget(event.target)) {
+      return;
+    }
+
+    if (!event.isPrimary || event.button !== 0) {
+      return;
+    }
+
+    const cardElement = event.currentTarget;
+    const cardRect = cardElement.getBoundingClientRect();
+    const pointerOffsetPx = {
+      x: event.clientX - cardRect.left,
+      y: event.clientY - cardRect.top,
+    };
+    const nextPreview: LocalDraftPreviewState = {
+      candidateUserId: candidate.candidateUserId,
+      candidateName: candidate.candidateName,
+      race: candidate.race,
+      cursorPosition: toViewportNormalizedPosition(event.clientX, event.clientY),
+      cardPosition: toViewportCardPosition(
+        event.clientX,
+        event.clientY,
+        pointerOffsetPx,
+      ),
+      cardWidth: resolvePreviewCardWidth(cardRect.width),
+      pointerOffsetPx,
+    };
+
+    event.preventDefault();
+    clearLocalPreviewAnimationFrame();
+    clearLocalPreviewListeners();
+    pendingLocalPreviewRef.current = null;
+    localPreviewRef.current = nextPreview;
+    setLocalPreview(nextPreview);
+    draftSessionConnectionRef.current?.sendPreview({
+      candidateUserId: nextPreview.candidateUserId,
+      phase: "START",
+      cursorPosition: nextPreview.cursorPosition,
+      cardPosition: nextPreview.cardPosition,
+    });
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      scheduleLocalPreviewMove(moveEvent.clientX, moveEvent.clientY);
+    };
+    const handlePointerUp = () => {
+      endLocalPreview("RELEASED");
+    };
+    const handlePointerCancel = () => {
+      endLocalPreview("CURSOR_LEFT");
+    };
+    const handleWindowMouseOut = (moveEvent: MouseEvent) => {
+      if (moveEvent.relatedTarget === null) {
+        endLocalPreview("CURSOR_LEFT");
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        endLocalPreview("CURSOR_LEFT");
+      }
+    };
+    const handleBlur = () => {
+      endLocalPreview("CURSOR_LEFT");
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
+    window.addEventListener("mouseout", handleWindowMouseOut);
+    window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    localPreviewCleanupRef.current = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
+      window.removeEventListener("mouseout", handleWindowMouseOut);
+      window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -546,7 +940,9 @@ export function DraftLiveDashboard({
       );
       setServerOffsetMs(0);
       setConnectionState("disconnected");
+      setRemotePreviews({});
     });
+    resetLocalPreviewState();
   }
 
   useEffect(() => {
@@ -620,10 +1016,14 @@ export function DraftLiveDashboard({
     const sessionId = selectedSessionId;
     let disposed = false;
 
-    const unsubscribe = subscribeToDraftSession({
+    const connection = subscribeToDraftSession({
       sessionId,
       onStateChange: (state) => {
         setConnectionState(state);
+
+        if (state !== "connected" && localPreviewRef.current) {
+          endLocalPreview("DISCONNECTED");
+        }
       },
       onError: (message) => {
         setNotice({
@@ -632,8 +1032,62 @@ export function DraftLiveDashboard({
         });
       },
       onEvent: (event) => {
+        if (event.type === "DRAG_PREVIEW" && event.preview) {
+          const actorUserId = event.actorUserId;
+          const preview = event.preview;
+
+          if (typeof actorUserId !== "number" || canPickRef.current) {
+            return;
+          }
+
+          if (preview.phase === "END") {
+            setRemotePreviews((currentPreviews) => {
+              if (!currentPreviews[actorUserId]) {
+                return currentPreviews;
+              }
+
+              const nextPreviews = { ...currentPreviews };
+              delete nextPreviews[actorUserId];
+              return nextPreviews;
+            });
+            return;
+          }
+
+          const turnKey = currentPreviewKeyRef.current;
+
+          if (!turnKey) {
+            return;
+          }
+
+          setRemotePreviews((currentPreviews) => ({
+            ...currentPreviews,
+            [actorUserId]: {
+              actorUserId,
+              candidateUserId: preview.candidateUserId,
+              cursorPosition: preview.cursorPosition,
+              cardPosition: preview.cardPosition,
+              turnKey,
+            },
+          }));
+          return;
+        }
+
         if (event.snapshot) {
           const broadcastSnapshot = event.snapshot;
+
+          if (
+            localPreviewRef.current &&
+            (broadcastSnapshot.session.status !== "LIVE" ||
+              !(broadcastSnapshot.permissions?.canPick ?? false))
+          ) {
+            endLocalPreview(
+              readPreviewAutoEndReason({
+                canPick: broadcastSnapshot.permissions?.canPick ?? false,
+                connectionState: "connected",
+                sessionStatus: broadcastSnapshot.session.status,
+              }),
+            );
+          }
 
           startTransition(() => {
             setSnapshot((currentSnapshot) => ({
@@ -690,10 +1144,20 @@ export function DraftLiveDashboard({
         }
       },
     });
+    draftSessionConnectionRef.current = connection;
 
     return () => {
       disposed = true;
-      unsubscribe();
+
+      if (draftSessionConnectionRef.current === connection) {
+        endLocalPreview("DISCONNECTED");
+        draftSessionConnectionRef.current = null;
+      } else {
+        resetLocalPreviewState();
+      }
+
+      setRemotePreviews({});
+      connection.unsubscribe();
     };
   }, [selectedSessionId]);
 
@@ -787,6 +1251,7 @@ export function DraftLiveDashboard({
       return;
     }
 
+    endLocalPreview("RELEASED");
     const sessionId = selectedSessionId;
     await runSnapshotAction(
       `pick-${candidateUserId}`,
@@ -826,6 +1291,37 @@ export function DraftLiveDashboard({
     nowTickMs,
     serverOffsetMs,
   );
+  const canPreviewDrag =
+    canPick &&
+    !isBusy &&
+    snapshot?.session.status === "LIVE" &&
+    connectionState === "connected";
+  const currentPreviewKey =
+    selectedSessionId !== null &&
+    snapshot?.session.status === "LIVE" &&
+    typeof snapshot.session.currentPickNo === "number"
+      ? `${selectedSessionId}:${snapshot.session.currentPickNo}`
+      : null;
+  const candidateLookup = [
+    ...(snapshot?.availableCandidates ?? []),
+    ...(snapshot?.pickedCandidates ?? []),
+  ].reduce<Record<number, DraftCandidate>>((lookup, candidate) => {
+    lookup[candidate.candidateUserId] = candidate;
+    return lookup;
+  }, {});
+  const remotePreviewEntries = currentPreviewKey
+    ? Object.values(remotePreviews).filter(
+        (preview) => preview.turnKey === currentPreviewKey,
+      )
+    : [];
+
+  useEffect(() => {
+    canPickRef.current = canPick;
+  }, [canPick]);
+
+  useEffect(() => {
+    currentPreviewKeyRef.current = currentPreviewKey;
+  }, [currentPreviewKey]);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -989,9 +1485,14 @@ export function DraftLiveDashboard({
                     <CandidateCard
                       key={candidate.candidateUserId}
                       canPick={canPick}
+                      canPreviewDrag={canPreviewDrag}
                       candidate={candidate}
+                      isDragging={
+                        localPreview?.candidateUserId === candidate.candidateUserId
+                      }
                       pendingAction={pendingAction}
                       onPick={handlePick}
+                      onPreviewPointerDown={handleCandidatePreviewPointerDown}
                     />
                   ))
                 )}
@@ -1307,6 +1808,39 @@ export function DraftLiveDashboard({
           </div>
         </SurfaceCard>
       </div>
+
+      {localPreview ? (
+        <PreviewGhostCard
+          actorLabel="Preview"
+          candidateName={localPreview.candidateName}
+          cardWidth={localPreview.cardWidth}
+          position={localPreview.cardPosition}
+          race={localPreview.race}
+          tone="local"
+        />
+      ) : null}
+
+      {remotePreviewEntries.map((preview) => {
+        const candidate = candidateLookup[preview.candidateUserId];
+
+        return (
+          <div key={preview.actorUserId}>
+            <PreviewCursor
+              actorUserId={preview.actorUserId}
+              position={preview.cursorPosition}
+            />
+            <PreviewGhostCard
+              actorLabel={`Picker #${preview.actorUserId}`}
+              candidateName={
+                candidate?.candidateName ?? `Candidate #${preview.candidateUserId}`
+              }
+              cardWidth={REMOTE_PREVIEW_CARD_WIDTH_PX}
+              position={preview.cardPosition}
+              race={candidate?.race ?? null}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -814,7 +814,7 @@ export function DraftLiveDashboard({
                       {
                         label: "진행률",
                         value: `${snapshot.pickedCandidates.length}/${totalCandidates}`,
-                        subtext: "완료 / 전체 후보",
+                        subtext: "완료 / 전체 드래프트 인원",
                       },
                       {
                         label: "현재 픽",
@@ -854,7 +854,7 @@ export function DraftLiveDashboard({
                     드래프트 선수 추가
                   </h2>
                   <p className="mt-2 text-sm leading-7 text-muted">
-                    후보를 검색하고 현재 픽 권한이 있으면 바로 지명할 수 있다.
+                    드래프트 인원을 검색하고 현재 픽 권한이 있으면 바로 지명할 수 있다.
                   </p>
                 </div>
 
@@ -871,8 +871,8 @@ export function DraftLiveDashboard({
                 {filteredCandidates.length === 0 ? (
                   <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm leading-7 text-muted md:col-span-2 2xl:col-span-3">
                     {snapshot && snapshot.availableCandidates.length === 0
-                      ? "남아 있는 후보가 없다."
-                      : "검색 조건에 맞는 후보가 없다."}
+                      ? "남아 있는 드래프트 인원이 없다."
+                      : "검색 조건에 맞는 드래프트 인원이 없다."}
                   </div>
                 ) : (
                   filteredCandidates.map((candidate) => (

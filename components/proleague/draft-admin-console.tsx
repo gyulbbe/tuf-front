@@ -72,6 +72,23 @@ type CandidateFormState = {
   selectedUser: DraftUserSearchResult | null;
 };
 
+type CandidateDirectoryEntry = {
+  userId: string;
+  tier: string | null;
+  race: string | null;
+};
+
+type CandidateListItem = {
+  candidate: DraftCandidate;
+  raceLabel: string;
+  userId: string;
+};
+
+type CandidateTierGroup = {
+  items: CandidateListItem[];
+  tierLabel: string;
+};
+
 type TeamEditState = {
   teamName: string;
   displayOrder: string;
@@ -285,6 +302,95 @@ function sortCandidates(candidates: DraftCandidate[]) {
   });
 }
 
+function findCandidateDirectoryMatch(
+  users: DraftUserSearchResult[],
+  candidate: DraftCandidate,
+) {
+  const normalizedName = candidate.candidateName.trim().toLowerCase();
+
+  return (
+    users.find((user) => user.id === candidate.candidateUserId) ??
+    users.find((user) => user.userId.trim().toLowerCase() === normalizedName) ??
+    null
+  );
+}
+
+function getTierLabel(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized.toUpperCase() : "미정";
+}
+
+function compareTierLabel(left: string, right: string) {
+  if (left === right) {
+    return 0;
+  }
+
+  if (left === "미정") {
+    return 1;
+  }
+
+  if (right === "미정") {
+    return -1;
+  }
+
+  return left.localeCompare(right, "en");
+}
+
+function buildCandidateTierGroups(
+  candidates: DraftCandidate[],
+  candidateDirectory: Record<number, CandidateDirectoryEntry | null>,
+) {
+  const items = candidates
+    .map((candidate) => {
+      const directoryEntry = candidateDirectory[candidate.candidateUserId];
+      const normalizedRace = normalizeRace(directoryEntry?.race ?? candidate.race);
+
+      return {
+        candidate,
+        raceLabel: normalizedRace ?? candidate.race?.trim() ?? "-",
+        tierLabel: getTierLabel(directoryEntry?.tier),
+        userId:
+          directoryEntry?.userId.trim() ||
+          candidate.candidateName.trim() ||
+          String(candidate.candidateUserId),
+      };
+    })
+    .sort((left, right) => {
+      const tierGap = compareTierLabel(left.tierLabel, right.tierLabel);
+
+      if (tierGap !== 0) {
+        return tierGap;
+      }
+
+      return left.userId.localeCompare(right.userId, "ko");
+    });
+
+  return items.reduce<CandidateTierGroup[]>((groups, item) => {
+    const lastGroup = groups[groups.length - 1];
+
+    if (!lastGroup || lastGroup.tierLabel !== item.tierLabel) {
+      groups.push({
+        items: [
+          {
+            candidate: item.candidate,
+            raceLabel: item.raceLabel,
+            userId: item.userId,
+          },
+        ],
+        tierLabel: item.tierLabel,
+      });
+      return groups;
+    }
+
+    lastGroup.items.push({
+      candidate: item.candidate,
+      raceLabel: item.raceLabel,
+      userId: item.userId,
+    });
+    return groups;
+  }, []);
+}
+
 function sortOrders(orders: DraftOrder[]) {
   return [...orders].sort((left, right) => left.pickNo - right.pickNo);
 }
@@ -405,6 +511,35 @@ function formatOrderPlanPreview(plan: GeneratedOrderPlanItem[]) {
     .join(" → ");
 }
 
+function detectOrderGenerationMode(
+  orders: DraftOrder[],
+  teams: DraftLiveTeam[],
+): OrderGenerationMode | null {
+  if (orders.length === 0 || teams.length === 0) {
+    return null;
+  }
+
+  for (const mode of ["basic", "snake"] as const) {
+    const plan = buildGeneratedOrderPlan(teams, orders.length, mode);
+
+    if (
+      plan.length === orders.length &&
+      orders.every((order, index) => {
+        const planned = plan[index];
+        return (
+          order.pickNo === planned.pickNo &&
+          order.roundNo === planned.roundNo &&
+          order.draftTeamId === planned.draftTeamId
+        );
+      })
+    ) {
+      return mode;
+    }
+  }
+
+  return null;
+}
+
 function getNoticeClassName(tone: NoticeTone) {
   if (tone === "success") {
     return "border border-success-ink/15 bg-success-soft text-success-ink";
@@ -502,7 +637,9 @@ function UserAutocompleteInput({
       setLoading(true);
 
       try {
-        const nextResults = await searchDraftUsers(keyword, 8);
+        const nextResults = (await searchDraftUsers(keyword, 8)).filter((user) =>
+          user.userId.toLowerCase().includes(keyword.toLowerCase()),
+        );
 
         if (cancelled) {
           return;
@@ -636,12 +773,8 @@ function UserAutocompleteInput({
                   }}
                 >
                   <div>
-                    <p className="text-xs font-semibold text-foreground">
+                    <p className="text-sm font-semibold text-foreground">
                       {user.userId}
-                    </p>
-                    <p className="mt-1 text-[11px] text-muted">
-                      {user.tier ?? "-"}
-                      {user.race ? ` · ${user.race}` : ""}
                     </p>
                   </div>
                 </button>
@@ -1161,228 +1294,116 @@ function CandidateComposerClean({
   onCreate: () => Promise<void>;
 }) {
   return (
-    <>
-      <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
-        <div className="grid gap-3">
-          <UserAutocompleteInput
-            value={candidateForm.query}
-            placeholder="user_id 입력 후 검색"
-            onValueChange={(value) => {
-              setCandidateForm((current) => ({
-                ...current,
-                query: value,
-                candidateUserId: "",
-                selectedUser: null,
-              }));
-            }}
-            onSelect={(user) => {
-              setCandidateForm((current) => ({
-                ...current,
-                query: user.userId,
-                candidateUserId: String(user.id),
-                candidateName: current.candidateName || user.userId,
-                race: normalizeRace(user.race) ?? current.race,
-                selectedUser: user,
-              }));
-            }}
-          />
+    <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+      <div className="grid gap-3">
+        <UserAutocompleteInput
+          value={candidateForm.query}
+          placeholder="아이디 검색"
+          onValueChange={(value) => {
+            setCandidateForm((current) => ({
+              ...current,
+              query: value,
+              candidateUserId: "",
+              candidateName: "",
+              selectedUser: null,
+            }));
+          }}
+          onSelect={(user) => {
+            setCandidateForm((current) => ({
+              ...current,
+              query: user.userId,
+              candidateUserId: String(user.id),
+              candidateName: user.userId,
+              race: normalizeRace(user.race) ?? "TERRAN",
+              status: "WAITING",
+              selectedUser: user,
+            }));
+          }}
+        />
 
-          <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
-            {candidateForm.selectedUser ? (
-              <>
-                <p className="font-semibold text-foreground">
-                  선택한 user_id: {candidateForm.selectedUser.userId}
-                </p>
-                <p className="mt-1">이 유저를 후보로 등록한다.</p>
-              </>
-            ) : candidateForm.candidateUserId ? (
-              <>
-                <p className="font-semibold text-foreground">직접 입력한 값이 있다.</p>
-                <p className="mt-1">검색 결과가 없으면 아래 입력칸에 직접 넣을 수 있다.</p>
-              </>
-            ) : (
-              <>
-                <p className="font-semibold text-foreground">
-                  user_id를 치면 아래에 일치하는 유저 목록이 내려온다.
-                </p>
-                <p className="mt-1">목록에서 고르면 후보가 자동 선택된다.</p>
-              </>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              className="text-xs font-semibold text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
-              onClick={() => {
-                setCandidateForm((current) => ({
-                  ...current,
-                  showManualIdInput: !current.showManualIdInput,
-                }));
-              }}
-            >
-              {candidateForm.showManualIdInput ? "직접 입력 닫기" : "검색이 안 되면 직접 입력"}
-            </button>
-          </div>
-
-          {candidateForm.showManualIdInput ? (
-            <Input
-              value={candidateForm.candidateUserId}
-              onChange={(event) => {
-                setCandidateForm((current) => ({
-                  ...current,
-                  candidateUserId: event.target.value,
-                  selectedUser: null,
-                }));
-              }}
-              placeholder="후보 값 직접 입력"
-            />
-          ) : null}
-
-          <Input
-            value={candidateForm.candidateName}
-            onChange={(event) => {
-              setCandidateForm((current) => ({
-                ...current,
-                candidateName: event.target.value,
-              }));
-            }}
-            placeholder="candidateName"
-          />
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <select
-              className={SELECT_CLASS_NAME}
-              value={candidateForm.race}
-              onChange={(event) => {
-                setCandidateForm((current) => ({
-                  ...current,
-                  race: event.target.value,
-                }));
-              }}
-            >
-              {RACE_OPTIONS.map((race) => (
-                <option key={race} value={race}>
-                  {race}
-                </option>
-              ))}
-            </select>
-            <select
-              className={SELECT_CLASS_NAME}
-              value={candidateForm.status}
-              onChange={(event) => {
-                setCandidateForm((current) => ({
-                  ...current,
-                  status: event.target.value,
-                }));
-              }}
-            >
-              {CANDIDATE_STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <Button
-            variant="accent"
-            disabled={
-              pendingAction !== null ||
-              !candidateForm.candidateUserId.trim() ||
-              !candidateForm.candidateName.trim()
-            }
-            onClick={() => {
-              void onCreate();
-            }}
-          >
-            {pendingAction === "candidate-create" ? "등록 중" : "후보 등록"}
-          </Button>
-        </div>
-
-        {candidateForm.selectedUser ? (
-          <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
-            <p className="text-sm font-semibold text-foreground">선택한 유저</p>
-            <p className="mt-1 text-sm text-muted">
-              {candidateForm.selectedUser.userId}
-              {candidateForm.selectedUser.tier
-                ? ` · ${candidateForm.selectedUser.tier}`
-                : ""}
-              {candidateForm.selectedUser.race
-                ? ` · ${candidateForm.selectedUser.race}`
-                : ""}
-            </p>
-            <p className="mt-2 text-xs leading-6 text-muted">
-              검색한 user_id 기준으로 이 유저가 자동 선택됐다.
-            </p>
-          </div>
-        ) : null}
+        <Button
+          variant="accent"
+          disabled={pendingAction !== null || !candidateForm.selectedUser}
+          onClick={() => {
+            void onCreate();
+          }}
+        >
+          {pendingAction === "candidate-create" ? "등록 중" : "드래프트 인원 등록"}
+        </Button>
       </div>
-    </>
+    </div>
   );
 }
 
 function CandidateRowClean({
   candidate,
+  raceLabel,
+  userId,
   pendingAction,
   onDelete,
 }: {
   candidate: DraftCandidate;
+  raceLabel: string;
+  userId: string;
   pendingAction: string | null;
   onDelete: () => Promise<void>;
 }) {
   const isDeleting = pendingAction === `candidate-delete:${candidate.candidateUserId}`;
 
   return (
-    <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-foreground">
-              {candidate.candidateName}
-            </p>
-            <span
-              className={cn(
-                "rounded-full px-3 py-1 text-[11px] font-semibold",
-                getCandidateStatusClassName(candidate.status),
-              )}
-            >
-              {formatCandidateStatus(candidate.status)}
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-muted">
-            {candidate.race ?? "종족 미정"}
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="danger"
-          disabled={pendingAction !== null}
-          onClick={() => {
-            void onDelete();
-          }}
-        >
-          {isDeleting ? "삭제 중" : "삭제"}
-        </Button>
+    <div className="grid grid-cols-[minmax(0,1fr)_90px_auto] items-center gap-2 rounded-[16px] border border-line bg-surface px-3 py-2 text-sm">
+      <p className="truncate font-semibold text-foreground">{userId}</p>
+      <p className="truncate text-xs font-semibold uppercase tracking-[0.06em] text-muted">
+        {raceLabel}
+      </p>
+      <Button
+        size="sm"
+        variant="danger"
+        className="h-8 rounded-full px-3 text-xs"
+        disabled={pendingAction !== null}
+        onClick={() => {
+          void onDelete();
+        }}
+      >
+        {isDeleting ? "삭제 중" : "삭제"}
+      </Button>
+    </div>
+  );
+}
+
+function CandidateTierSection({
+  group,
+  pendingAction,
+  onDelete,
+}: {
+  group: CandidateTierGroup;
+  pendingAction: string | null;
+  onDelete: (candidateUserId: number) => Promise<void>;
+}) {
+  return (
+    <div className="rounded-[22px] border border-line bg-surface-strong">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <p className="text-sm font-semibold text-foreground">티어 {group.tierLabel}</p>
+        <span className="text-xs text-muted">{group.items.length}명</span>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-            Candidate
-          </p>
-          <p className="mt-2 font-semibold text-foreground">{candidate.candidateName}</p>
-          <p className="mt-1">{candidate.race ?? "종족 미정"}</p>
+      <div className="space-y-2 px-3 py-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_90px_auto] gap-2 px-1 text-[11px] font-semibold tracking-[0.04em] text-muted">
+          <span>아이디</span>
+          <span>종족</span>
+          <span className="text-right">삭제</span>
         </div>
-        <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-            Picked Info
-          </p>
-          <p className="mt-2 font-semibold text-foreground">
-            {candidate.pickedDraftTeamName ?? "-"}
-          </p>
-          <p className="mt-1">{formatDateTime(candidate.pickedAt)}</p>
-        </div>
+
+        {group.items.map((item) => (
+          <CandidateRowClean
+            key={item.candidate.candidateUserId}
+            candidate={item.candidate}
+            raceLabel={item.raceLabel}
+            userId={item.userId}
+            pendingAction={pendingAction}
+            onDelete={() => onDelete(item.candidate.candidateUserId)}
+          />
+        ))}
       </div>
     </div>
   );
@@ -1417,11 +1438,17 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<NoticeState | null>(null);
+  const [candidateDirectory, setCandidateDirectory] = useState<
+    Record<number, CandidateDirectoryEntry | null>
+  >({});
 
   const sortedTeams = selectedSessionDetail ? sortTeams(selectedSessionDetail.teams) : [];
   const sortedCandidates = selectedSessionDetail
     ? sortCandidates(selectedSessionDetail.candidates)
     : [];
+  const candidateLookupKey = sortedCandidates
+    .map((candidate) => `${candidate.candidateUserId}:${candidate.candidateName}`)
+    .join("|");
   const sortedOrders = selectedSessionDetail ? sortOrders(selectedSessionDetail.orders) : [];
   const sortedPicks = selectedSessionDetail ? sortPicks(selectedSessionDetail.picks) : [];
   const rosterCountByTeamId = sortedPicks.reduce<Record<number, number>>((acc, pick) => {
@@ -1447,6 +1474,75 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       "snake",
     ),
   );
+  const selectedOrderGenerationMode = detectOrderGenerationMode(sortedOrders, sortedTeams);
+  const candidateTierGroups = buildCandidateTierGroups(
+    sortedCandidates,
+    candidateDirectory,
+  );
+
+  useEffect(() => {
+    if (sortedCandidates.length === 0) {
+      setCandidateDirectory({});
+      return;
+    }
+
+    let cancelled = false;
+
+    async function hydrateCandidateDirectory() {
+      const entries = await Promise.all(
+        sortedCandidates.map(async (candidate) => {
+          const primaryKeyword = candidate.candidateName.trim();
+
+          try {
+            const primaryMatches = await searchDraftUsers(
+              primaryKeyword || String(candidate.candidateUserId),
+              8,
+            );
+            let matchedUser = findCandidateDirectoryMatch(primaryMatches, candidate);
+
+            if (!matchedUser && primaryKeyword) {
+              const fallbackMatches = await searchDraftUsers(
+                String(candidate.candidateUserId),
+                8,
+              );
+              matchedUser = findCandidateDirectoryMatch(fallbackMatches, candidate);
+            }
+
+            return [
+              candidate.candidateUserId,
+              matchedUser
+                ? {
+                    race: matchedUser.race,
+                    tier: matchedUser.tier,
+                    userId: matchedUser.userId,
+                  }
+                : null,
+            ] as const;
+          } catch {
+            return [candidate.candidateUserId, null] as const;
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const nextDirectory: Record<number, CandidateDirectoryEntry | null> = {};
+
+      for (const [candidateUserId, entry] of entries) {
+        nextDirectory[candidateUserId] = entry;
+      }
+
+      setCandidateDirectory(nextDirectory);
+    }
+
+    void hydrateCandidateDirectory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [candidateLookupKey, selectedSessionId]);
 
   function notifyChange() {
     onDataChanged?.();
@@ -1901,31 +1997,35 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
+    if (!candidateForm.selectedUser) {
+      setNotice({
+        tone: "error",
+        text: "아이디 검색에서 유저를 먼저 선택해 달라.",
+      });
+      return;
+    }
+
     setPendingAction("candidate-create");
     setNotice(null);
 
     try {
       const payload = {
         draftSessionId: selectedSessionId,
-        candidateUserId: parsePositiveInt(candidateForm.candidateUserId, "후보 userPk"),
-        candidateName: candidateForm.candidateName.trim(),
-        race: candidateForm.race,
-        status: candidateForm.status,
+        candidateUserId: candidateForm.selectedUser.id,
+        candidateName: candidateForm.selectedUser.userId,
+        race: normalizeRace(candidateForm.selectedUser.race) ?? "TERRAN",
+        status: "WAITING",
       };
-
-      if (!payload.candidateName) {
-        throw new Error("후보 이름을 입력해야 한다.");
-      }
 
       await createDraftCandidate(payload);
       await refreshSelectedSession(selectedSessionId);
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setNotice({
         tone: "success",
-        text: "후보를 등록했다.",
+        text: "드래프트 인원을 등록했다.",
       });
     } catch (error) {
-      handleActionError("후보 등록", error, {
+      handleActionError("드래프트 인원 등록", error, {
         form: candidateForm,
         sessionId: selectedSessionId,
       });
@@ -1947,10 +2047,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "후보를 삭제했다.",
+        text: "드래프트 인원을 삭제했다.",
       });
     } catch (error) {
-      handleActionError("후보 삭제", error, {
+      handleActionError("드래프트 인원 삭제", error, {
         candidateUserId,
         sessionId: selectedSessionId,
       });
@@ -1973,7 +2073,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       }
 
       if (orderGenerationTargetCount === 0) {
-        throw new Error("순서를 자동 생성하려면 EXCLUDED 제외 후보가 1명 이상 있어야 한다.");
+        throw new Error("순서를 자동 생성하려면 EXCLUDED 제외 드래프트 인원이 1명 이상 있어야 한다.");
       }
 
       if (sortedPicks.length > 0) {
@@ -2053,7 +2153,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               관리자 드래프트 준비 / 정리 콘솔
             </p>
             <p className="hidden">
-              세션, 팀, 픽커, 후보, 순서를 준비하고 보정하는 화면이다. 실시간 start /
+              세션, 팀, 픽커, 드래프트 인원, 순서를 준비하고 보정하는 화면이다. 실시간 start /
               pause / resume / extend / skip / finish는 아래 라이브 보드에서 처리하고,
               여기서는 CRUD와 재동기화에 집중한다.
             </p>
@@ -2099,7 +2199,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
             ready={pickerTeamCount > 0}
           />
           <SetupStatCard
-            label="후보"
+            label="드래프트 인원"
             value={String(sortedCandidates.length)}
             description="등록 후 삭제만 지원"
             ready={sortedCandidates.length > 0}
@@ -2107,7 +2207,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           <SetupStatCard
             label="WAITING"
             value={String(waitingCandidateCount)}
-            description="현재 남아 있는 후보"
+            description="현재 남아 있는 드래프트 인원"
             ready={waitingCandidateCount > 0}
           />
           <SetupStatCard
@@ -2119,7 +2219,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           <SetupStatCard
             label="픽 기록"
             value={String(sortedPicks.length)}
-            description="삭제 후 후보 / 순서 보정 가능"
+            description="삭제 후 드래프트 인원 / 순서 보정 가능"
             ready={sortedPicks.length > 0}
           />
         </div>
@@ -2409,15 +2509,11 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-foreground">
-                후보 등록 / 삭제
-              </p>
-              <p className="mt-2 text-sm leading-7 text-muted">
-                후보는 `user_id` 자동완성으로 검색할 수 있다. 목록은 읽기 전용으로 보여주고,
-                수정 저장 버튼은 제거했다.
+                드래프트 인원 등록 / 삭제
               </p>
             </div>
             <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
-              WAITING {waitingCandidateCount}명
+              대기 {waitingCandidateCount}명
             </div>
           </div>
 
@@ -2433,189 +2529,18 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                 setCandidateForm={setCandidateForm}
                 onCreate={handleCreateCandidate}
               />
-              <div className="hidden">
-              <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
-                <div className="grid gap-3">
-                  <UserAutocompleteInput
-                    value={candidateForm.query}
-                    placeholder="user_id 입력 후 검색"
-                    onValueChange={(value) => {
-                      setCandidateForm((current) => ({
-                        ...current,
-                        query: value,
-                        candidateUserId: "",
-                        selectedUser: null,
-                      }));
-                    }}
-                    onSelect={(user) => {
-                      setCandidateForm((current) => ({
-                        ...current,
-                        query: user.userId,
-                        candidateUserId: String(user.id),
-                        candidateName: current.candidateName || user.userId,
-                        race: normalizeRace(user.race) ?? current.race,
-                        selectedUser: user,
-                      }));
-                    }}
-                  />
-
-                  <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
-                    {candidateForm.selectedUser ? (
-                      <>
-                        <p className="font-semibold text-foreground">
-                          선택한 user_id: {candidateForm.selectedUser.userId}
-                        </p>
-                        <p className="mt-1">이 유저를 후보로 등록할 수 있다.</p>
-                      </>
-                    ) : candidateForm.candidateUserId ? (
-                      <>
-                        <p className="font-semibold text-foreground">
-                          수동 입력한 candidateUserId가 있다.
-                        </p>
-                        <p className="mt-1">검색 결과가 없으면 아래 직접 입력 흐름을 써도 된다.</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="font-semibold text-foreground">
-                          user_id를 치면 아래에 일치하는 아이디 목록이 나온다.
-                        </p>
-                        <p className="mt-1">목록에서 고르면 후보 userPk가 자동 선택된다.</p>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
-                      onClick={() => {
-                        setCandidateForm((current) => ({
-                          ...current,
-                          showManualIdInput: !current.showManualIdInput,
-                        }));
-                      }}
-                    >
-                      {candidateForm.showManualIdInput
-                        ? "직접 입력 접기"
-                        : "검색이 안 되면 userPk 직접 입력"}
-                    </button>
-                    {candidateForm.candidateUserId ? (
-                      <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
-                        candidateUserId {candidateForm.candidateUserId}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {candidateForm.showManualIdInput ? (
-                    <Input
-                      value={candidateForm.candidateUserId}
-                      onChange={(event) => {
-                        setCandidateForm((current) => ({
-                          ...current,
-                          candidateUserId: event.target.value,
-                          selectedUser: null,
-                        }));
-                      }}
-                      placeholder="candidate userPk 직접 입력"
-                    />
-                  ) : null}
-
-                  <Input
-                    value={candidateForm.candidateName}
-                    onChange={(event) => {
-                      setCandidateForm((current) => ({
-                        ...current,
-                        candidateName: event.target.value,
-                      }));
-                    }}
-                    placeholder="candidateName"
-                  />
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <select
-                      className={SELECT_CLASS_NAME}
-                      value={candidateForm.race}
-                      onChange={(event) => {
-                        setCandidateForm((current) => ({
-                          ...current,
-                          race: event.target.value,
-                        }));
-                      }}
-                    >
-                      {RACE_OPTIONS.map((race) => (
-                        <option key={race} value={race}>
-                          {race}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className={SELECT_CLASS_NAME}
-                      value={candidateForm.status}
-                      onChange={(event) => {
-                        setCandidateForm((current) => ({
-                          ...current,
-                          status: event.target.value,
-                        }));
-                      }}
-                    >
-                      {CANDIDATE_STATUS_OPTIONS.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <Button
-                    variant="accent"
-                    disabled={
-                      pendingAction !== null ||
-                      !candidateForm.candidateUserId.trim() ||
-                      !candidateForm.candidateName.trim()
-                    }
-                    onClick={() => {
-                      void handleCreateCandidate();
-                    }}
-                  >
-                    {pendingAction === "candidate-create" ? "등록 중" : "후보 등록"}
-                  </Button>
-                </div>
-
-                {candidateForm.selectedUser ? (
-                  <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
-                    <p className="text-sm font-semibold text-foreground">
-                      선택됨: {candidateForm.selectedUser.userId}
-                    </p>
-                    <p className="mt-1 text-sm text-muted">
-                      {candidateForm.selectedUser.userId}
-                      {candidateForm.selectedUser.tier
-                        ? ` · ${candidateForm.selectedUser.tier}`
-                        : ""}
-                      {candidateForm.selectedUser.race
-                        ? ` · ${candidateForm.selectedUser.race}`
-                        : ""}
-                    </p>
-                    <p className="mt-2 text-xs leading-6 text-muted">
-                      검색한 user_id 기준으로 후보 연결값 {candidateForm.selectedUser.id}가
-                      자동 선택됐다.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-              </div>
-
-              <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="mt-5 space-y-3">
                 {sortedCandidates.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted sm:col-span-2 xl:col-span-3">
-                    아직 등록한 후보가 없다.
+                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+                    아직 등록한 드래프트 인원이 없다.
                   </div>
                 ) : (
-                  sortedCandidates.map((candidate) => (
-                    <CandidateRowClean
-                      key={candidate.candidateUserId}
-                      candidate={candidate}
+                  candidateTierGroups.map((group) => (
+                    <CandidateTierSection
+                      key={group.tierLabel}
+                      group={group}
                       pendingAction={pendingAction}
-                      onDelete={() => handleDeleteCandidate(candidate.candidateUserId)}
+                      onDelete={handleDeleteCandidate}
                     />
                   ))
                 )}
@@ -2631,13 +2556,13 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               순서 등록 / 삭제
             </p>
               <p className="mt-2 text-sm leading-7 text-muted">
-                순서는 후보 수 기준으로 자동 생성한다. 버튼을 누르면 기존 순서를 전부 지우고
+                순서는 드래프트 인원 수 기준으로 자동 생성한다. 버튼을 누르면 기존 순서를 전부 지우고
                 `pickNo`만 다시 1번부터 맞춘다. 기본은 팀 순서를 반복하고, 스네이크는
                 한 바퀴마다 방향을 뒤집는다.
               </p>
           </div>
           <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
-            생성된 순서 {sortedOrders.length}개 · 대상 후보 {orderGenerationTargetCount}명
+            생성된 순서 {sortedOrders.length}개 · 대상 드래프트 인원 {orderGenerationTargetCount}명
           </div>
         </div>
 
@@ -2654,15 +2579,31 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
                 <div className="grid gap-3">
                   <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
+                    <div
+                      className={cn(
+                        "rounded-[20px] border px-4 py-4 text-sm text-muted",
+                        selectedOrderGenerationMode === "basic"
+                          ? "border-accent-soft bg-white"
+                          : "border-line bg-surface",
+                      )}
+                    >
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
                         기본 미리보기
+                        {selectedOrderGenerationMode === "basic" ? " · 선택됨" : ""}
                       </p>
                       <p className="mt-2 leading-7 text-foreground">{basicOrderPreview}</p>
                     </div>
-                    <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
+                    <div
+                      className={cn(
+                        "rounded-[20px] border px-4 py-4 text-sm text-muted",
+                        selectedOrderGenerationMode === "snake"
+                          ? "border-accent-soft bg-white"
+                          : "border-line bg-surface",
+                      )}
+                    >
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
                         스네이크 미리보기
+                        {selectedOrderGenerationMode === "snake" ? " · 선택됨" : ""}
                       </p>
                       <p className="mt-2 leading-7 text-foreground">{snakeOrderPreview}</p>
                     </div>
@@ -2670,7 +2611,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
                   <div className="flex flex-wrap gap-2">
                     <Button
-                      variant="accent"
+                      variant={selectedOrderGenerationMode === "basic" ? "accent" : "outline"}
                       disabled={pendingAction !== null || orderGenerationTargetCount === 0}
                       onClick={() => {
                         void handleGenerateOrders("basic");
@@ -2678,9 +2619,12 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                     >
                       {pendingAction === "order-generate:basic"
                         ? "생성 중"
-                        : "기본 방식 생성"}
+                        : selectedOrderGenerationMode === "basic"
+                          ? "기본 방식 선택됨"
+                          : "기본 방식 생성"}
                     </Button>
                     <Button
+                      variant={selectedOrderGenerationMode === "snake" ? "accent" : "outline"}
                       disabled={pendingAction !== null || orderGenerationTargetCount === 0}
                       onClick={() => {
                         void handleGenerateOrders("snake");
@@ -2688,12 +2632,14 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                     >
                       {pendingAction === "order-generate:snake"
                         ? "생성 중"
-                        : "스네이크 방식 생성"}
+                        : selectedOrderGenerationMode === "snake"
+                          ? "스네이크 방식 선택됨"
+                          : "스네이크 방식 생성"}
                     </Button>
                   </div>
 
                   <p className="text-sm leading-7 text-muted">
-                    자동 생성 기준은 현재 등록된 후보 수이며, `EXCLUDED` 상태는 제외한다.
+                    자동 생성 기준은 현재 등록된 드래프트 인원 수이며, `EXCLUDED` 상태는 제외한다.
                     이미 픽 기록이 있으면 먼저 이력 탭에서 정리한 뒤 다시 생성해야 한다.
                   </p>
                 </div>

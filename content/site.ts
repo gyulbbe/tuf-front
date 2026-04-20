@@ -12,7 +12,7 @@ export type SiteTab = SiteSubTab & {
 
 const externalSiteLinks = {
   recordManagerUrl: "https://tufelo.vercel.app/",
-  bettingUrl: "",
+  bettingUrl: "https://tufpl.vercel.app/",
 };
 
 export const siteConfig = {

@@ -310,7 +310,7 @@ export function DraftHistoryConsole() {
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "픽 기록을 삭제했다. 필요하면 관리 탭에서 후보와 순서를 다시 맞추면 된다.",
+        text: "픽 기록을 삭제했다. 필요하면 관리 탭에서 드래프트 인원과 순서를 다시 맞추면 된다.",
       });
     } catch (error) {
       logDraftHistoryIssue("픽 기록 삭제", error, {
@@ -334,7 +334,7 @@ export function DraftHistoryConsole() {
             <p className="text-sm font-semibold text-foreground">드래프트 이력 정리</p>
             <p className="mt-2 max-w-3xl text-sm leading-7 text-muted">
               잘못 들어간 픽 기록을 여기서 정리하고, 삭제 직후 같은 세션 상세를 다시 읽어서
-              상태를 바로 맞춘다. 후보와 순서 보정이 필요하면 관리 탭으로 돌아가서 이어서
+              상태를 바로 맞춘다. 드래프트 인원과 순서 보정이 필요하면 관리 탭으로 돌아가서 이어서
               작업하면 된다.
             </p>
           </div>

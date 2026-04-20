@@ -8,7 +8,7 @@ const ADMIN_DRAFT_TABS = [
   {
     href: "/admin/draft",
     label: "드래프트 관리",
-    description: "세션, 팀, 픽커, 후보, 순서를 준비한다.",
+    description: "세션, 팀, 픽커, 드래프트 인원, 순서를 준비한다.",
   },
   {
     href: "/admin/draft/history",

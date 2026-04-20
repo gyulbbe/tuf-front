@@ -551,7 +551,7 @@ export async function pickDraftCandidate(
         validateStatus: () => true,
       },
     ),
-    "후보를 지명하지 못했습니다.",
+    "드래프트 인원을 지명하지 못했습니다.",
   );
 
   return normalizeDraftSnapshot(snapshot);
@@ -740,7 +740,7 @@ export async function createDraftCandidate(payload: DraftCandidateRequest) {
     apiClient.post<ApiEnvelope<DraftCandidate>>("/draft/candidates", payload, {
       validateStatus: () => true,
     }),
-    "후보를 등록하지 못했습니다.",
+    "드래프트 인원을 등록하지 못했습니다.",
   );
 }
 
@@ -757,7 +757,7 @@ export async function updateDraftCandidate(
         validateStatus: () => true,
       },
     ),
-    "후보를 수정하지 못했습니다.",
+    "드래프트 인원을 수정하지 못했습니다.",
   );
 }
 
@@ -772,7 +772,7 @@ export async function deleteDraftCandidate(
         validateStatus: () => true,
       },
     ),
-    "후보를 삭제하지 못했습니다.",
+    "드래프트 인원을 삭제하지 못했습니다.",
   );
 }
 

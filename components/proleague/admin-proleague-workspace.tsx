@@ -18,7 +18,7 @@ export function AdminProleagueWorkspace() {
       <SurfaceCard className="p-6">
         <p className="text-sm font-semibold text-foreground">라이브 제어 보드</p>
         <p className="mt-2 text-sm leading-7 text-muted">
-          이 관리 탭은 세션 / 팀 / 픽커 / 후보 / 순서를 준비하고 보정하는 영역이다. 픽
+          이 관리 탭은 세션 / 팀 / 픽커 / 드래프트 인원 / 순서를 준비하고 보정하는 영역이다. 픽
           기록 정리는 별도 이력 탭으로 분리했고, 아래 라이브 보드는 start, pause,
           resume, extend, skip, finish와 실제 픽 진행을 담당한다.
         </p>

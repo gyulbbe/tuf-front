@@ -175,11 +175,21 @@ function isMissingSessionError(error: unknown) {
 
 function buildSessionDeleteConfirmText(sessionTitle: string) {
   return [
-    `"${sessionTitle}" 세션을 전체 삭제한다.`,
+    `"${sessionTitle}" 드래프트를 삭제할까?`,
     "",
-    "이 작업을 실행하면 팀, 드래프트 인원, 순서, 픽 기록과 세션에 연결된 데이터가 함께 삭제된다.",
-    "삭제 후에는 되돌릴 수 없다. 계속할까?",
+    "팀, 드래프트 인원, 순서, 픽 기록이 함께 삭제된다.",
+    "삭제 후에는 되돌릴 수 없다.",
   ].join("\n");
+}
+
+function getTeamDeleteErrorMessage(error: unknown) {
+  const message = readErrorMessage(error);
+
+  if (message.includes("현재 차례 팀은 삭제할 수 없습니다.")) {
+    return "지금 차례인 팀은 삭제할 수 없다. 턴을 넘기거나 드래프트를 멈춘 뒤 다시 시도해 달라.";
+  }
+
+  return message;
 }
 
 function logDraftAdminIssue(
@@ -1738,7 +1748,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           if (!cancelled) {
             setNotice({
               tone: "neutral",
-              text: "선택한 세션이 이미 삭제되어 목록에서 제거했다.",
+              text: "선택한 드래프트가 이미 삭제되어 목록에서 제거했다.",
             });
           }
           return;
@@ -1794,7 +1804,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       };
 
       if (!payload.title) {
-        throw new Error("세션 이름을 입력해야 한다.");
+        throw new Error("드래프트 이름을 입력해야 한다.");
       }
 
       const created = await createDraftSession(payload);
@@ -1802,7 +1812,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       setCreateForm(EMPTY_CREATE_FORM);
       setNotice({
         tone: "success",
-        text: "세션을 생성했다.",
+        text: "드래프트를 생성했다.",
       });
     } catch (error) {
       handleActionError("세션 생성", error, {
@@ -1829,14 +1839,14 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       };
 
       if (!payload.title) {
-        throw new Error("세션 이름을 입력해야 한다.");
+        throw new Error("드래프트 이름을 입력해야 한다.");
       }
 
       await updateDraftSession(selectedSessionId, payload);
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: "세션 정보를 저장했다.",
+        text: "드래프트 정보를 저장했다.",
       });
     } catch (error) {
       handleActionError("세션 수정", error, {
@@ -1855,7 +1865,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
     const sessionId = selectedSessionId;
     const sessionTitle =
-      (selectedSessionDetail?.title ?? editForm.title.trim()) || `세션 ${sessionId}`;
+      (selectedSessionDetail?.title ?? editForm.title.trim()) || `드래프트 ${sessionId}`;
 
     if (!window.confirm(buildSessionDeleteConfirmText(sessionTitle))) {
       return;
@@ -1869,14 +1879,14 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       await syncAfterSessionRemoval();
       setNotice({
         tone: "success",
-        text: "세션과 연결된 팀, 드래프트 인원, 순서, 픽 기록을 함께 삭제했다.",
+        text: "드래프트와 연결된 팀, 드래프트 인원, 순서, 픽 기록을 함께 삭제했다.",
       });
     } catch (error) {
       if (isMissingSessionError(error)) {
         await syncAfterSessionRemoval().catch(() => undefined);
         setNotice({
           tone: "neutral",
-          text: "선택한 세션이 이미 삭제되어 목록에서 제거했다.",
+          text: "선택한 드래프트가 이미 삭제되어 목록에서 제거했다.",
         });
         return;
       }
@@ -1985,9 +1995,13 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         text: "팀을 삭제했다.",
       });
     } catch (error) {
-      handleActionError("팀 삭제", error, {
+      logDraftAdminIssue("팀 삭제", error, {
         sessionId: selectedSessionId,
         teamId,
+      });
+      setNotice({
+        tone: "error",
+        text: getTeamDeleteErrorMessage(error),
       });
     } finally {
       setPendingAction(null);
@@ -2203,37 +2217,10 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   return (
     <div className="space-y-4">
       <SurfaceCard className="p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              관리자 드래프트 준비 / 정리 콘솔
-            </p>
-            <p className="hidden">
-              세션, 팀, 픽커, 드래프트 인원, 순서를 준비하고 보정하는 화면이다. 실시간 start /
-              pause / resume / extend / skip / finish는 아래 라이브 보드에서 처리하고,
-              여기서는 CRUD와 재동기화에 집중한다.
-            </p>
-          </div>
-
-          {selectedSessionDetail ? (
-            <div className="rounded-[24px] bg-surface-muted px-4 py-4 text-sm leading-7 text-muted">
-              <p className="font-semibold text-foreground">
-                {selectedSessionDetail.title}
-              </p>
-              <p>현재 픽: {selectedSessionDetail.currentPickNo ?? "-"}</p>
-              <p>현재 팀: {selectedSessionDetail.currentDraftTeamId ?? "-"}</p>
-            </div>
-          ) : (
-            <div className="rounded-[24px] border border-dashed border-line px-4 py-4 text-sm text-muted">
-              세션을 선택하면 준비 현황이 표시된다.
-            </div>
-          )}
-        </div>
-
         {notice ? (
           <div
             className={cn(
-              "mt-5 rounded-[24px] px-4 py-4 text-sm",
+              "rounded-[24px] px-4 py-4 text-sm",
               getNoticeClassName(notice.tone),
             )}
           >
@@ -2241,7 +2228,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           </div>
         ) : null}
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className={cn("grid gap-3 md:grid-cols-2 xl:grid-cols-6", notice ? "mt-5" : "")}>
           <SetupStatCard
             label="팀"
             value={selectedSessionDetail ? String(sortedTeams.length) : "0"}
@@ -2283,7 +2270,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
       <div className="grid gap-4 xl:grid-cols-2">
         <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">세션 생성</p>
+          <p className="text-sm font-semibold text-foreground">드래프트 생성</p>
           <div className="mt-4 grid gap-3">
             <Input
               value={createForm.title}
@@ -2293,7 +2280,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   title: event.target.value,
                 }));
               }}
-              placeholder="세션 이름"
+              placeholder="드래프트 이름"
             />
             <div className="grid gap-3 sm:grid-cols-2">
               <Input
@@ -2328,14 +2315,14 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                 void handleCreateSession();
               }}
             >
-              {pendingAction === "session-create" ? "생성 중" : "세션 생성"}
+              {pendingAction === "session-create" ? "생성 중" : "드래프트 생성"}
             </Button>
           </div>
         </SurfaceCard>
 
         <SurfaceCard className="p-6">
           <p className="text-sm font-semibold text-foreground">
-            세션 선택 / 수정 / 삭제
+            드래프트 선택 / 수정 / 삭제
           </p>
           <div className="mt-4 grid gap-3">
             <select
@@ -2352,9 +2339,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               }}
             >
               {loadingSessions && sessions.length === 0 ? (
-                <option value="">세션 목록 불러오는 중</option>
+                <option value="">드래프트 목록 불러오는 중</option>
               ) : sessions.length === 0 ? (
-                <option value="">준비중 세션 없음</option>
+                <option value="">준비 중 드래프트 없음</option>
               ) : null}
 
               {sessions.map((session) => (
@@ -2373,7 +2360,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   title: event.target.value,
                 }));
               }}
-              placeholder="세션 이름"
+              placeholder="드래프트 이름"
             />
             <div className="grid gap-3 sm:grid-cols-2">
               <Input
@@ -2412,8 +2399,8 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
             ) : (
               <div className="rounded-[22px] border border-dashed border-line px-4 py-4 text-sm text-muted">
                 {loadingDetail
-                  ? "세션 정보를 불러오는 중이다."
-                  : "수정할 세션을 선택해 달라."}
+                  ? "드래프트 정보를 불러오는 중이다."
+                  : "수정할 드래프트를 선택해 달라."}
               </div>
             )}
 
@@ -2424,7 +2411,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   void handleUpdateSession();
                 }}
               >
-                {pendingAction === "session-save" ? "저장 중" : "세션 저장"}
+                {pendingAction === "session-save" ? "저장 중" : "드래프트 저장"}
               </Button>
               <Button
                 variant="danger"
@@ -2433,11 +2420,11 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   void handleDeleteSession();
                 }}
               >
-                {pendingAction === "session-delete" ? "삭제 중" : "세션 전체 삭제"}
+                {pendingAction === "session-delete" ? "삭제 중" : "드래프트 삭제"}
               </Button>
             </div>
             <p className="text-sm leading-7 text-danger-ink">
-              세션 전체 삭제를 누르면 이 세션에 연결된 팀, 드래프트 인원, 순서, 픽 기록이
+              드래프트 삭제를 누르면 이 드래프트에 연결된 팀, 드래프트 인원, 순서, 픽 기록이
               함께 지워진다.
             </p>
           </div>
@@ -2451,19 +2438,19 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               팀 생성 / 수정 / 삭제
             </p>
             <p className="mt-2 text-sm leading-7 text-muted">
-              팀은 세션 준비의 기본 데이터다. 팀 순서는 내부 값으로 자동 관리된다.
+              팀은 드래프트 준비의 기본 데이터다. 팀 순서는 내부 값으로 자동 관리된다.
             </p>
           </div>
           {selectedSessionDetail ? (
             <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
-              세션 팀 수 {sortedTeams.length} / 목표 {selectedSessionDetail.teamCount}
+              드래프트 팀 수 {sortedTeams.length} / 목표 {selectedSessionDetail.teamCount}
             </div>
           ) : null}
         </div>
 
         {!selectedSessionDetail ? (
           <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-            먼저 세션을 선택해 달라.
+            먼저 드래프트를 선택해 달라.
           </div>
         ) : (
           <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
@@ -2541,7 +2528,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         <div className="mt-5">
           {!selectedSessionDetail ? (
             <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-              세션을 먼저 선택해 달라.
+              드래프트를 먼저 선택해 달라.
             </div>
           ) : sortedTeams.length === 0 ? (
             <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
@@ -2579,7 +2566,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
           {!selectedSessionDetail ? (
             <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-              세션을 먼저 선택해 달라.
+              드래프트를 먼저 선택해 달라.
             </div>
           ) : (
             <>
@@ -2628,7 +2615,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
           {!selectedSessionDetail ? (
             <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-              세션을 먼저 선택해 달라.
+              드래프트를 먼저 선택해 달라.
             </div>
           ) : sortedTeams.length === 0 ? (
             <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">

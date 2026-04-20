@@ -103,10 +103,10 @@ function isMissingSessionError(error: unknown) {
 
 function buildSessionDeleteConfirmText(sessionTitle: string) {
   return [
-    `"${sessionTitle}" 세션을 전체 삭제한다.`,
+    `"${sessionTitle}" 드래프트를 삭제할까?`,
     "",
-    "팀, 드래프트 인원, 순서, 픽 기록과 세션에 연결된 데이터가 함께 삭제된다.",
-    "삭제 후에는 되돌릴 수 없다. 계속할까?",
+    "팀, 드래프트 인원, 순서, 픽 기록이 함께 삭제된다.",
+    "삭제 후에는 되돌릴 수 없다.",
   ].join("\n");
 }
 
@@ -506,7 +506,7 @@ export function DraftLiveDashboard({
         if (nextSessions.length === 0) {
           setNotice({
             tone: "neutral",
-            text: "등록된 드래프트 세션이 없다. 관리자 콘솔에서 먼저 세션을 만들어 달라.",
+            text: "등록된 드래프트가 없다. 관리자 화면에서 먼저 드래프트를 만들어 달라.",
           });
         }
       } catch (error) {
@@ -589,7 +589,7 @@ export function DraftLiveDashboard({
           await syncAfterSessionRemoval(sessionId).catch(() => undefined);
           setNotice({
             tone: "neutral",
-            text: "선택한 세션이 삭제되어 목록에서 제거했습니다.",
+            text: "선택한 드래프트가 삭제되어 목록에서 제거했습니다.",
           });
           return;
         }
@@ -670,7 +670,7 @@ export function DraftLiveDashboard({
                 await syncAfterSessionRemoval(sessionId).catch(() => undefined);
                 setNotice({
                   tone: "neutral",
-                  text: "선택한 세션이 삭제되어 목록에서 제거했습니다.",
+                  text: "선택한 드래프트가 삭제되어 목록에서 제거했습니다.",
                 });
                 return;
               }
@@ -724,7 +724,7 @@ export function DraftLiveDashboard({
         await syncAfterSessionRemoval(selectedSessionId).catch(() => undefined);
         setNotice({
           tone: "neutral",
-          text: "선택한 세션이 삭제되어 목록에서 제거했습니다.",
+          text: "선택한 드래프트가 삭제되어 목록에서 제거했습니다.",
         });
         return;
       }
@@ -747,7 +747,7 @@ export function DraftLiveDashboard({
     const sessionTitle =
       snapshot?.session.title ??
       sessions.find((session) => session.id === sessionId)?.title ??
-      `세션 ${sessionId}`;
+      `드래프트 ${sessionId}`;
 
     if (!window.confirm(buildSessionDeleteConfirmText(sessionTitle))) {
       return;
@@ -761,14 +761,14 @@ export function DraftLiveDashboard({
       await syncAfterSessionRemoval(sessionId);
       setNotice({
         tone: "success",
-        text: "세션과 연결된 팀, 드래프트 인원, 순서, 픽 기록을 함께 삭제했습니다.",
+        text: "드래프트와 연결된 팀, 드래프트 인원, 순서, 픽 기록을 함께 삭제했습니다.",
       });
     } catch (error) {
       if (isMissingSessionError(error)) {
         await syncAfterSessionRemoval(sessionId).catch(() => undefined);
         setNotice({
           tone: "neutral",
-          text: "선택한 세션이 이미 삭제되어 목록에서 제거했습니다.",
+          text: "선택한 드래프트가 이미 삭제되어 목록에서 제거했습니다.",
         });
         return;
       }
@@ -839,7 +839,7 @@ export function DraftLiveDashboard({
                   getStatusBadgeClassName(snapshot?.session.status),
                 )}
               >
-                {snapshot ? formatDraftStatus(snapshot.session.status) : "세션 선택 대기"}
+                {snapshot ? formatDraftStatus(snapshot.session.status) : "드래프트 선택 대기"}
               </span>
               <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
                 {CONNECTION_LABELS[connectionState]}
@@ -876,9 +876,9 @@ export function DraftLiveDashboard({
               }}
             >
               {loadingSessions && sessions.length === 0 ? (
-                <option value="">세션 목록 불러오는 중</option>
+                <option value="">드래프트 목록 불러오는 중</option>
               ) : sessions.length === 0 ? (
-                <option value="">세션 없음</option>
+                <option value="">드래프트 없음</option>
               ) : null}
 
               {sessions.map((session) => (
@@ -936,7 +936,7 @@ export function DraftLiveDashboard({
                       {
                         label: "내 팀",
                         value: myTeam?.teamName ?? "-",
-                        subtext: canPick ? "지명 가능" : canControl ? "세션 제어 가능" : "관전",
+                        subtext: canPick ? "지명 가능" : canControl ? "드래프트 제어 가능" : "관전",
                       },
                     ].map((stat) => (
                       <div
@@ -1022,7 +1022,7 @@ export function DraftLiveDashboard({
 
       <div className="grid gap-4">
         <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">세션 제어</p>
+          <p className="text-sm font-semibold text-foreground">드래프트 제어</p>
 
           {snapshot ? (
             <div className="mt-5 space-y-4">
@@ -1030,9 +1030,9 @@ export function DraftLiveDashboard({
                 <div className="rounded-[22px] border border-danger-ink/15 bg-danger-soft px-4 py-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-danger-ink">세션 전체 삭제</p>
+                      <p className="text-sm font-semibold text-danger-ink">드래프트 삭제</p>
                       <p className="mt-1 text-sm leading-6 text-danger-ink/80">
-                        이 세션을 지우면 팀, 드래프트 인원, 순서, 픽 기록이 함께 삭제된다.
+                        이 드래프트를 지우면 팀, 드래프트 인원, 순서, 픽 기록이 함께 삭제된다.
                       </p>
                     </div>
                     <Button
@@ -1042,7 +1042,7 @@ export function DraftLiveDashboard({
                         void handleDeleteSession();
                       }}
                     >
-                      {pendingAction === "session-delete" ? "삭제 중" : "세션 전체 삭제"}
+                      {pendingAction === "session-delete" ? "삭제 중" : "드래프트 삭제"}
                     </Button>
                   </div>
                 </div>
@@ -1211,18 +1211,18 @@ export function DraftLiveDashboard({
                     );
                   }}
                 >
-                  {pendingAction === "finish" ? "종료 중" : "세션 종료"}
+                  {pendingAction === "finish" ? "종료 중" : "드래프트 종료"}
                 </Button>
               </div>
 
               {!canControl ? (
                 <p className="rounded-[18px] bg-surface-muted px-4 py-3 text-sm leading-7 text-muted">
-                  이 계정은 세션 제어 권한이 없다.
+                  이 계정은 드래프트 제어 권한이 없다.
                 </p>
               ) : null}
             </div>
           ) : (
-            <p className="mt-4 text-sm leading-7 text-muted">세션을 선택해 달라.</p>
+            <p className="mt-4 text-sm leading-7 text-muted">드래프트를 선택해 달라.</p>
           )}
         </SurfaceCard>
 

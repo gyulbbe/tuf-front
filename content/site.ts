@@ -38,11 +38,16 @@ export const siteTabs: SiteTab[] = [
     description: "리그 운영 상태와 주요 기능으로 이동합니다.",
     items: [
       {
-        label: "드래프트",
+        label: "프로리그 드래프트",
         href: "/proleague/draft",
-        description: "실시간 드래프트 화면으로 이동합니다.",
+        description: "기존 프로리그 드래프트 화면으로 이동합니다.",
       },
     ],
+  },
+  {
+    label: "드래프트",
+    href: "/draft",
+    description: "팀배/컨텐츠 드래프트 화면으로 이동합니다.",
   },
   {
     label: "게임",
@@ -61,9 +66,9 @@ export const siteTabs: SiteTab[] = [
     requiresAdmin: true,
     items: [
       {
-        label: "드래프트",
+        label: "팀배/컨텐츠 드래프트 관리",
         href: "/admin/draft",
-        description: "드래프트 관리와 이력을 확인합니다.",
+        description: "팀배/컨텐츠 드래프트 관리와 이력을 확인합니다.",
         requiresAdmin: true,
       },
     ],

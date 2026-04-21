@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import {
+  assignNextDraftPicker,
   deleteDraftSession,
   extendDraftTurn,
   finishDraftSession,
@@ -23,6 +24,7 @@ import {
   type DraftCandidate,
   type DraftLiveNormalizedPosition,
   type DraftLivePreviewEndReason,
+  type DraftMode,
   type DraftLiveSessionInfo,
   type DraftLiveSnapshot,
   type DraftLiveTeam,
@@ -56,6 +58,11 @@ const STATUS_LABELS: Record<string, string> = {
   FINISHED: "종료",
 };
 
+const DRAFT_MODE_LABELS: Record<string, string> = {
+  FIXED_ORDER: "고정 순서",
+  MANUAL_CAPTAIN: "수동 팀장",
+};
+
 const CONNECTION_LABELS: Record<ConnectionState, string> = {
   connecting: "소켓 연결 중",
   connected: "실시간 연결됨",
@@ -70,6 +77,18 @@ function formatDraftStatus(status: string | null | undefined) {
   }
 
   return STATUS_LABELS[status] ?? status;
+}
+
+function formatDraftMode(mode: DraftMode | string | null | undefined) {
+  if (!mode) {
+    return "미정";
+  }
+
+  return DRAFT_MODE_LABELS[mode] ?? mode;
+}
+
+function isManualCaptainMode(mode: DraftMode | string | null | undefined) {
+  return mode === "MANUAL_CAPTAIN";
 }
 
 function formatUserRole(role: string | null | undefined) {
@@ -248,17 +267,18 @@ function mergeSessionSummary(
   return filterSessionsForView(
     [
       ...nextSessions,
-      {
-        id: session.id,
-        title: session.title,
-        status: session.status,
-        teamCount: session.teamCount,
-        pickTimeSeconds: session.pickTimeSeconds,
-        currentPickNo: session.currentPickNo,
-        currentDraftTeamId: session.currentDraftTeamId,
-        deadlineAt: session.deadlineAt,
-        startedAt: session.startedAt,
-        endedAt: session.endedAt,
+        {
+          id: session.id,
+          title: session.title,
+          status: session.status,
+          teamCount: session.teamCount,
+          pickTimeSeconds: session.pickTimeSeconds,
+          draftMode: session.draftMode,
+          currentPickNo: session.currentPickNo,
+          currentDraftTeamId: session.currentDraftTeamId,
+          deadlineAt: session.deadlineAt,
+          startedAt: session.startedAt,
+          endedAt: session.endedAt,
       },
     ],
     adminMode,
@@ -404,6 +424,7 @@ function resolvePreviewCardWidth(width: number) {
 
 function readPreviewAutoEndReason(options: {
   canPick: boolean;
+  hasCurrentTurn: boolean;
   connectionState: ConnectionState;
   sessionStatus: string | null | undefined;
 }): DraftLivePreviewEndReason {
@@ -419,7 +440,7 @@ function readPreviewAutoEndReason(options: {
     return "DISCONNECTED";
   }
 
-  if (!options.canPick) {
+  if (!options.canPick || !options.hasCurrentTurn) {
     return "TURN_CHANGED";
   }
 
@@ -658,13 +679,21 @@ function CandidateCard({
 }
 
 function CompactTeamCard({
+  assignButtonLabel,
+  canAssignNextPicker,
   candidateLookup,
   currentTeamId,
   draftTeam,
+  isAssignPending = false,
+  onAssignNextPicker,
 }: {
+  assignButtonLabel?: string;
+  canAssignNextPicker?: boolean;
   candidateLookup: Record<number, DraftCandidate>;
   currentTeamId: number | null;
   draftTeam: DraftLiveTeam;
+  isAssignPending?: boolean;
+  onAssignNextPicker?: (() => void) | null;
 }) {
   const isCurrentTeam = draftTeam.id === currentTeamId;
 
@@ -681,6 +710,24 @@ function CompactTeamCard({
         <p className="truncate text-sm font-semibold text-foreground">{draftTeam.teamName}</p>
         <span className="text-[11px] text-muted">{draftTeam.roster.length}</span>
       </div>
+
+      <p className="mt-2 text-[11px] text-muted">
+        {draftTeam.pickerName ? "픽커 지정됨" : "픽커 미지정"}
+        {isCurrentTeam ? " · 현재 픽 팀" : ""}
+      </p>
+
+      {canAssignNextPicker && onAssignNextPicker ? (
+        <Button
+          variant="outline"
+          disabled={isAssignPending}
+          onClick={() => {
+            onAssignNextPicker();
+          }}
+          className="mt-3 w-full"
+        >
+          {isAssignPending ? "지정 중" : assignButtonLabel ?? "이 팀으로 지정"}
+        </Button>
+      ) : null}
 
       <div className="mt-3 space-y-1.5">
         {draftTeam.roster.length === 0 ? (
@@ -773,11 +820,13 @@ function CompactCandidateCard({
 type DraftLiveDashboardProps = {
   adminMode?: boolean;
   refreshSignal?: number;
+  variant?: "content" | "generic" | "proleague";
 };
 
 export function DraftLiveDashboard({
   adminMode = false,
   refreshSignal = 0,
+  variant = "generic",
 }: DraftLiveDashboardProps) {
   const { user } = useAuth();
   const [sessions, setSessions] = useState<DraftSessionSummary[]>([]);
@@ -811,6 +860,18 @@ export function DraftLiveDashboard({
   const localPreviewCleanupRef = useRef<(() => void) | null>(null);
   const canPickRef = useRef(false);
   const currentPreviewKeyRef = useRef<string | null>(null);
+  const dashboardLabel =
+    variant === "content"
+      ? "팀배/컨텐츠 드래프트"
+      : variant === "proleague"
+        ? "프로리그 드래프트"
+        : "드래프트 라이브";
+  const dashboardDescription =
+    variant === "content"
+      ? "팀배와 컨텐츠용 세션을 실시간으로 진행하고, 수동 팀장 모드도 여기서 확인한다."
+      : variant === "proleague"
+        ? "기존 고정 순서 기반 프로리그 드래프트 진행 화면이다."
+        : "드래프트 세션 상태와 픽 진행을 실시간으로 확인한다.";
 
   function clearLocalPreviewAnimationFrame() {
     if (localPreviewAnimationFrameRef.current === null) {
@@ -1036,7 +1097,10 @@ export function DraftLiveDashboard({
         if (nextSessions.length === 0) {
           setNotice({
             tone: "neutral",
-            text: "등록된 드래프트가 없다. 관리자 화면에서 먼저 드래프트를 만들어 달라.",
+            text:
+              variant === "content"
+                ? "등록된 팀배/컨텐츠 드래프트가 없다. 관리자 화면에서 먼저 세션을 만들어 달라."
+                : "등록된 드래프트가 없다. 관리자 화면에서 먼저 드래프트를 만들어 달라.",
           });
         }
       } catch (error) {
@@ -1060,7 +1124,7 @@ export function DraftLiveDashboard({
     return () => {
       cancelled = true;
     };
-  }, [adminMode, refreshSignal]);
+  }, [adminMode, refreshSignal, variant]);
 
   useEffect(() => {
     if (selectedSessionId === null) {

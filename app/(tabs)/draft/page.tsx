@@ -3,11 +3,11 @@ import { DraftLiveDashboard } from "@/components/proleague/draft-live-dashboard"
 import { requireServerAuth } from "@/lib/auth/server-auth";
 
 export const metadata: Metadata = {
-  title: "프로리그 드래프트",
+  title: "팀배/컨텐츠 드래프트",
 };
 
-export default async function ProleagueDraftPage() {
-  await requireServerAuth("/proleague/draft");
+export default async function DraftPage() {
+  await requireServerAuth("/draft");
 
-  return <DraftLiveDashboard variant="proleague" />;
+  return <DraftLiveDashboard variant="content" />;
 }

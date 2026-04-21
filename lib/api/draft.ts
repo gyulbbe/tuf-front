@@ -12,12 +12,15 @@ type ErrorResponseBody = {
   error?: string;
 };
 
+export type DraftMode = "FIXED_ORDER" | "MANUAL_CAPTAIN";
+
 export type DraftSessionSummary = {
   id: number;
   title: string;
   status: string;
   teamCount: number;
   pickTimeSeconds: number;
+  draftMode: DraftMode | string;
   currentPickNo: number | null;
   currentDraftTeamId: number | null;
   deadlineAt: string | null;
@@ -84,6 +87,7 @@ export type DraftLiveSessionInfo = {
   status: string;
   teamCount: number;
   pickTimeSeconds: number;
+  draftMode: DraftMode | string;
   currentPickNo: number | null;
   currentDraftTeamId: number | null;
   deadlineAt: string | null;
@@ -157,6 +161,7 @@ export type DraftSessionDetail = {
   status: string;
   teamCount: number;
   pickTimeSeconds: number;
+  draftMode: DraftMode | string;
   currentPickNo: number | null;
   currentDraftTeamId: number | null;
   deadlineAt: string | null;
@@ -173,6 +178,7 @@ export type DraftSessionRequest = {
   status?: string;
   teamCount?: number;
   pickTimeSeconds?: number;
+  draftMode?: DraftMode | string;
   currentPickNo?: number | null;
   currentDraftTeamId?: number | null;
   deadlineAt?: string | null;
@@ -430,11 +436,7 @@ async function unwrapResponse<T>(
       });
     }
 
-    if (
-      normalizedResponseStatus >= 400 ||
-      body.data === null ||
-      body.data === undefined
-    ) {
+    if (normalizedResponseStatus !== 200 || body.data === null || body.data === undefined) {
       throw createDraftApiError(fallback, {
         config: response.config,
         httpStatus: response.status,
@@ -504,7 +506,7 @@ async function unwrapVoidResponse(
       });
     }
 
-    if (normalizedResponseStatus >= 400) {
+    if (normalizedResponseStatus !== 200) {
       throw createDraftApiError(fallback, {
         config: response.config,
         httpStatus: response.status,
@@ -592,6 +594,21 @@ export async function startDraftSession(sessionId: number) {
       },
     ),
     "드래프트를 시작하지 못했습니다.",
+  );
+
+  return normalizeDraftSnapshot(snapshot);
+}
+
+export async function assignNextDraftPicker(sessionId: number, draftTeamId: number) {
+  const snapshot = await unwrapResponse(
+    apiClient.post<ApiEnvelope<DraftLiveSnapshot>>(
+      `/draft/admin/sessions/${sessionId}/next-picker`,
+      { draftTeamId },
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "다음 픽 팀을 지정하지 못했다.",
   );
 
   return normalizeDraftSnapshot(snapshot);

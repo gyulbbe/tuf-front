@@ -11,15 +11,21 @@ export const metadata: Metadata = {
 const adminTools = [
   {
     href: "/admin/draft",
-    title: "드래프트",
+    title: "팀배/컨텐츠 드래프트 관리",
     description:
-      "드래프트 관리와 드래프트 이력을 나눠서 보고, 준비 작업과 기록 정리를 깔끔하게 처리한다.",
+      "팀배/컨텐츠 드래프트 세션을 만들고, 팀/픽커/후보를 정리하고, 수동 팀장 모드까지 관리한다.",
+  },
+  {
+    href: "/draft",
+    title: "팀배/컨텐츠 드래프트 화면",
+    description:
+      "실제 사용자 화면 기준으로 팀배/컨텐츠 드래프트 진행 상태를 확인한다.",
   },
   {
     href: "/proleague/draft",
-    title: "라이브 화면 확인",
+    title: "프로리그 드래프트 화면",
     description:
-      "실제 사용자 화면 기준으로 드래프트 진행 상태와 팀 보드를 확인합니다.",
+      "기존 프로리그 드래프트 화면도 따로 열어서 비교 확인할 수 있다.",
   },
 ];
 
@@ -53,11 +59,11 @@ export default async function AdminPage() {
           관리자 작업 공간
         </h1>
         <p className="mt-4 max-w-3xl text-base leading-8 text-muted">
-          드래프트 운영과 검수 동선을 관리자 메뉴 아래로 모아둔다. 지금은 드래프트 메뉴를
-          관리 탭과 이력 탭으로 나눠서 연결해 둔 상태다.
+          드래프트 운영과 검수 동선을 관리자 메뉴 아래로 모아둔다. 이제 팀배/컨텐츠
+          드래프트와 프로리그 드래프트 UI 진입점을 분리해서 확인할 수 있다.
         </p>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
+        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {adminTools.map((tool) => (
             <Link
               key={tool.href}
@@ -79,10 +85,10 @@ export default async function AdminPage() {
               관리자 탭은 관리자 권한 계정에게만 노출된다.
             </p>
             <p className="rounded-[22px] bg-surface-muted px-4 py-4">
-              관리자 하위 메뉴의 `드래프트`에서 관리 탭과 이력 탭으로 들어간다.
+              팀배/컨텐츠 드래프트는 관리자 메뉴와 상단 `드래프트` 탭에서 각각 관리/확인할 수 있다.
             </p>
             <p className="rounded-[22px] bg-surface-muted px-4 py-4">
-              라이브 드래프트 화면과 관리자 제어 화면은 같은 백엔드 스냅샷을 사용한다.
+              프로리그 드래프트와 팀배/컨텐츠 드래프트는 UI 진입점만 분리되고 같은 백엔드 세션 데이터를 사용한다.
             </p>
           </div>
         </SurfaceCard>

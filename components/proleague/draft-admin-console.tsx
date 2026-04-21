@@ -1619,8 +1619,17 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
   useEffect(() => {
     if (sortedCandidates.length === 0) {
-      setCandidateDirectory({});
-      return;
+      let cleared = false;
+
+      Promise.resolve().then(() => {
+        if (!cleared) {
+          setCandidateDirectory({});
+        }
+      });
+
+      return () => {
+        cleared = true;
+      };
     }
 
     let cancelled = false;

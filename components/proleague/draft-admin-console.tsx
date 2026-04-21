@@ -644,11 +644,27 @@ function UserAutocompleteInput({
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const blurTimeoutRef = useRef<number | null>(null);
+  const selectedValueRef = useRef<string | null>(null);
 
   useEffect(() => {
     const keyword = value.trim();
 
     if (!keyword) {
+      selectedValueRef.current = null;
+      const timeoutId = window.setTimeout(() => {
+        setResults([]);
+        setLoading(false);
+        setIsOpen(false);
+        setActiveIndex(-1);
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
+    }
+
+    if (selectedValueRef.current === keyword) {
+      selectedValueRef.current = null;
       const timeoutId = window.setTimeout(() => {
         setResults([]);
         setLoading(false);
@@ -715,6 +731,7 @@ function UserAutocompleteInput({
   }
 
   function selectUser(user: DraftUserSearchResult) {
+    selectedValueRef.current = user.userId;
     onSelect(user);
     setResults([]);
     closeDropdown();

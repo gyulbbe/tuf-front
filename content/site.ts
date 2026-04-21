@@ -35,7 +35,7 @@ export const siteTabs: SiteTab[] = [
   {
     label: "프로리그",
     href: "/proleague",
-    description: "리그 운영 상태와 세부 기능으로 이동합니다.",
+    description: "리그 운영 상태와 주요 기능으로 이동합니다.",
     items: [
       {
         label: "드래프트",
@@ -45,12 +45,12 @@ export const siteTabs: SiteTab[] = [
     ],
   },
   {
-    label: "투프갤러리",
+    label: "터프 갤러리",
     href: "/gallery",
-    description: "이미지와 기록을 아카이브합니다.",
+    description: "이미지와 기록을 모아둔 보관 탭입니다.",
   },
   {
-    label: "내정보",
+    label: "내 정보",
     href: "/me",
     description: "로그인 상태와 계정 정보를 확인합니다.",
   },

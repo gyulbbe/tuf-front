@@ -207,6 +207,19 @@ function sortSessions(sessions: DraftSessionSummary[]) {
   });
 }
 
+function filterSessionsForView(
+  sessions: DraftSessionSummary[],
+  adminMode: boolean,
+) {
+  if (adminMode) {
+    return sortSessions(sessions);
+  }
+
+  return sortSessions(
+    sessions.filter((session) => session.status !== "FINISHED"),
+  );
+}
+
 function sortTeams(teams: DraftLiveTeam[]) {
   return [...teams].sort((left, right) => {
     if (left.displayOrder !== right.displayOrder) {
@@ -224,43 +237,32 @@ function chooseInitialSessionId(sessions: DraftSessionSummary[]) {
 function mergeSessionSummary(
   currentSessions: DraftSessionSummary[],
   session: DraftLiveSessionInfo,
+  adminMode: boolean,
 ) {
-  const nextSessions = currentSessions.map((item) =>
-    item.id === session.id
-      ? {
-          ...item,
-          status: session.status,
-          teamCount: session.teamCount,
-          pickTimeSeconds: session.pickTimeSeconds,
-          currentPickNo: session.currentPickNo,
-          currentDraftTeamId: session.currentDraftTeamId,
-          deadlineAt: session.deadlineAt,
-          startedAt: session.startedAt,
-          endedAt: session.endedAt,
-          title: session.title,
-        }
-      : item,
-  );
+  const nextSessions = currentSessions.filter((item) => item.id !== session.id);
 
-  if (nextSessions.some((item) => item.id === session.id)) {
-    return sortSessions(nextSessions);
+  if (!adminMode && session.status === "FINISHED") {
+    return filterSessionsForView(nextSessions, adminMode);
   }
 
-  return sortSessions([
-    ...nextSessions,
-    {
-      id: session.id,
-      title: session.title,
-      status: session.status,
-      teamCount: session.teamCount,
-      pickTimeSeconds: session.pickTimeSeconds,
-      currentPickNo: session.currentPickNo,
-      currentDraftTeamId: session.currentDraftTeamId,
-      deadlineAt: session.deadlineAt,
-      startedAt: session.startedAt,
-      endedAt: session.endedAt,
-    },
-  ]);
+  return filterSessionsForView(
+    [
+      ...nextSessions,
+      {
+        id: session.id,
+        title: session.title,
+        status: session.status,
+        teamCount: session.teamCount,
+        pickTimeSeconds: session.pickTimeSeconds,
+        currentPickNo: session.currentPickNo,
+        currentDraftTeamId: session.currentDraftTeamId,
+        deadlineAt: session.deadlineAt,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+      },
+    ],
+    adminMode,
+  );
 }
 
 function calculateRemainingSeconds(
@@ -656,9 +658,11 @@ function CandidateCard({
 }
 
 function CompactTeamCard({
+  candidateLookup,
   currentTeamId,
   draftTeam,
 }: {
+  candidateLookup: Record<number, DraftCandidate>;
   currentTeamId: number | null;
   draftTeam: DraftLiveTeam;
 }) {
@@ -667,42 +671,41 @@ function CompactTeamCard({
   return (
     <article
       className={cn(
-        "rounded-[28px] border px-5 py-5 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]",
+        "rounded-[22px] border px-4 py-4 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]",
         isCurrentTeam
           ? "border-accent/20 bg-[linear-gradient(180deg,rgba(220,229,222,0.65)_0%,rgba(255,255,255,0.95)_100%)]"
           : "border-line bg-surface-strong",
       )}
     >
-      <p className="text-lg font-semibold text-foreground">{draftTeam.teamName}</p>
-
-      <div className="mt-4 rounded-2xl border border-line/80 bg-surface px-4 py-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-          Picker
-        </p>
-        <p className="mt-2 text-sm font-semibold text-foreground">
-          {draftTeam.pickerName ?? "-"}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          user_id {draftTeam.pickerUserId ?? "-"}
-        </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-sm font-semibold text-foreground">{draftTeam.teamName}</p>
+        <span className="text-[11px] text-muted">{draftTeam.roster.length}</span>
       </div>
 
-      <div className="mt-5 space-y-2">
+      <div className="mt-3 space-y-1.5">
         {draftTeam.roster.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-line px-4 py-4 text-sm text-muted">
-            아직 지명한 선수가 없다.
+          <p className="rounded-xl border border-dashed border-line px-3 py-3 text-xs text-muted">
+            비어 있음
           </p>
         ) : (
-          draftTeam.roster.map((player) => (
-            <div
-              key={`${draftTeam.id}-${player.pickNo}`}
-              className="rounded-2xl bg-surface-muted px-4 py-3"
-            >
-              <p className="text-sm font-semibold text-foreground">
-                {player.candidateName}
-              </p>
-            </div>
-          ))
+          draftTeam.roster.map((player) => {
+            const candidate = candidateLookup[player.candidateUserId];
+            const tier = candidate?.tier?.trim() || "-";
+            const race = candidate?.race?.trim().toLowerCase() || "-";
+
+            return (
+              <div
+                key={`${draftTeam.id}-${player.pickNo}`}
+                className="grid grid-cols-[minmax(0,1fr)_56px_56px] items-center gap-2 rounded-xl bg-surface-muted px-3 py-2 text-[11px]"
+              >
+                <span className="truncate font-semibold text-foreground">
+                  {player.candidateUserId}
+                </span>
+                <span className="truncate text-muted">{tier}</span>
+                <span className="truncate text-muted">{race}</span>
+              </div>
+            );
+          })
         )}
       </div>
     </article>
@@ -1000,7 +1003,10 @@ export function DraftLiveDashboard({
 
     async function loadSessions() {
       try {
-        const nextSessions = sortSessions(await listDraftSessions());
+        const nextSessions = filterSessionsForView(
+          await listDraftSessions(),
+          adminMode,
+        );
 
         if (cancelled || sessionsRequestRef.current !== requestId) {
           return;
@@ -1054,10 +1060,35 @@ export function DraftLiveDashboard({
     return () => {
       cancelled = true;
     };
-  }, [refreshSignal]);
+  }, [adminMode, refreshSignal]);
+
+  useEffect(() => {
+    if (selectedSessionId === null) {
+      return;
+    }
+
+    const stillExists = sessions.some((session) => session.id === selectedSessionId);
+
+    if (stillExists) {
+      return;
+    }
+
+    const nextSelectedSessionId = chooseInitialSessionId(sessions);
+
+    startTransition(() => {
+      setSelectedSessionId(nextSelectedSessionId);
+      setSnapshot((currentSnapshot) =>
+        currentSnapshot?.session.id === selectedSessionId ? null : currentSnapshot,
+      );
+      setServerOffsetMs(0);
+      setConnectionState("disconnected");
+      setRemotePreviews({});
+    });
+    resetLocalPreviewState();
+  }, [selectedSessionId, sessions]);
 
   async function syncAfterSessionRemoval(missingSessionId: number) {
-    const nextSessions = sortSessions(await listDraftSessions());
+    const nextSessions = filterSessionsForView(await listDraftSessions(), adminMode);
     const nextSelectedSessionId = chooseInitialSessionId(nextSessions);
 
     startTransition(() => {
@@ -1103,7 +1134,7 @@ export function DraftLiveDashboard({
           setSnapshot(nextSnapshot);
           setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
           setSessions((currentSessions) =>
-            mergeSessionSummary(currentSessions, nextSnapshot.session),
+            mergeSessionSummary(currentSessions, nextSnapshot.session, adminMode),
           );
         });
       } catch (error) {
@@ -1227,7 +1258,11 @@ export function DraftLiveDashboard({
             }));
             setServerOffsetMs(readServerOffsetMs(broadcastSnapshot.session.serverNow));
             setSessions((currentSessions) =>
-              mergeSessionSummary(currentSessions, broadcastSnapshot.session),
+              mergeSessionSummary(
+                currentSessions,
+                broadcastSnapshot.session,
+                adminMode,
+              ),
             );
           });
 
@@ -1241,7 +1276,7 @@ export function DraftLiveDashboard({
                 setSnapshot(nextSnapshot);
                 setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
                 setSessions((currentSessions) =>
-                  mergeSessionSummary(currentSessions, nextSnapshot.session),
+                  mergeSessionSummary(currentSessions, nextSnapshot.session, adminMode),
                 );
               });
             })
@@ -1306,7 +1341,7 @@ export function DraftLiveDashboard({
         setSnapshot(nextSnapshot);
         setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
         setSessions((currentSessions) =>
-          mergeSessionSummary(currentSessions, nextSnapshot.session),
+          mergeSessionSummary(currentSessions, nextSnapshot.session, adminMode),
         );
       });
       setNotice({
@@ -1639,6 +1674,7 @@ export function DraftLiveDashboard({
               <div className="mt-5 grid gap-4 xl:grid-cols-2">
                 {teams.map((team) => (
                     <CompactTeamCard
+                      candidateLookup={candidateLookup}
                       key={team.id}
                       currentTeamId={currentTeamId}
                       draftTeam={team}

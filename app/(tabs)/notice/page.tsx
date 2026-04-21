@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
-import { BoardListPage } from "@/components/board/board-list-page";
+import { redirect } from "next/navigation";
 import type { BoardListQuery } from "@/components/board/board-shared";
 import type { BoardSearchType } from "@/lib/api/boards";
-
-export const metadata: Metadata = {
-  title: "게시판",
-};
 
 type NoticePageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -43,20 +38,30 @@ function parseSearchType(value: string | null): BoardSearchType {
   }
 }
 
+function buildGalleryHref(query: BoardListQuery) {
+  const params = new URLSearchParams();
+
+  params.set("page", String(query.page));
+  params.set("size", String(query.size));
+
+  if (query.keyword) {
+    params.set("searchType", query.searchType);
+    params.set("keyword", query.keyword);
+  }
+
+  const queryString = params.toString();
+  return queryString ? `/gallery?${queryString}` : "/gallery";
+}
+
 export default async function NoticePage({ searchParams }: NoticePageProps) {
   const resolvedSearchParams = await searchParams;
 
-  const initialQuery: BoardListQuery = {
+  const query: BoardListQuery = {
     keyword: readFirstValue(resolvedSearchParams.keyword)?.trim() ?? "",
     page: parsePositiveInt(readFirstValue(resolvedSearchParams.page), 1),
     searchType: parseSearchType(readFirstValue(resolvedSearchParams.searchType)),
     size: parsePositiveInt(readFirstValue(resolvedSearchParams.size), 10),
   };
 
-  return (
-    <BoardListPage
-      key={`${initialQuery.page}:${initialQuery.size}:${initialQuery.searchType}:${initialQuery.keyword}`}
-      initialQuery={initialQuery}
-    />
-  );
+  redirect(buildGalleryHref(query));
 }

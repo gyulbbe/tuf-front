@@ -1,10 +1,5 @@
-import type { Metadata } from "next";
-import { BoardFormPage } from "@/components/board/board-form-page";
-
-export const metadata: Metadata = {
-  title: "글쓰기",
-};
+import { redirect } from "next/navigation";
 
 export default function NoticeWritePage() {
-  return <BoardFormPage mode="create" />;
+  redirect("/gallery/new");
 }

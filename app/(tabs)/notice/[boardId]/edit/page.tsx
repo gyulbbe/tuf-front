@@ -1,10 +1,4 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { BoardFormPage } from "@/components/board/board-form-page";
-
-export const metadata: Metadata = {
-  title: "게시글 수정",
-};
+import { notFound, redirect } from "next/navigation";
 
 type NoticeEditPageProps = {
   params: Promise<{
@@ -20,5 +14,5 @@ export default async function NoticeEditPage({ params }: NoticeEditPageProps) {
     notFound();
   }
 
-  return <BoardFormPage mode="edit" boardId={boardId} />;
+  redirect(`/gallery/${boardId}/edit`);
 }

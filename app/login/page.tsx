@@ -25,7 +25,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const resolvedSearchParams = await searchParams;
 
   if (session) {
-    redirect("/notice");
+    redirect("/gallery");
   }
 
   return (

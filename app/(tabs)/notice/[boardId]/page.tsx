@@ -1,10 +1,4 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { BoardDetailPage } from "@/components/board/board-detail-page";
-
-export const metadata: Metadata = {
-  title: "게시글 상세",
-};
+import { notFound, redirect } from "next/navigation";
 
 type NoticeDetailPageProps = {
   params: Promise<{
@@ -22,5 +16,5 @@ export default async function NoticeDetailPage({
     notFound();
   }
 
-  return <BoardDetailPage boardId={boardId} />;
+  redirect(`/gallery/${boardId}`);
 }

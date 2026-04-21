@@ -76,7 +76,7 @@ export function HeaderAuthButton() {
           onClick={() => {
             logout();
             startTransition(() => {
-              router.replace("/notice");
+              router.replace("/gallery");
             });
           }}
         >

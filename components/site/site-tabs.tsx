@@ -152,7 +152,7 @@ function SubTabItem({
 
   return (
     <Link
-      href={item.href ?? "/notice"}
+      href={item.href ?? "/gallery"}
       title={item.description}
       className={className}
       onClick={onClick}

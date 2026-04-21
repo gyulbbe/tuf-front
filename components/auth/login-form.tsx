@@ -58,7 +58,7 @@ export function LoginForm({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fallbackRedirect = sanitizeRedirectTarget(redirectTo) ?? "/notice";
+  const fallbackRedirect = sanitizeRedirectTarget(redirectTo) ?? "/gallery";
   const reasonMessage =
     typeof reason === "string"
       ? (reasonMessages[reason as AuthRedirectReason] ?? null)
@@ -186,7 +186,7 @@ export function LoginForm({
       {showReturnLink ? (
         <div className="pt-2 text-sm text-muted">
           <Link
-            href="/notice"
+            href="/gallery"
             className="transition-colors hover:text-foreground"
           >
             공지사항으로 돌아가기

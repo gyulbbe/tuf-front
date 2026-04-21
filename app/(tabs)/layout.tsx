@@ -18,7 +18,7 @@ export default function TabsLayout({
           </div>
 
           <Link
-            href="/notice"
+            href="/gallery"
             className="mx-auto inline-flex rounded-[22px] border border-transparent px-2 py-1 pr-24 text-center text-lg font-semibold text-foreground transition-colors hover:border-line sm:pr-0"
           >
             {siteConfig.name}

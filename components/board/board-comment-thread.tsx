@@ -6,28 +6,30 @@ import {
   BoardEmptyState,
   alertBoardError,
   formatBoardDateTime,
+  readBoardAuthorLabel,
 } from "@/components/board/board-shared";
 import { Button } from "@/components/ui/button";
 import { deleteBoardComment, type BoardComment } from "@/lib/api/boards";
 import { cn } from "@/lib/utils";
 
 type BoardCommentThreadProps = {
+  authorLabels?: Record<string, string>;
   boardId: number;
   comments: BoardComment[];
   onCommentsChanged: () => Promise<void>;
 };
 
 function buildCommentDeleteConfirmText() {
-  return ["이 댓글을 삭제할까요?", "", "하위 대댓글도 함께 삭제됩니다."].join(
-    "\n",
-  );
+  return ["이 댓글을 삭제할까?", "", "하위 대댓글도 함께 삭제된다."].join("\n");
 }
 
 function BoardCommentItem({
+  authorLabels,
   boardId,
   comment,
   onCommentsChanged,
 }: {
+  authorLabels?: Record<string, string>;
   boardId: number;
   comment: BoardComment;
   onCommentsChanged: () => Promise<void>;
@@ -36,39 +38,29 @@ function BoardCommentItem({
   const [isEditing, setIsEditing] = useState(false);
   const [isReplying, setIsReplying] = useState(false);
 
-  const isUpdated =
-    Boolean(comment.updateDate) && comment.updateDate !== comment.regDate;
-
   return (
-    <div
-      className="space-y-3"
-      style={{ marginLeft: `${comment.depth * 16}px` }}
-    >
+    <div className="space-y-2" style={{ marginLeft: `${comment.depth * 12}px` }}>
       <article
         className={cn(
-          "rounded-[24px] border border-line bg-surface-strong p-4",
+          "rounded-2xl border border-line bg-surface-strong px-4 py-3",
           comment.depth > 0 && "border-l-4 border-l-accent-soft",
         )}
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
               <span className="font-semibold text-foreground">
-                {comment.authorName}
+                {readBoardAuthorLabel(comment.authorName, authorLabels)}
               </span>
               <span>{formatBoardDateTime(comment.regDate)}</span>
-              {isUpdated ? (
-                <span className="rounded-full bg-accent-soft px-2 py-1 text-[11px] font-medium text-accent-ink">
-                  수정됨
-                </span>
-              ) : null}
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1">
             <Button
               type="button"
               size="sm"
+              className="px-3 py-1.5 text-xs"
               onClick={() => {
                 setIsReplying((current) => !current);
                 setIsEditing(false);
@@ -81,6 +73,7 @@ function BoardCommentItem({
               <Button
                 type="button"
                 size="sm"
+                className="px-3 py-1.5 text-xs"
                 onClick={() => {
                   setIsEditing((current) => !current);
                   setIsReplying(false);
@@ -95,6 +88,7 @@ function BoardCommentItem({
                 type="button"
                 size="sm"
                 variant="danger"
+                className="px-3 py-1.5 text-xs"
                 disabled={isDeleting}
                 onClick={async () => {
                   if (!window.confirm(buildCommentDeleteConfirmText())) {
@@ -122,7 +116,7 @@ function BoardCommentItem({
         </div>
 
         {isEditing ? (
-          <div className="mt-4 rounded-[22px] border border-dashed border-line bg-surface-muted/60 p-4">
+          <div className="mt-3 border-t border-dashed border-line pt-3">
             <BoardCommentComposer
               boardId={boardId}
               commentId={comment.id}
@@ -131,19 +125,19 @@ function BoardCommentItem({
               onCancel={() => setIsEditing(false)}
               onCommentsChanged={onCommentsChanged}
               onSuccess={() => setIsEditing(false)}
-              placeholder="수정할 댓글 내용을 입력해 주세요."
-              submitLabel="수정 저장"
+              placeholder="수정할 내용을 입력해 주세요."
+              submitLabel="수정"
             />
           </div>
         ) : (
-          <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-foreground">
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground">
             {comment.content}
           </p>
         )}
       </article>
 
       {isReplying ? (
-        <div className="rounded-[22px] border border-dashed border-line bg-surface-muted/60 p-4">
+        <div className="border-l border-dashed border-line pl-3">
           <BoardCommentComposer
             boardId={boardId}
             mode="create"
@@ -151,17 +145,18 @@ function BoardCommentItem({
             onCancel={() => setIsReplying(false)}
             onCommentsChanged={onCommentsChanged}
             onSuccess={() => setIsReplying(false)}
-            placeholder="대댓글 내용을 입력해 주세요."
-            submitLabel="답글 등록"
+            placeholder="답글 내용을 입력해 주세요."
+            submitLabel="등록"
           />
         </div>
       ) : null}
 
       {comment.children.length ? (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {comment.children.map((child) => (
             <BoardCommentItem
               key={child.id}
+              authorLabels={authorLabels}
               boardId={boardId}
               comment={child}
               onCommentsChanged={onCommentsChanged}
@@ -174,19 +169,21 @@ function BoardCommentItem({
 }
 
 export function BoardCommentThread({
+  authorLabels,
   boardId,
   comments,
   onCommentsChanged,
 }: BoardCommentThreadProps) {
   if (!comments.length) {
-    return <BoardEmptyState text="등록된 댓글이 없습니다." />;
+    return <BoardEmptyState className="py-6" text="등록된 댓글이 없습니다." />;
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {comments.map((comment) => (
         <BoardCommentItem
           key={comment.id}
+          authorLabels={authorLabels}
           boardId={boardId}
           comment={comment}
           onCommentsChanged={onCommentsChanged}

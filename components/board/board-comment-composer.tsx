@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   BoardNotice,
-  type NoticeState,
   alertBoardError,
   readBoardErrorMessage,
+  type NoticeState,
 } from "@/components/board/board-shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,6 @@ type BoardCommentComposerProps = {
   onSuccess?: () => void;
   parentId?: number | null;
   placeholder?: string;
-  showAuthenticatedHint?: boolean;
   submitLabel?: string;
 };
 
@@ -40,7 +39,7 @@ function validateCommentForm(options: {
 
   if (!options.isAuthenticated) {
     if (!trimmedAuthorName) {
-      return "비회원 작성자는 작성자명을 입력해야 합니다.";
+      return "비회원 작성자명을 입력해 주세요.";
     }
 
     if (trimmedAuthorName.length > 50) {
@@ -49,7 +48,7 @@ function validateCommentForm(options: {
   }
 
   if (!trimmedContent) {
-    return "댓글 내용은 비워둘 수 없습니다.";
+    return "내용을 입력해 주세요.";
   }
 
   if (trimmedContent.length > 4000) {
@@ -71,7 +70,6 @@ export function BoardCommentComposer({
   onSuccess,
   parentId = null,
   placeholder = "댓글 내용을 입력해 주세요.",
-  showAuthenticatedHint = false,
   submitLabel,
 }: BoardCommentComposerProps) {
   const { status } = useAuth();
@@ -83,7 +81,7 @@ export function BoardCommentComposer({
   const isAuthenticated = status === "authenticated";
   const isAuthLoading = status === "loading";
   const resolvedSubmitLabel =
-    submitLabel ?? (mode === "create" ? "댓글 등록" : "댓글 저장");
+    submitLabel ?? (mode === "create" ? "등록" : "수정");
 
   return (
     <form
@@ -94,7 +92,7 @@ export function BoardCommentComposer({
         if (isAuthLoading) {
           setNotice({
             tone: "neutral",
-            text: "로그인 상태를 확인하는 중입니다. 잠시 후 다시 시도해 주세요.",
+            text: "로그인 상태를 확인하는 중이다. 잠시 뒤 다시 시도해 주세요.",
           });
           return;
         }
@@ -158,53 +156,27 @@ export function BoardCommentComposer({
     >
       {notice ? <BoardNotice notice={notice} /> : null}
 
-      {isAuthLoading ? (
-        <div className="rounded-2xl border border-line bg-surface-muted px-4 py-3 text-sm text-muted">
-          로그인 상태를 확인하는 중입니다.
-        </div>
-      ) : null}
-
       {status === "unauthenticated" ? (
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-foreground">
-            작성자명
-          </span>
-          <Input
-            maxLength={50}
-            value={authorName}
-            onChange={(event) => setAuthorName(event.target.value)}
-            placeholder="비회원 작성자명을 입력해 주세요."
-          />
-        </label>
-      ) : null}
-
-      {isAuthenticated && showAuthenticatedHint ? (
-        <p className="rounded-2xl border border-line bg-surface-muted px-4 py-3 text-xs leading-6 text-muted">
-          로그인 사용자는 작성자명이 계정 정보 기준으로 저장됩니다.
-        </p>
-      ) : null}
-
-      <label className="block">
-        <span className="mb-2 block text-sm font-medium text-foreground">
-          댓글
-        </span>
-        <Textarea
-          maxLength={4000}
-          rows={4}
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          placeholder={placeholder}
-          className="resize-y"
+        <Input
+          maxLength={50}
+          value={authorName}
+          onChange={(event) => setAuthorName(event.target.value)}
+          placeholder="비회원 작성자명"
         />
-      </label>
+      ) : null}
+
+      <Textarea
+        maxLength={4000}
+        rows={3}
+        value={content}
+        onChange={(event) => setContent(event.target.value)}
+        placeholder={placeholder}
+        className="resize-y"
+      />
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         {onCancel ? (
-          <Button
-            type="button"
-            size="sm"
-            onClick={onCancel}
-          >
+          <Button type="button" size="sm" onClick={onCancel}>
             취소
           </Button>
         ) : null}
@@ -215,11 +187,7 @@ export function BoardCommentComposer({
           variant="accent"
           disabled={isSubmitting || isAuthLoading}
         >
-          {isSubmitting
-            ? mode === "create"
-              ? "등록 중..."
-              : "저장 중..."
-            : resolvedSubmitLabel}
+          {isSubmitting ? "처리 중..." : resolvedSubmitLabel}
         </Button>
       </div>
     </form>

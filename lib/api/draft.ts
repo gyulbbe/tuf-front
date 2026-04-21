@@ -49,6 +49,7 @@ export type DraftCandidate = {
   draftSessionId: number;
   candidateUserId: number;
   candidateName: string;
+  tier?: string | null;
   race: string | null;
   status: string;
   pickedDraftTeamId: number | null;

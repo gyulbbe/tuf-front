@@ -95,6 +95,24 @@ function readErrorMessage(error: unknown) {
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
+function formatRoleBadge(role: string | null | undefined) {
+  if (!role) {
+    return null;
+  }
+
+  return role.replace(/^ROLE_/, "") || null;
+}
+
+function buildCandidateDisplay(candidate: DraftCandidate) {
+  return [
+    candidate.candidateName,
+    candidate.race?.trim().toLowerCase(),
+    candidate.tier?.trim(),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+}
+
 function isMissingSessionError(error: unknown) {
   if (!isDraftApiError(error)) {
     return false;
@@ -632,6 +650,118 @@ function CandidateCard({
         <div className="rounded-full bg-surface px-3 py-1.5 text-sm text-muted">
           티어 <span className="font-semibold text-foreground">-</span>
         </div>
+      </div>
+    </article>
+  );
+}
+
+function CompactTeamCard({
+  currentTeamId,
+  draftTeam,
+}: {
+  currentTeamId: number | null;
+  draftTeam: DraftLiveTeam;
+}) {
+  const isCurrentTeam = draftTeam.id === currentTeamId;
+
+  return (
+    <article
+      className={cn(
+        "rounded-[28px] border px-5 py-5 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]",
+        isCurrentTeam
+          ? "border-accent/20 bg-[linear-gradient(180deg,rgba(220,229,222,0.65)_0%,rgba(255,255,255,0.95)_100%)]"
+          : "border-line bg-surface-strong",
+      )}
+    >
+      <p className="text-lg font-semibold text-foreground">{draftTeam.teamName}</p>
+
+      <div className="mt-4 rounded-2xl border border-line/80 bg-surface px-4 py-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+          Picker
+        </p>
+        <p className="mt-2 text-sm font-semibold text-foreground">
+          {draftTeam.pickerName ?? "-"}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          user_id {draftTeam.pickerUserId ?? "-"}
+        </p>
+      </div>
+
+      <div className="mt-5 space-y-2">
+        {draftTeam.roster.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-line px-4 py-4 text-sm text-muted">
+            아직 지명한 선수가 없다.
+          </p>
+        ) : (
+          draftTeam.roster.map((player) => (
+            <div
+              key={`${draftTeam.id}-${player.pickNo}`}
+              className="rounded-2xl bg-surface-muted px-4 py-3"
+            >
+              <p className="text-sm font-semibold text-foreground">
+                {player.candidateName}
+              </p>
+            </div>
+          ))
+        )}
+      </div>
+    </article>
+  );
+}
+
+function CompactCandidateCard({
+  canPick,
+  canPreviewDrag,
+  candidate,
+  isDragging,
+  pendingAction,
+  onPick,
+  onPreviewPointerDown,
+}: {
+  canPick: boolean;
+  canPreviewDrag: boolean;
+  candidate: DraftCandidate;
+  isDragging: boolean;
+  pendingAction: string | null;
+  onPick: (candidateUserId: number) => Promise<void>;
+  onPreviewPointerDown: (
+    event: ReactPointerEvent<HTMLElement>,
+    candidate: DraftCandidate,
+  ) => void;
+}) {
+  const actionKey = `pick-${candidate.candidateUserId}`;
+  const canInteractPreview = canPreviewDrag && pendingAction === null;
+
+  return (
+    <article
+      className={cn(
+        "rounded-[20px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.72)_100%)] px-4 py-4 shadow-[0_16px_40px_-34px_rgba(31,42,40,0.7)]",
+        canInteractPreview && "cursor-grab touch-none select-none",
+        isDragging && "cursor-grabbing opacity-45",
+      )}
+      onPointerDown={(event) => {
+        if (!canInteractPreview) {
+          return;
+        }
+
+        onPreviewPointerDown(event, candidate);
+      }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-base font-semibold text-foreground">
+          {buildCandidateDisplay(candidate)}
+        </p>
+        <Button
+          data-no-preview-drag="true"
+          variant="accent"
+          disabled={!canPick || pendingAction !== null}
+          onClick={() => {
+            void onPick(candidate.candidateUserId);
+          }}
+          className="shrink-0 min-w-20 whitespace-nowrap"
+        >
+          {pendingAction === actionKey ? "지명 중" : "지명"}
+        </Button>
       </div>
     </article>
   );
@@ -1280,11 +1410,7 @@ export function DraftLiveDashboard({
   const myTeam = teams.find((team) => team.id === snapshot?.permissions?.myTeamId) ?? null;
   const canControl = snapshot?.permissions?.canControl ?? false;
   const canPick = snapshot?.permissions?.canPick ?? false;
-  const viewerRole = canControl
-    ? formatUserRole(user?.role)
-    : snapshot?.permissions?.myRole === "PICKER"
-      ? "PICKER"
-      : null;
+  const viewerRole = formatRoleBadge(user?.role);
   const isBusy = pendingAction !== null;
   const remainingSeconds = calculateRemainingSeconds(
     snapshot,
@@ -1415,7 +1541,7 @@ export function DraftLiveDashboard({
                 </div>
               ) : snapshot ? (
                 <>
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
                     {[
                       {
                         label: "진행률",
@@ -1434,7 +1560,7 @@ export function DraftLiveDashboard({
                         value: myTeam?.teamName ?? "-",
                         subtext: canPick ? "지명 가능" : canControl ? "드래프트 제어 가능" : "관전",
                       },
-                    ].map((stat) => (
+                    ].slice(0, 2).map((stat) => (
                       <div
                         key={stat.label}
                         className="rounded-[24px] border border-line bg-white/70 px-4 py-4"
@@ -1459,8 +1585,11 @@ export function DraftLiveDashboard({
                   <h2 className="text-xl font-semibold text-foreground">
                     드래프트 선수 추가
                   </h2>
-                  <p className="mt-2 text-sm leading-7 text-muted">
+                  <p className="hidden">
                     드래프트 인원을 검색하고 현재 픽 권한이 있으면 바로 지명할 수 있다.
+                  </p>
+                  <p className="mt-2 text-sm leading-7 text-muted">
+                    지명할 선수를 확인하고 선택하면 된다.
                   </p>
                 </div>
 
@@ -1482,7 +1611,7 @@ export function DraftLiveDashboard({
                   </div>
                 ) : (
                   filteredCandidates.map((candidate) => (
-                    <CandidateCard
+                    <CompactCandidateCard
                       key={candidate.candidateUserId}
                       canPick={canPick}
                       canPreviewDrag={canPreviewDrag}
@@ -1509,11 +1638,11 @@ export function DraftLiveDashboard({
 
               <div className="mt-5 grid gap-4 xl:grid-cols-2">
                 {teams.map((team) => (
-                  <TeamCard
-                    key={team.id}
-                    currentTeamId={currentTeamId}
-                    draftTeam={team}
-                  />
+                    <CompactTeamCard
+                      key={team.id}
+                      currentTeamId={currentTeamId}
+                      draftTeam={team}
+                    />
                 ))}
               </div>
             </section>
@@ -1521,7 +1650,7 @@ export function DraftLiveDashboard({
         ) : null}
       </SurfaceCard>
 
-      <div className="grid gap-4">
+      <div className="grid gap-4 [&>*:nth-child(n+2)]:hidden">
         <SurfaceCard className="p-6">
           <p className="text-sm font-semibold text-foreground">드래프트 제어</p>
 
@@ -1716,7 +1845,7 @@ export function DraftLiveDashboard({
                 </Button>
               </div>
 
-              {!canControl ? (
+              {false ? (
                 <p className="rounded-[18px] bg-surface-muted px-4 py-3 text-sm leading-7 text-muted">
                   이 계정은 드래프트 제어 권한이 없다.
                 </p>

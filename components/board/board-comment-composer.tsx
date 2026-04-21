@@ -11,7 +11,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { createBoardComment, updateBoardComment } from "@/lib/api/boards";
+import {
+  createBoardComment,
+  updateBoardComment,
+  type BoardCommentsSnapshot,
+} from "@/lib/api/boards";
 import { cn } from "@/lib/utils";
 
 type BoardCommentComposerProps = {
@@ -22,7 +26,7 @@ type BoardCommentComposerProps = {
   initialContent?: string;
   mode: "create" | "edit";
   onCancel?: () => void;
-  onCommentsChanged: () => Promise<void>;
+  onCommentsChanged: (snapshot: BoardCommentsSnapshot) => void;
   onSuccess?: () => void;
   parentId?: number | null;
   placeholder?: string;
@@ -116,9 +120,10 @@ export function BoardCommentComposer({
 
         try {
           const trimmedContent = content.trim();
+          let snapshot: BoardCommentsSnapshot;
 
           if (mode === "create") {
-            await createBoardComment(boardId, {
+            snapshot = await createBoardComment(boardId, {
               authorName: isAuthenticated ? undefined : authorName.trim(),
               content: trimmedContent,
               parentId,
@@ -128,12 +133,12 @@ export function BoardCommentComposer({
               throw new Error("수정할 댓글 정보를 찾지 못했습니다.");
             }
 
-            await updateBoardComment(boardId, commentId, {
+            snapshot = await updateBoardComment(boardId, commentId, {
               content: trimmedContent,
             });
           }
 
-          await onCommentsChanged();
+          onCommentsChanged(snapshot);
 
           if (mode === "create") {
             setContent("");

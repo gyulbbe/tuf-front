@@ -9,13 +9,17 @@ import {
   getBoardAuthorLabel,
 } from "@/components/board/board-shared";
 import { Button } from "@/components/ui/button";
-import { deleteBoardComment, type BoardComment } from "@/lib/api/boards";
+import {
+  deleteBoardComment,
+  type BoardComment,
+  type BoardCommentsSnapshot,
+} from "@/lib/api/boards";
 import { cn } from "@/lib/utils";
 
 type BoardCommentThreadProps = {
   boardId: number;
   comments: BoardComment[];
-  onCommentsChanged: () => Promise<void>;
+  onCommentsChanged: (snapshot: BoardCommentsSnapshot) => void;
 };
 
 function buildCommentDeleteConfirmText() {
@@ -29,7 +33,7 @@ function BoardCommentItem({
 }: {
   boardId: number;
   comment: BoardComment;
-  onCommentsChanged: () => Promise<void>;
+  onCommentsChanged: (snapshot: BoardCommentsSnapshot) => void;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -95,8 +99,8 @@ function BoardCommentItem({
                   setIsDeleting(true);
 
                   try {
-                    await deleteBoardComment(boardId, comment.id);
-                    await onCommentsChanged();
+                    const snapshot = await deleteBoardComment(boardId, comment.id);
+                    onCommentsChanged(snapshot);
                     setIsEditing(false);
                     setIsReplying(false);
                   } catch (error) {

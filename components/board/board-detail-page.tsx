@@ -9,7 +9,6 @@ import {
   BoardLinkButton,
   BoardNotice,
   alertBoardError,
-  countBoardComments,
   formatBoardDateTime,
   getBoardAuthorLabel,
   readBoardErrorMessage,
@@ -20,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import {
   deleteBoard,
   getBoard,
-  listBoardComments,
+  type BoardCommentsSnapshot,
   type BoardDetail,
 } from "@/lib/api/boards";
 
@@ -84,26 +83,17 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
     };
   }, [boardId]);
 
-  async function refreshComments() {
-    try {
-      const comments = await listBoardComments(boardId);
-
-      setBoard((current) =>
-        current
-          ? {
-              ...current,
-              comments,
-              commentCount: countBoardComments(comments),
-            }
-          : current,
-      );
-      setNotice(null);
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readBoardErrorMessage(error),
-      });
-    }
+  function applyCommentsSnapshot(snapshot: BoardCommentsSnapshot) {
+    setBoard((current) =>
+      current
+        ? {
+            ...current,
+            comments: snapshot.comments,
+            commentCount: snapshot.commentCount,
+          }
+        : current,
+    );
+    setNotice(null);
   }
 
   if (isLoading) {
@@ -153,14 +143,14 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
           boardId={board.id}
           mode="create"
           parentId={null}
-          onCommentsChanged={refreshComments}
+          onCommentsChanged={applyCommentsSnapshot}
         />
 
         <div className="mt-4 border-t border-line pt-4">
           <BoardCommentThread
             boardId={board.id}
             comments={board.comments}
-            onCommentsChanged={refreshComments}
+            onCommentsChanged={applyCommentsSnapshot}
           />
         </div>
       </SurfaceCard>

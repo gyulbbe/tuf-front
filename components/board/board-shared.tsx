@@ -45,7 +45,7 @@ export const SEARCH_TYPE_OPTIONS: Array<{
 export const SELECT_CLASS_NAME =
   "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
 
-export function getBoardAuthorLabel(authorUserId: string | null) {
+export function getBoardAuthorLabel(authorUserId: string | null | undefined) {
   return authorUserId?.trim() || "GUEST";
 }
 

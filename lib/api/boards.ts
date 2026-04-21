@@ -82,6 +82,12 @@ export type BoardDetail = {
   comments: BoardComment[];
 };
 
+export type BoardCommentsSnapshot = {
+  boardId: number;
+  commentCount: number;
+  comments: BoardComment[];
+};
+
 export type BoardListParams = {
   page: number;
   size: number;
@@ -357,7 +363,7 @@ export async function deleteBoard(boardId: number) {
 
 export async function listBoardComments(boardId: number) {
   return unwrapResponse(
-    apiClient.get<ApiEnvelope<BoardComment[]>>(`/boards/${boardId}/comments`, {
+    apiClient.get<ApiEnvelope<BoardCommentsSnapshot>>(`/boards/${boardId}/comments`, {
       validateStatus: () => true,
     }),
     "댓글을 불러오지 못했습니다.",
@@ -369,7 +375,7 @@ export async function createBoardComment(
   payload: BoardCommentCreateRequest,
 ) {
   return unwrapResponse(
-    apiClient.post<ApiEnvelope<BoardComment>>(
+    apiClient.post<ApiEnvelope<BoardCommentsSnapshot>>(
       `/boards/${boardId}/comments`,
       payload,
       {
@@ -386,7 +392,7 @@ export async function updateBoardComment(
   payload: BoardCommentUpdateRequest,
 ) {
   return unwrapResponse(
-    apiClient.put<ApiEnvelope<BoardComment>>(
+    apiClient.put<ApiEnvelope<BoardCommentsSnapshot>>(
       `/boards/${boardId}/comments/${commentId}`,
       payload,
       {
@@ -398,8 +404,8 @@ export async function updateBoardComment(
 }
 
 export async function deleteBoardComment(boardId: number, commentId: number) {
-  return unwrapVoidResponse(
-    apiClient.delete<ApiEnvelope<null>>(
+  return unwrapResponse(
+    apiClient.delete<ApiEnvelope<BoardCommentsSnapshot>>(
       `/boards/${boardId}/comments/${commentId}`,
       {
         validateStatus: () => true,

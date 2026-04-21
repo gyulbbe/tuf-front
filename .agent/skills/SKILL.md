@@ -1,588 +1,196 @@
 ---
-name: tuf-front-workspace
-description: Use this skill when working in the tuf-front repository and you need the current development environment, runtime, commands, deployment target, or repository-specific implementation context before making changes.
+name: tuf-back-backend
+description: Use when working in the tuf-back Spring Boot backend repository, including controller/service/repository changes, Oracle DB schema work, QueryDSL or JPA changes, JWT auth flow, and backend support for draft, match, league, board, or chat features.
 ---
 
-# tuf-front workspace
+# tuf-back Backend
 
-이 스킬은 `tuf-front` 레포에서 작업할 때 현재 개발환경과 구현 컨텍스트를 빠르게 맞추기 위한 용도다.
+이 스킬은 `tuf-back` 백엔드 작업용이다.
 
-## 기본 규칙
+## 먼저 볼 문서
 
-1. 런타임, 명령어, 배포 방식, 스택 버전이 중요한 작업이면 먼저 [references/development-environment.md](references/development-environment.md)를 읽는다.
-2. 개발환경 문서는 빠른 참고용이다. 정확한 버전이나 설정이 중요한 변경은 `package.json`, `tsconfig.json`, `wrangler.jsonc`, `open-next.config.ts`를 다시 확인한다.
-3. 이 레포는 Next.js `16.2.4`를 사용한다. 프레임워크 동작에 영향을 주는 코드를 작성할 때는 `node_modules/next/dist/docs/`의 관련 문서를 먼저 확인한다.
-4. 라우팅과 화면 구조는 `app/` 기준으로 본다.
-5. 스타일 작업은 `app/globals.css`의 기존 Tailwind 4 토큰과 폰트 스택을 우선 따른다.
-6. 배포 관련 작업은 Cloudflare Workers + OpenNext 구성을 전제로 한다.
+- 개발 환경과 실행 방법: [references/dev-environment.md](references/dev-environment.md)
+- DB 구조와 관계: [references/database-schema.md](references/database-schema.md)
+
+## 현재 개발 환경 요약
+
+- Java 25
+- Spring Boot 3.5.7
+- Gradle Wrapper 기반
+- 기본 프로필: `local`
+- 기본 포트: `8080`
+- 프론트 개발 서버 기본 주소: `http://localhost:5173`
+- Oracle Database
+- JPA + MyBatis + QueryDSL 혼합 사용
+- JWT 기반 stateless 인증
+- 로컬 AI는 Ollama, 운영 기본은 Cloudflare Workers AI
+
+## 에이전트 작업 경계 (중요)
+
+이 저장소에서 에이전트는 **빌드/실행/테스트를 직접 수행하지 않는다.**
+이유: `./gradlew build`, `bootRun`, `test` 는 `build/`, `.gradle/`, `~/.gradle/`
+아래에 대량의 산출물과 캐시를 만들고, 사용자의 IntelliJ 빌더와 충돌한다.
+
+에이전트가 할 수 있는 일
+- 소스 읽기, 편집, 신규 파일 생성
+- 정적 분석 수준의 검증 (임포트 확인, 시그니처 일치, 엔티티-스키마 대조)
+- 테스트 코드 작성 및 수정
+- 설정 파일, 스키마 파일 갱신
+
+에이전트가 하지 말아야 할 일
+- `gradlew`, `gradle`, `mvn` 계열 명령 실행
+- `bootRun`, `build`, `test`, `bootJar`, `check` 태스크 실행
+- 의존성을 받는 모든 명령 (`--refresh-dependencies` 포함)
+- `build/`, `out/`, `.gradle/` 디렉토리에 파일 쓰기
+
+검증이 필요하면 사용자에게 요청한다. 아래 "사용자에게 요청하기" 참고.
+
+## 작업 원칙
+
+- 설정 변경 전에는 `application.properties`, `application-local.properties`, `application-prod.properties` 를 같이 본다.
+- 데이터 조회 경로를 하나로 단정하지 말고 JPA Repository, QueryDSL, MyBatis 사용 지점을 같이 확인한다.
+- DB 변경 전에는 항상 [references/database-schema.md](references/database-schema.md), `db-schema.sql`, `db-schema-alter.sql` 을 같이 맞춘다.
+- FK 관계가 있는 테이블은 삭제나 컬럼 변경 전에 영향 범위를 먼저 확인한다.
+- 민감값은 하드코딩하지 말고 설정 또는 secret 주입 기준으로 둔다.
+
+## 프론트 연동 작업 시 참고 규칙
+
+프론트에서 쓰는 응답 스키마 변경, CORS/쿠키/JWT 설정 변경, 에러 응답 포맷 조정,
+API 경로 재설계처럼 **프론트 영향이 있는 작업**에서는 프론트 쪽 스펙과 런타임을
+함께 확인한다.
+
+1. 한 단계 밖에 있는 `tuf-front` 레포의 환경 문서를 읽는다.
+
+   경로: `../tuf-front/.agent/references/development-environment.md`
+
+   여기에 프론트의 런타임, 개발 서버 주소, 배포 타겟(Cloudflare Workers + OpenNext),
+   API 호출 래퍼의 전제(`NEXT_PUBLIC_API_URL`, 토큰 저장 방식 등)가 정리되어 있다.
+   백엔드에서 CORS 허용 Origin, 쿠키 SameSite, 응답 포맷을 결정할 때 근거로 쓴다.
+
+2. 실제 호출 코드를 봐야 할 때는 `tuf-front/src/lib/api.ts`, `tuf-front/src/hooks/`
+   의 쿼리 훅들을 직접 읽는다. 문서와 코드가 어긋나면 **코드를 진실의 원천**으로 본다.
+
+3. 프론트 쪽 구현 규칙(서버/클라 컴포넌트 경계, TanStack Query 키 구조 등)까지
+   손대야 하는 경우는 이 스킬의 범위를 넘어가므로, 변경 제안만 정리하고
+   실제 반영은 프론트 작업 턴에서 하도록 사용자에게 넘긴다.
+
+로컬 프론트가 실제로 떠 있는지 여부는 에이전트가 판단하지 않는다.
+통합 확인이 필요한 시점에는 아래 "사용자에게 요청하기"로 넘어간다.
+
+## 드래프트 작업 지침
+
+현재 드래프트는 두 갈래가 공존한다.
+
+### 1. 기존 드래프트
+
+- `draft_*` 테이블을 사용한다.
+- `draft_orders` 기반 순서형 드래프트다.
+- `FIXED_ORDER`, `MANUAL_CAPTAIN` 구조를 그대로 유지한다.
+- 기존 드래프트를 수정할 때는 기존 API/엔티티/서비스와 호환되게 작업한다.
+
+### 2. 가위바위보 드래프트
+
+- `rps_draft_*` 테이블을 사용한다.
+- 기존 `draft_*` 와 섞지 않는다.
+- `2팀 전용` 이다.
+- 세션 생성 시 팀 2개를 자동 생성하는 전제를 둔다.
+- 순번 테이블이 없다.
+- 제한 시간이 없다.
+- 흐름은 `가위바위보 -> 승자 1픽 -> 패자 1픽 -> 다시 가위바위보` 반복이다.
+
+가위바위보 드래프트 작업 시 확인할 포인트
+
+- `rps_draft_sessions.status` 는 `READY`, `RPS_PENDING`, `PICKING`, `FINISHED` 만 쓴다.
+- `owner_user_id` 는 세션 등록자이자 라이브 관리 주체다.
+- `rps_draft_teams.picker_user_id` 는 실제 RPS 제출과 픽 수행 계정이다.
+- 누가 냈는지는 `team1_rps_choice`, `team2_rps_choice` 의 null 여부로 판단할 수 있다.
+- 프론트 노출 정책과 DB 저장 구조를 구분해서 본다.
+  - DB에는 선택값을 저장할 수 있다.
+  - 프론트에는 둘 다 제출되기 전까지 선택값을 숨길 수 있다.
+
+## 사용자에게 요청하기
+
+빌드와 테스트는 사용자가 IntelliJ 또는 터미널에서 직접 수행한다.
+에이전트는 필요한 시점에 **무엇을 어떻게** 해야 하는지 정확히 요청한다.
+
+### 서버가 필요한 작업을 할 때
+
+API 동작 확인, 컨트롤러 통합 테스트, 실제 DB 연동 확인 등
+서버 기동이 전제인 작업 요청을 받았을 때는, 먼저 서버 상태를 확인한다.
+
+확인 방법: 사용자에게 아래처럼 물어본다.
+
+> `tuf-back` 로컬 서버 지금 켜져있어?
+
+서버가 꺼져 있다고 하면, 아래 스니펫을 **사용자가 실행하도록** 안내한다.
+에이전트가 직접 실행하지 않는다.
+
+```powershell
+# tuf-back 루트에서
+.\gradlew.bat bootRun
+```
+
+IntelliJ 에서 실행하고 있다면 Run 구성에서 `local` 프로필로
+`TufBackApplication` 을 기동한 상태인지 확인받는다.
+
+기동 후 확인할 것을 같이 알려준다.
+- 콘솔에 `Started TufBackApplication` 이 찍혔는지
+- `http://localhost:8080/health` 가 200 을 주는지
+
+### 프론트와의 통합 확인이 필요할 때
+
+CORS, 쿠키, 실제 API 응답 소비 방식 등 프론트까지 붙여봐야 검증되는 작업이면
+백엔드뿐 아니라 프론트 서버 상태도 같이 묻는다.
+
+> 이거 통합으로 확인해야 해. `tuf-back` 8080 이랑 `tuf-front` dev 서버 둘 다
+> 떠 있어? 프론트는 몇 번 포트에서 돌고 있는지 알려줘.
+
+프론트 기동 명령은 **프론트 레포의 `package.json` 스크립트 기준**으로
+사용자가 직접 실행한다. 에이전트가 명령을 추정해서 실행하지 않는다.
+
+### 단위 테스트를 돌려야 할 때
+
+단위 테스트도 에이전트가 직접 실행하지 않는다.
+테스트 코드를 작성/수정한 뒤, 실행은 사용자에게 넘긴다.
+
+추천 순서 (부하 적은 순)
+1. IntelliJ 에서 테스트 클래스 옆 ▶ 버튼으로 실행 (`out/` 만 생김)
+2. 특정 테스트만 Gradle 로 필요할 때
+```powershell
+   $env:GRADLE_USER_HOME='C:\dev\tuf\tuf-back\.gradle-home'
+   .\gradlew.bat test --tests "io.github.gyulbbe.draft.service.DraftServiceTest"
+```
+
+요청 문구 예시
+
+> `DraftServiceTest#픽_순서_검증` 만 돌려보고 실패 메시지 붙여줘.
+> 실패 스택 전체가 필요해.
+
+### 에이전트가 결과를 받는 방법
+
+- 컴파일 에러: IntelliJ `Problems` 탭의 빨간 줄 내용 또는 터미널 출력 전체
+- 테스트 실패: 실패한 테스트 이름 + AssertionError 메시지 + 스택
+- 런타임 에러: 서버 콘솔 로그에서 예외 스택 전체
+- SQL 이슈: 실제 실행된 바인드 쿼리와 오라클 에러 코드 (`ORA-xxxxx`)
+- 프론트 통합 이슈: 프론트 DevTools Network 탭의 요청 URL/상태코드/응답 바디
+  + 백엔드 콘솔의 대응 로그 (두 쪽을 같은 시점으로 맞춰서)
+
+단편적인 메시지만으로 추정하지 않는다. 부족하면 추가 정보를 다시 요청한다.
+
+## 백엔드 구현 체크리스트
+
+- Controller 는 얇게 두고 비즈니스 로직은 Service 로 모은다.
+- Entity 는 상태 변경 메서드를 두고 Setter 남발을 피한다.
+- QueryDSL 조건은 메서드로 분리해서 null-safe 하게 만든다.
+- 트랜잭션 경계는 Service 기준으로 잡는다.
+- Oracle 시퀀스와 PK 전략이 맞는지 확인한다.
+- DB 스키마를 바꿨으면 아래 파일을 같이 갱신한다.
+  - `references/database-schema.md`
+  - `references/db-schema.sql`
+  - `references/db-schema-alter.sql`
 
 ## References
 
-- Backend API docs: https://api.tufclan.com/swagger-ui/index.html#/
-
-- 개발환경 요약: [references/development-environment.md](references/development-environment.md)
-
----
-name: frontend-nextjs-react-tailwind
-description: 프론트엔드 개발용 스킬. Next.js(App Router) + React + TypeScript + TailwindCSS + TanStack Query 기반. 컴포넌트 설계, 클라이언트/서버 컴포넌트 경계, 상태 관리(로컬/서버), API 통신, 인증(JWT), 폼 처리(React Hook Form + Zod), 라우팅, 성능 최적화(memo/useMemo/useCallback), 스타일링(Tailwind 우선) 규칙을 다룬다. 사용자가 React, Next.js, useState, useEffect, useMemo, useCallback, Tailwind, TanStack Query, React Query, React Hook Form, Zod, JWT 로그인, 라우팅, 동적 import, SSR/CSR, 페이지 이동, 폼 검증, API 호출, 컴포넌트 분리, 스타일, 반응형 관련 질문을 할 때 반드시 이 스킬을 사용할 것. "페이지 만들어줘", "컴포넌트 분리해줘", "API 연동", "로그인 구현", "폼 만들어줘" 같은 요청도 포함. JSP/jQuery 레거시 질문에는 이 스킬 사용하지 말 것.
----
- 
-# Frontend (Next.js + React + TS + Tailwind + TanStack Query)
- 
-## 0. 대화 규칙
- 
-- 한국어, 반말, 간결.
-- **작동하는 TSX 코드** 우선. 설명은 코드 아래 한두 줄.
-- 버전/환경 불확실하면 먼저 물어볼 것:
-  - Next.js **App Router** vs Pages Router (App이 기본 가정)
-  - **TypeScript** 사용 여부 (기본 가정)
-  - CSS 방식 (**Tailwind** 기본. 다른 거 쓰면 말해줘)
-- `"use client"` 경계 의식적으로 그을 것. 무조건 클라 컴포넌트로 만들지 말 것.
-## 1. 프로젝트 구조 (App Router 기준)
- 
-```
-src/
-├── app/
-│   ├── layout.tsx          # 루트 레이아웃 (서버 컴포넌트)
-│   ├── page.tsx            # 홈
-│   ├── providers.tsx       # QueryClient, Theme 등 ("use client")
-│   ├── (auth)/             # 라우트 그룹 (URL 영향 없음)
-│   │   ├── login/page.tsx
-│   │   └── signup/page.tsx
-│   ├── matches/
-│   │   ├── page.tsx        # /matches 목록 (서버 컴포넌트에서 fetch)
-│   │   └── [id]/page.tsx   # /matches/:id
-│   └── api/                # 라우트 핸들러 (BFF 필요할 때만)
-├── components/
-│   ├── ui/                 # Button, Input 등 원자 단위
-│   └── feature/            # 도메인별 (MatchCard, LeagueList)
-├── hooks/                  # 커스텀 훅 (use로 시작)
-├── lib/
-│   ├── api.ts              # fetch wrapper
-│   ├── auth.ts             # 토큰 관리
-│   └── utils.ts            # cn(), formatDate() 등
-├── types/                  # 전역 타입
-└── styles/globals.css      # Tailwind directives
-```
- 
-**경로 alias** (`tsconfig.json`):
-```json
-{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }
-```
- 
-## 2. Server Component vs Client Component
- 
-**기본은 서버 컴포넌트.** 클라 필요할 때만 `"use client"` 붙이기.
- 
-**클라이언트 컴포넌트로 만들어야 하는 경우**
-- `useState`, `useEffect`, `useRef` 등 훅 사용
-- `onClick`, `onChange` 등 이벤트 핸들러
-- 브라우저 API (`window`, `localStorage`)
-- 서드파티 훅 (TanStack Query `useQuery` 등)
-```tsx
-// app/matches/page.tsx  (서버 컴포넌트 - 기본)
-import { MatchList } from "@/components/feature/match-list";
- 
-export default async function MatchesPage() {
-  // 서버에서 직접 fetch. 빠르고 SEO 유리
-  const res = await fetch(`${process.env.API_URL}/matches`, {
-    next: { revalidate: 60 },  // 60초 ISR
-  });
-  const matches = await res.json();
- 
-  return (
-    <main className="mx-auto max-w-5xl px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">매치 목록</h1>
-      <MatchList initialMatches={matches} />  {/* 서버 데이터를 클라로 전달 */}
-    </main>
-  );
-}
-```
- 
-```tsx
-// components/feature/match-list.tsx  (클라 - 인터랙션 있음)
-"use client";
- 
-import { useState } from "react";
- 
-type Props = { initialMatches: Match[] };
- 
-export function MatchList({ initialMatches }: Props) {
-  const [filter, setFilter] = useState("");
-  const filtered = initialMatches.filter(m => m.title.includes(filter));
- 
-  return (
-    <div>
-      <input
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        className="w-full rounded border border-gray-300 px-3 py-2 mb-4"
-        placeholder="제목 검색"
-      />
-      <ul className="space-y-2">
-        {filtered.map(m => (
-          <li key={m.id} className="rounded border p-3 hover:bg-gray-50">
-            {m.title}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-```
- 
-**경계 원칙**
-- `"use client"`는 **트리의 잎에 가까운 쪽**에 붙일수록 번들 작아짐
-- 서버 컴포넌트 안에 클라 컴포넌트 넣는 건 OK. 반대는 children 프롭으로만 가능
-- 클라 컴포넌트에 서버 전용 코드(DB 접근, 환경변수 등) 절대 금지
-## 3. 컴포넌트 규칙
- 
-```tsx
-// components/ui/button.tsx
-import { cn } from "@/lib/utils";
-import { ButtonHTMLAttributes, forwardRef } from "react";
- 
-type Variant = "primary" | "secondary" | "danger";
-type Size = "sm" | "md" | "lg";
- 
-type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: Variant;
-  size?: Size;
-};
- 
-const variantCls: Record<Variant, string> = {
-  primary: "bg-blue-600 text-white hover:bg-blue-700",
-  secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
-  danger: "bg-red-600 text-white hover:bg-red-700",
-};
- 
-const sizeCls: Record<Size, string> = {
-  sm: "h-8 px-3 text-sm",
-  md: "h-10 px-4",
-  lg: "h-12 px-6 text-lg",
-};
- 
-export const Button = forwardRef<HTMLButtonElement, Props>(
-  ({ variant = "primary", size = "md", className, ...rest }, ref) => (
-    <button
-      ref={ref}
-      className={cn(
-        "inline-flex items-center justify-center rounded-md font-medium transition-colors",
-        "disabled:pointer-events-none disabled:opacity-50",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
-        variantCls[variant],
-        sizeCls[size],
-        className
-      )}
-      {...rest}
-    />
-  )
-);
-Button.displayName = "Button";
-```
- 
-**컴포넌트 체크리스트**
-- Props에 `any` 금지. 타입 명확히
-- 확장 가능한 컴포넌트는 `HTMLAttributes`/`ButtonHTMLAttributes` 등 상속
-- 외부에서 스타일 덮어쓸 수 있게 `className` prop 받고 `cn()`으로 병합
-- 기본값은 구조분해에서 `= "primary"` 스타일로
-- ref 필요하면 `forwardRef` + `displayName`
-- 파일명 kebab-case, 컴포넌트명 PascalCase
-## 4. 스타일링 (Tailwind 우선)
- 
-**규칙**
-- 기본적으로 Tailwind 유틸리티 클래스만 사용
-- 반복되는 조합은 컴포넌트로 추출 (`Button`, `Card`)
-- 반복이 아니라 그냥 길어서 불편하면 `cn()` 헬퍼로 분리
-- 커스텀 CSS는 `globals.css`에 최소화. 피할 수 없을 때만 `@layer components`
-- 조건부 클래스는 `clsx` + `tailwind-merge` (= `cn()`)로
-**`lib/utils.ts`**
-```ts
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
- 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-```
- 
-**반응형**
-```tsx
-<div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-  {/* 모바일 1열 → 768px+ 2열 → 1024px+ 3열 */}
-</div>
-```
- 
-**다크모드** (`tailwind.config.js`에 `darkMode: "class"`):
-```tsx
-<div className="bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100">
-```
- 
-## 5. 상태 관리 (로컬 vs 서버 분리)
- 
-두 종류 엄격히 분리:
- 
-| 종류 | 뭘로 | 예시 |
-|---|---|---|
-| **로컬 UI 상태** | `useState`, `useReducer` | 모달 열림, 입력값, 탭 선택 |
-| **서버 상태** | TanStack Query | API 데이터, 캐시, 리패치 |
-| **전역 UI 상태** | Zustand / Context | 테마, 로그인 유저 |
- 
-로컬 상태를 전역으로 끌어올리지 말 것. 서버 상태를 `useState`에 복사하지 말 것.
- 
-## 6. API 통신 (TanStack Query)
- 
-**Provider 세팅**
-```tsx
-// app/providers.tsx
-"use client";
- 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
- 
-export function Providers({ children }: { children: React.ReactNode }) {
-  const [client] = useState(() => new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 60_000,        // 1분 fresh
-        retry: 1,
-        refetchOnWindowFocus: false,
-      },
-    },
-  }));
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-}
-```
- 
-```tsx
-// app/layout.tsx
-import { Providers } from "./providers";
- 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="ko">
-      <body><Providers>{children}</Providers></body>
-    </html>
-  );
-}
-```
- 
-**fetch wrapper**
-```ts
-// lib/api.ts
-import { getToken, clearToken } from "./auth";
- 
-type Options = RequestInit & { params?: Record<string, string | number | undefined> };
- 
-export async function api<T>(path: string, opts: Options = {}): Promise<T> {
-  const { params, headers, ...rest } = opts;
-  const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}${path}`);
-  Object.entries(params ?? {}).forEach(([k, v]) => {
-    if (v !== undefined) url.searchParams.set(k, String(v));
-  });
- 
-  const token = getToken();
-  const res = await fetch(url, {
-    ...rest,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-  });
- 
-  if (res.status === 401) {
-    clearToken();
-    window.location.href = "/login";
-    throw new Error("UNAUTHORIZED");
-  }
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message ?? "API_ERROR");
-  }
-  return res.status === 204 ? (undefined as T) : res.json();
-}
-```
- 
-**쿼리/뮤테이션 훅 (도메인별로 모음)**
-```ts
-// hooks/use-matches.ts
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
- 
-type Match = { id: number; title: string; status: string };
-type SearchCond = { title?: string; status?: string; page?: number };
- 
-const matchKeys = {
-  all: ["matches"] as const,
-  list: (cond: SearchCond) => [...matchKeys.all, "list", cond] as const,
-  detail: (id: number) => [...matchKeys.all, "detail", id] as const,
-};
- 
-export function useMatches(cond: SearchCond) {
-  return useQuery({
-    queryKey: matchKeys.list(cond),
-    queryFn: () => api<{ content: Match[]; totalElements: number }>("/api/matches", { params: cond }),
-  });
-}
- 
-export function useMatch(id: number) {
-  return useQuery({
-    queryKey: matchKeys.detail(id),
-    queryFn: () => api<Match>(`/api/matches/${id}`),
-    enabled: !!id,
-  });
-}
- 
-export function useCreateMatch() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: { title: string; leagueId: number }) =>
-      api<number>("/api/matches", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: matchKeys.all }),
-  });
-}
-```
- 
-**사용**
-```tsx
-"use client";
- 
-import { useMatches } from "@/hooks/use-matches";
- 
-export function MatchTable() {
-  const { data, isLoading, error } = useMatches({ page: 0 });
- 
-  if (isLoading) return <div className="p-8 text-center">로딩중...</div>;
-  if (error) return <div className="p-8 text-center text-red-600">{error.message}</div>;
- 
-  return (
-    <table className="w-full">
-      <tbody>
-        {data?.content.map(m => (
-          <tr key={m.id}><td>{m.title}</td><td>{m.status}</td></tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-```
- 
-**Query 체크리스트**
-- `queryKey`는 계층형 + 파라미터 포함. `invalidateQueries({ queryKey: [...prefix] })`로 부분 무효화
-- `mutationFn` 성공 후 관련 쿼리 `invalidate` 또는 `setQueryData`로 즉시 반영
-- 서버 상태를 `useState`/`useEffect`로 직접 관리하지 말 것
-- 무한스크롤은 `useInfiniteQuery`
-## 7. 폼 처리 (React Hook Form + Zod)
- 
-```tsx
-"use client";
- 
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useCreateMatch } from "@/hooks/use-matches";
- 
-const schema = z.object({
-  title: z.string().min(2, "2자 이상").max(100, "100자 이하"),
-  leagueId: z.coerce.number().int().positive("리그 선택 필수"),
-});
-type FormValues = z.infer<typeof schema>;
- 
-export function MatchCreateForm() {
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { title: "", leagueId: 0 },
-  });
-  const createMatch = useCreateMatch();
- 
-  const onSubmit = handleSubmit(async (values) => {
-    await createMatch.mutateAsync(values);
-    // 성공 후 라우팅/토스트
-  });
- 
-  return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium mb-1">제목</label>
-        <input
-          {...register("title")}
-          className="w-full rounded border border-gray-300 px-3 py-2"
-        />
-        {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
-      </div>
- 
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="rounded-md bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
-      >
-        {isSubmitting ? "저장중..." : "생성"}
-      </button>
-    </form>
-  );
-}
-```
- 
-**폼 체크리스트**
-- 검증 스키마는 Zod 한 곳에. 타입도 `z.infer`로 생성
-- `z.coerce.number()`로 문자열→숫자 자동 변환
-- 제출 중 버튼 `disabled` + 텍스트 바꾸기
-- 서버 검증 에러는 `setError("fieldName", { message })`로 표시
-## 8. 인증 (JWT) 처리
- 
-**토큰 저장 위치 선택**
-- `localStorage`: 구현 쉬움, XSS 취약
-- `httpOnly Cookie`: 보안 강함, BFF/리프레시 필요
-- 일반적으로 **httpOnly 쿠키 + 서버 라우트 핸들러** 조합 권장. 간단히 할 땐 localStorage + CSP로 최소 방어
-**간단 버전 (localStorage)**
-```ts
-// lib/auth.ts
-const KEY = "access_token";
- 
-export function setToken(t: string) { localStorage.setItem(KEY, t); }
-export function getToken() {
-  if (typeof window === "undefined") return null;  // 서버에서 호출 방어
-  return localStorage.getItem(KEY);
-}
-export function clearToken() { localStorage.removeItem(KEY); }
-```
- 
-**미들웨어로 보호 라우트**
-```ts
-// middleware.ts  (쿠키 기반일 때)
-import { NextResponse, type NextRequest } from "next/server";
- 
-export function middleware(req: NextRequest) {
-  const token = req.cookies.get("access_token")?.value;
-  if (!token && req.nextUrl.pathname.startsWith("/admin")) {
-    return NextResponse.redirect(new URL("/login", req.url));
-  }
-  return NextResponse.next();
-}
- 
-export const config = { matcher: ["/admin/:path*"] };
-```
- 
-## 9. 라우팅 & 네비게이션
- 
-```tsx
-"use client";
- 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import Link from "next/link";
- 
-export function Nav() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
- 
-  return (
-    <nav className="flex gap-4">
-      {/* prefetch 자동. 대부분 Link 사용 */}
-      <Link href="/matches" className={pathname === "/matches" ? "font-bold" : ""}>
-        매치
-      </Link>
- 
-      {/* 프로그래매틱 이동 */}
-      <button onClick={() => router.push(`/matches?page=${Number(params.get("page") ?? 0) + 1}`)}>
-        다음 페이지
-      </button>
-    </nav>
-  );
-}
-```
- 
-- `<a href>` 대신 `<Link>` (클라 네비게이션 + prefetch)
-- 동적 라우트: `app/matches/[id]/page.tsx` → `params.id`
-- 쿼리스트링은 `useSearchParams` (읽기 전용)
-## 10. 성능 최적화
- 
-**언제 필요한가**
-- 실제로 느려진 뒤에. 섣불리 `memo`/`useMemo` 남용하면 복잡도만 올라감
-- React DevTools Profiler로 프로파일 먼저
-**패턴**
-```tsx
-// 1) 비싼 계산 메모이제이션
-const sortedMatches = useMemo(
-  () => matches.slice().sort((a, b) => b.date - a.date),
-  [matches]
-);
- 
-// 2) 자식에 넘기는 콜백 안정화 (자식이 memo될 때만 의미 있음)
-const handleSelect = useCallback((id: number) => {
-  setSelectedId(id);
-}, []);
- 
-// 3) 리스트 아이템
-const MatchRow = memo(function MatchRow({ m, onClick }: Props) {
-  return <li onClick={() => onClick(m.id)}>{m.title}</li>;
-});
- 
-// 4) 동적 import (번들 분할)
-const Chart = dynamic(() => import("@/components/chart"), {
-  ssr: false,
-  loading: () => <div className="h-64 animate-pulse bg-gray-100" />,
-});
-```
- 
-- `next/image`의 `<Image>`로 자동 최적화 + lazy
-- 외부 라이브러리는 dynamic import로 초기 번들에서 제거
-## 11. 테스트 (Vitest + RTL)
- 
-```tsx
-// __tests__/button.test.tsx
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { Button } from "@/components/ui/button";
-import { describe, it, expect, vi } from "vitest";
- 
-describe("Button", () => {
-  it("클릭하면 핸들러 호출", async () => {
-    // given
-    const onClick = vi.fn();
-    render(<Button onClick={onClick}>확인</Button>);
- 
-    // when
-    await userEvent.click(screen.getByRole("button", { name: "확인" }));
- 
-    // then
-    expect(onClick).toHaveBeenCalledTimes(1);
-  });
- 
-  it("disabled면 클릭 안 먹음", async () => {
-    const onClick = vi.fn();
-    render(<Button onClick={onClick} disabled>확인</Button>);
-    await userEvent.click(screen.getByRole("button"));
-    expect(onClick).not.toHaveBeenCalled();
-  });
-});
-```
- 
-- 구현 디테일 말고 **사용자 관점**으로 테스트 (getByRole, getByText 우선)
-- 쿼리 훅 테스트는 `QueryClientProvider`로 감싸고 MSW로 API 목킹
-## 12. 자주 하는 실수 (리뷰 체크리스트)
- 
-- [ ] 무조건 `"use client"` 최상단에 붙임 → 트리 잎쪽으로 밀 것
-- [ ] 서버 데이터를 `useState` + `useEffect`로 관리 → TanStack Query 써
-- [ ] `<a href>`로 내부 이동 → `<Link>`로 (풀 리로드 발생)
-- [ ] `useEffect`에서 의존성 배열 빈 채로 상태 참조 → stale closure 버그
-- [ ] `key={index}` 리스트에 사용 → 리오더 시 상태 꼬임. 고유 ID 써
-- [ ] fetch 에러 안 잡음 → `res.ok` 체크 + try/catch
-- [ ] 401 받았는데 리다이렉트 안 함 → api wrapper에서 일괄 처리
-- [ ] 토큰을 `localStorage`만 쓰고 SSR에서 접근 시도 → `typeof window` 체크
-- [ ] `useMemo`/`useCallback` 아무 데나 붙임 → 프로파일 후 필요한 곳만
-- [ ] Tailwind 클래스 동적 조합을 템플릿 리터럴로 (`bg-${color}-500`) → Tailwind가 purge. 전체 클래스 명시적으로 써
-- [ ] 이미지 `<img>` 태그 사용 → `<Image>`로 (LCP/CLS 개선)
-- [ ] Controller(Link) 바깥에서 `useRouter().push` 남발 → 대부분 Link로 충분
-- [ ] 서버 컴포넌트에서 `useState` 같은 훅 사용 → `"use client"` 필요
-- [ ] 클라 컴포넌트에서 환경변수 `process.env.SECRET` 참조 → 번들에 노출됨. `NEXT_PUBLIC_` 아닌 건 서버에서만
-## 13. 응답 전 자기 검증
- 
-코드 뽑기 전에 체크:
-1. Next.js App Router 맞나? (Pages Router면 규칙 다름)
-2. 서버/클라 컴포넌트 경계 의식했나?
-3. Tailwind 동적 클래스 문제 없나?
-4. TanStack Query로 서버 상태 처리했나? 로컬과 섞지 않았나?
-5. 타입 `any` 없나?
-6. 접근성 기본(`<button type>`, `label` 연결, `alt`) 챙겼나?
+- Backend 개발환경: [references/dev-environment.md](references/dev-environment.md)
+- Backend DB 스키마: [references/database-schema.md](references/database-schema.md)
+- Frontend 런타임 환경: `../tuf-front/.agent/references/development-environment.md`

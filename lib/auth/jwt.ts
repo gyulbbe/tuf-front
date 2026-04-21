@@ -46,6 +46,7 @@ export function decodeJwtClaims(authorization: string): JwtClaims | null {
 
     if (
       typeof parsed.username !== "string" ||
+      typeof parsed.userPk !== "number" ||
       typeof parsed.role !== "string" ||
       typeof parsed.exp !== "number"
     ) {
@@ -54,6 +55,7 @@ export function decodeJwtClaims(authorization: string): JwtClaims | null {
 
     return {
       username: parsed.username,
+      userPk: parsed.userPk,
       role: parsed.role,
       photo: typeof parsed.photo === "string" ? parsed.photo : null,
       exp: parsed.exp,
@@ -76,6 +78,7 @@ export function buildAuthSession(authorization: string): AuthSession | null {
 
   const user: AuthUser = {
     username: claims.username,
+    userPk: claims.userPk,
     role: claims.role,
     photo: claims.photo ?? null,
     exp: claims.exp,

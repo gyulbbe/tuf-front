@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { startTransition, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { LoginForm } from "@/components/auth/login-form";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 function formatRoleBadge(role: string | null | undefined) {
   if (!role) {
@@ -54,13 +56,22 @@ export function HeaderAuthButton() {
 
   if (user) {
     const roleBadge = formatRoleBadge(user.role);
+    const isAccountPage = pathname === "/me" || pathname.startsWith("/me/");
 
     return (
       <div className="flex items-center gap-2">
-        <span className="inline-flex rounded-full border border-line px-4 py-2 text-sm text-foreground">
+        <Link
+          href="/me"
+          className={cn(
+            "inline-flex rounded-full border px-4 py-2 text-sm transition-colors",
+            isAccountPage
+              ? "border-accent-soft bg-surface-strong text-foreground"
+              : "border-line text-foreground hover:border-accent-soft hover:bg-surface-strong",
+          )}
+        >
           {user.username}
           {roleBadge ? ` · ${roleBadge}` : ""}
-        </span>
+        </Link>
         <Button
           onClick={() => {
             logout();
@@ -118,11 +129,7 @@ export function HeaderAuthButton() {
 
   return (
     <>
-      <Button
-        onClick={() => setOpen(true)}
-      >
-        로그인
-      </Button>
+      <Button onClick={() => setOpen(true)}>로그인</Button>
 
       {modal}
     </>

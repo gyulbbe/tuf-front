@@ -101,6 +101,7 @@ type DraftAdminConsoleProps = {
 
 type UserAutocompleteInputProps = {
   disabled?: boolean;
+  excludedUserIds?: readonly number[];
   onSelect: (user: DraftUserSearchResult) => void;
   placeholder: string;
   value: string;
@@ -280,6 +281,17 @@ function getCandidateStatusPriority(status: string) {
     default:
       return 4;
   }
+}
+
+function filterAutocompleteUsers(
+  users: DraftUserSearchResult[],
+  excludedUserIds: readonly number[],
+) {
+  if (excludedUserIds.length === 0) {
+    return users;
+  }
+
+  return users.filter((user) => !excludedUserIds.includes(user.id));
 }
 
 function sortSessions(sessions: DraftSessionSummary[]) {
@@ -634,6 +646,7 @@ function SetupStatCard({
 
 function UserAutocompleteInput({
   disabled = false,
+  excludedUserIds = [],
   onSelect,
   placeholder,
   value,
@@ -645,6 +658,7 @@ function UserAutocompleteInput({
   const [activeIndex, setActiveIndex] = useState(-1);
   const blurTimeoutRef = useRef<number | null>(null);
   const selectedValueRef = useRef<string | null>(null);
+  const visibleResults = filterAutocompleteUsers(results, excludedUserIds);
 
   useEffect(() => {
     const keyword = value.trim();
@@ -682,9 +696,8 @@ function UserAutocompleteInput({
       setLoading(true);
 
       try {
-        const nextResults = (await searchDraftUsers(keyword, 8)).filter((user) =>
-          user.userId.toLowerCase().includes(keyword.toLowerCase()),
-        );
+        const nextResults = (await searchDraftUsers(keyword, 8))
+          .filter((user) => user.userId.toLowerCase().includes(keyword.toLowerCase()));
 
         if (cancelled) {
           return;
@@ -769,21 +782,41 @@ function UserAutocompleteInput({
 
           if (event.key === "ArrowDown") {
             event.preventDefault();
-            setActiveIndex((current) =>
-              results.length === 0 ? -1 : Math.min(current + 1, results.length - 1),
-            );
+            setActiveIndex((current) => {
+              if (visibleResults.length === 0) {
+                return -1;
+              }
+
+              const clampedCurrent = Math.min(
+                Math.max(current, -1),
+                visibleResults.length - 1,
+              );
+              return Math.min(clampedCurrent + 1, visibleResults.length - 1);
+            });
           }
 
           if (event.key === "ArrowUp") {
             event.preventDefault();
-            setActiveIndex((current) =>
-              results.length === 0 ? -1 : Math.max(current - 1, 0),
-            );
+            setActiveIndex((current) => {
+              if (visibleResults.length === 0) {
+                return -1;
+              }
+
+              const clampedCurrent = Math.min(
+                Math.max(current, 0),
+                visibleResults.length - 1,
+              );
+              return Math.max(clampedCurrent - 1, 0);
+            });
           }
 
-          if (event.key === "Enter" && activeIndex >= 0 && results[activeIndex]) {
+          if (
+            event.key === "Enter" &&
+            activeIndex >= 0 &&
+            visibleResults[activeIndex]
+          ) {
             event.preventDefault();
-            selectUser(results[activeIndex]);
+            selectUser(visibleResults[activeIndex]);
           }
 
           if (event.key === "Escape") {
@@ -799,11 +832,11 @@ function UserAutocompleteInput({
           <div className="border-b border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
             matching user_id
           </div>
-          {results.length === 0 ? (
+          {visibleResults.length === 0 ? (
             <div className="px-3 py-3 text-xs text-muted">일치하는 아이디가 없다.</div>
           ) : (
             <div className="max-h-64 overflow-y-auto py-1">
-              {results.map((user, index) => (
+              {visibleResults.map((user, index) => (
                 <button
                   key={`${user.id}:${user.userId}`}
                   type="button"
@@ -1329,21 +1362,28 @@ function TeamPickerManagerClean({
 }
 
 function CandidateComposerClean({
+  blockedUserIds = [],
   candidateForm,
   pendingAction,
   setCandidateForm,
   onCreate,
 }: {
+  blockedUserIds?: readonly number[];
   candidateForm: CandidateFormState;
   pendingAction: string | null;
   setCandidateForm: Dispatch<SetStateAction<CandidateFormState>>;
   onCreate: () => Promise<void>;
 }) {
+  const isBlockedSelection =
+    candidateForm.selectedUser !== null &&
+    blockedUserIds.includes(candidateForm.selectedUser.id);
+
   return (
     <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
       <div className="grid gap-3">
         <UserAutocompleteInput
           value={candidateForm.query}
+          excludedUserIds={blockedUserIds}
           placeholder="아이디 검색"
           onValueChange={(value) => {
             setCandidateForm((current) => ({
@@ -1369,7 +1409,11 @@ function CandidateComposerClean({
 
         <Button
           variant="accent"
-          disabled={pendingAction !== null || !candidateForm.selectedUser}
+          disabled={
+            pendingAction !== null ||
+            !candidateForm.selectedUser ||
+            isBlockedSelection
+          }
           onClick={() => {
             void onCreate();
           }}
@@ -1497,6 +1541,20 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     .join("|");
   const sortedOrders = selectedSessionDetail ? sortOrders(selectedSessionDetail.orders) : [];
   const sortedPicks = selectedSessionDetail ? sortPicks(selectedSessionDetail.picks) : [];
+  const blockedCandidateUserIds = Array.from(
+    new Set([
+      ...sortedTeams.flatMap((team) =>
+        typeof team.pickerUserId === "number" ? [team.pickerUserId] : [],
+      ),
+      ...sortedCandidates
+        .filter(
+          (candidate) =>
+            candidate.status === "PICKED" || candidate.pickedDraftTeamId !== null,
+        )
+        .map((candidate) => candidate.candidateUserId),
+      ...sortedPicks.map((pick) => pick.candidateUserId),
+    ]),
+  );
   const rosterCountByTeamId = sortedPicks.reduce<Record<number, number>>((acc, pick) => {
     acc[pick.draftTeamId] = (acc[pick.draftTeamId] ?? 0) + 1;
     return acc;
@@ -2092,6 +2150,15 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
       return;
     }
 
+    if (blockedCandidateUserIds.includes(candidateForm.selectedUser.id)) {
+      setCandidateForm(EMPTY_CANDIDATE_FORM);
+      setNotice({
+        tone: "error",
+        text: "픽커나 이미 뽑힌 사람은 후보 선수로 추가할 수 없습니다.",
+      });
+      return;
+    }
+
     setPendingAction("candidate-create");
     setNotice(null);
 
@@ -2588,6 +2655,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           ) : (
             <>
               <CandidateComposerClean
+                blockedUserIds={blockedCandidateUserIds}
                 candidateForm={candidateForm}
                 pendingAction={pendingAction}
                 setCandidateForm={setCandidateForm}

@@ -7,6 +7,7 @@ export type AuthRedirectReason =
 
 export type JwtClaims = {
   username: string;
+  userPk: number;
   role: string;
   photo?: string | null;
   exp: number;
@@ -14,6 +15,7 @@ export type JwtClaims = {
 
 export type AuthUser = {
   username: string;
+  userPk: number;
   role: string;
   photo: string | null;
   exp: number;

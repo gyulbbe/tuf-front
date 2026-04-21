@@ -18,7 +18,7 @@ const externalSiteLinks = {
 export const siteConfig = {
   name: "Starcraft TuF Clan",
   description:
-    "공지, 채팅, 프로리그, 갤러리, 계정, 관리자 기능을 한 화면에서 관리하는 Starcraft TuF Clan 사이트입니다.",
+    "공지, 터프봇, 프로리그, 게임, 갤러리, 관리자 기능을 한 화면에서 관리하는 Starcraft TuF Clan 사이트입니다.",
 };
 
 export const siteTabs: SiteTab[] = [
@@ -28,7 +28,7 @@ export const siteTabs: SiteTab[] = [
     description: "운영 공지와 업데이트를 확인합니다.",
   },
   {
-    label: "투프챗",
+    label: "터프봇",
     href: "/chat",
     description: "채팅 기능과 자동 응답 흐름을 확인합니다.",
   },
@@ -45,14 +45,14 @@ export const siteTabs: SiteTab[] = [
     ],
   },
   {
-    label: "터프 갤러리",
-    href: "/gallery",
-    description: "이미지와 기록을 모아둔 보관 탭입니다.",
+    label: "게임",
+    href: "/game",
+    description: "게임 관련 안내와 준비 중인 기능을 확인합니다.",
   },
   {
-    label: "내 정보",
-    href: "/me",
-    description: "로그인 상태와 계정 정보를 확인합니다.",
+    label: "터프 갤러리",
+    href: "/gallery",
+    description: "이미지와 기록을 모아 보는 공간입니다.",
   },
   {
     label: "관리자",

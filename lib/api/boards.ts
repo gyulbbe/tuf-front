@@ -17,7 +17,9 @@ export type BoardSearchType = "TITLE" | "TEXT" | "USER_ID";
 
 export type BoardSummary = {
   id: number;
+  /** @deprecated display logic must use authorUserId only */
   authorName: string;
+  authorUserId: string | null;
   title: string;
   summaryText: string;
   regDate: string | null;
@@ -54,7 +56,9 @@ export type BoardComment = {
   id: number;
   parentId: number | null;
   depth: number;
+  /** @deprecated display logic must use authorUserId only */
   authorName: string;
+  authorUserId: string | null;
   content: string;
   regDate: string | null;
   updateDate: string | null;
@@ -65,7 +69,9 @@ export type BoardComment = {
 
 export type BoardDetail = {
   id: number;
+  /** @deprecated display logic must use authorUserId only */
   authorName: string;
+  authorUserId: string | null;
   title: string;
   text: string;
   regDate: string | null;

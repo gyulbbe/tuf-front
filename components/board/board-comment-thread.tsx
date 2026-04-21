@@ -6,30 +6,27 @@ import {
   BoardEmptyState,
   alertBoardError,
   formatBoardDateTime,
-  readBoardAuthorLabel,
+  getBoardAuthorLabel,
 } from "@/components/board/board-shared";
 import { Button } from "@/components/ui/button";
 import { deleteBoardComment, type BoardComment } from "@/lib/api/boards";
 import { cn } from "@/lib/utils";
 
 type BoardCommentThreadProps = {
-  authorLabels?: Record<string, string>;
   boardId: number;
   comments: BoardComment[];
   onCommentsChanged: () => Promise<void>;
 };
 
 function buildCommentDeleteConfirmText() {
-  return ["이 댓글을 삭제할까?", "", "하위 대댓글도 함께 삭제된다."].join("\n");
+  return ["댓글을 삭제할까?", "", "하위 답글도 함께 삭제돼."].join("\n");
 }
 
 function BoardCommentItem({
-  authorLabels,
   boardId,
   comment,
   onCommentsChanged,
 }: {
-  authorLabels?: Record<string, string>;
   boardId: number;
   comment: BoardComment;
   onCommentsChanged: () => Promise<void>;
@@ -50,7 +47,7 @@ function BoardCommentItem({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
               <span className="font-semibold text-foreground">
-                {readBoardAuthorLabel(comment.authorName, authorLabels)}
+                {getBoardAuthorLabel(comment.authorUserId)}
               </span>
               <span>{formatBoardDateTime(comment.regDate)}</span>
             </div>
@@ -125,7 +122,7 @@ function BoardCommentItem({
               onCancel={() => setIsEditing(false)}
               onCommentsChanged={onCommentsChanged}
               onSuccess={() => setIsEditing(false)}
-              placeholder="수정할 내용을 입력해 주세요."
+              placeholder="수정할 내용을 입력해 줘."
               submitLabel="수정"
             />
           </div>
@@ -145,7 +142,7 @@ function BoardCommentItem({
             onCancel={() => setIsReplying(false)}
             onCommentsChanged={onCommentsChanged}
             onSuccess={() => setIsReplying(false)}
-            placeholder="답글 내용을 입력해 주세요."
+            placeholder="답글 내용을 입력해 줘."
             submitLabel="등록"
           />
         </div>
@@ -156,7 +153,6 @@ function BoardCommentItem({
           {comment.children.map((child) => (
             <BoardCommentItem
               key={child.id}
-              authorLabels={authorLabels}
               boardId={boardId}
               comment={child}
               onCommentsChanged={onCommentsChanged}
@@ -169,13 +165,12 @@ function BoardCommentItem({
 }
 
 export function BoardCommentThread({
-  authorLabels,
   boardId,
   comments,
   onCommentsChanged,
 }: BoardCommentThreadProps) {
   if (!comments.length) {
-    return <BoardEmptyState className="py-6" text="등록된 댓글이 없습니다." />;
+    return <BoardEmptyState className="py-6" text="등록된 댓글이 없어." />;
   }
 
   return (
@@ -183,7 +178,6 @@ export function BoardCommentThread({
       {comments.map((comment) => (
         <BoardCommentItem
           key={comment.id}
-          authorLabels={authorLabels}
           boardId={boardId}
           comment={comment}
           onCommentsChanged={onCommentsChanged}

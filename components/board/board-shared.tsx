@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { BoardComment, BoardSearchType } from "@/lib/api/boards";
-import { searchUsers } from "@/lib/api/users";
 import { cn } from "@/lib/utils";
 
 export type BoardListQuery = {
@@ -34,9 +33,6 @@ const actionLinkSizeClassNames: Record<ActionLinkSize, string> = {
   sm: "px-4 py-2 text-sm",
 };
 
-const USER_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
-const authorLabelCache = new Map<string, string>();
-
 export const SEARCH_TYPE_OPTIONS: Array<{
   label: string;
   value: BoardSearchType;
@@ -49,107 +45,8 @@ export const SEARCH_TYPE_OPTIONS: Array<{
 export const SELECT_CLASS_NAME =
   "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
 
-function normalizeAuthorKey(authorName: string | null | undefined) {
-  return authorName?.trim() ?? "";
-}
-
-function looksLikeUserId(authorName: string | null | undefined) {
-  const normalized = normalizeAuthorKey(authorName);
-  return normalized ? USER_ID_PATTERN.test(normalized) : false;
-}
-
-function pickAuthorFallback(authorName: string | null | undefined) {
-  const normalized = normalizeAuthorKey(authorName);
-
-  if (!normalized) {
-    return "GUEST";
-  }
-
-  if (looksLikeUserId(normalized)) {
-    return normalized;
-  }
-
-  return "USER";
-}
-
-function pickMatchedUserId(
-  authorName: string,
-  results: Awaited<ReturnType<typeof searchUsers>>,
-) {
-  const normalized = normalizeAuthorKey(authorName);
-  const exactUserIdMatches = results.filter(
-    (user) => user.userId.toLowerCase() === normalized.toLowerCase(),
-  );
-
-  if (exactUserIdMatches.length === 1) {
-    return exactUserIdMatches[0].userId;
-  }
-
-  const exactNameMatches = results.filter(
-    (user) => (user.name ?? "").trim() === normalized,
-  );
-
-  if (exactNameMatches.length === 1) {
-    return exactNameMatches[0].userId;
-  }
-
-  return null;
-}
-
-export async function resolveBoardAuthorLabels(authorNames: string[]) {
-  const uniqueNames = [...new Set(authorNames.map((authorName) => normalizeAuthorKey(authorName)))]
-    .filter(Boolean);
-
-  const missingNames = uniqueNames.filter((authorName) => !authorLabelCache.has(authorName));
-
-  await Promise.all(
-    missingNames.map(async (authorName) => {
-      if (looksLikeUserId(authorName)) {
-        authorLabelCache.set(authorName, authorName);
-        return;
-      }
-
-      try {
-        const results = await searchUsers(authorName, 10);
-        const matchedUserId = pickMatchedUserId(authorName, results);
-        authorLabelCache.set(authorName, matchedUserId ?? "GUEST");
-      } catch {
-        authorLabelCache.set(authorName, pickAuthorFallback(authorName));
-      }
-    }),
-  );
-
-  return uniqueNames.reduce<Record<string, string>>((accumulator, authorName) => {
-    accumulator[authorName] = authorLabelCache.get(authorName) ?? pickAuthorFallback(authorName);
-    return accumulator;
-  }, {});
-}
-
-export function readBoardAuthorLabel(
-  authorName: string | null | undefined,
-  authorLabels?: Record<string, string>,
-) {
-  const normalized = normalizeAuthorKey(authorName);
-
-  if (!normalized) {
-    return "GUEST";
-  }
-
-  return authorLabels?.[normalized] ?? authorLabelCache.get(normalized) ?? pickAuthorFallback(normalized);
-}
-
-export function collectBoardCommentAuthorNames(comments: BoardComment[]): string[] {
-  const names: string[] = [];
-
-  for (const comment of comments) {
-    names.push(comment.authorName);
-
-    if (comment.children.length) {
-      names.push(...collectBoardCommentAuthorNames(comment.children));
-    }
-  }
-
-  return names;
+export function getBoardAuthorLabel(authorUserId: string | null) {
+  return authorUserId?.trim() || "GUEST";
 }
 
 export function buildBoardActionLinkClassName(options?: {
@@ -254,7 +151,7 @@ export function BoardEmptyState({
 
 export function readBoardErrorMessage(
   error: unknown,
-  fallback = "요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요.",
+  fallback = "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.",
 ) {
   if (error instanceof Error && error.message.trim()) {
     return error.message;

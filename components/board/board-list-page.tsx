@@ -11,9 +11,8 @@ import {
   alertBoardError,
   buildBoardListHref,
   formatBoardDateTime,
-  readBoardAuthorLabel,
+  getBoardAuthorLabel,
   readBoardErrorMessage,
-  resolveBoardAuthorLabels,
   type BoardListQuery,
   type NoticeState,
 } from "@/components/board/board-shared";
@@ -30,7 +29,6 @@ export function BoardListPage({ initialQuery }: BoardListPageProps) {
   const queryPage = initialQuery.page;
   const querySearchType = initialQuery.searchType;
   const querySize = initialQuery.size;
-  const [authorLabels, setAuthorLabels] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [result, setResult] = useState<BoardListData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,14 +53,6 @@ export function BoardListPage({ initialQuery }: BoardListPageProps) {
         }
 
         setResult(nextResult);
-
-        const nextAuthorLabels = await resolveBoardAuthorLabels(
-          nextResult.boards.map((board) => board.authorName),
-        );
-
-        if (!cancelled) {
-          setAuthorLabels(nextAuthorLabels);
-        }
       } catch (error) {
         if (cancelled) {
           return;
@@ -123,7 +113,7 @@ export function BoardListPage({ initialQuery }: BoardListPageProps) {
 
         {isLoading ? (
           <div className="px-5 py-12 text-center text-sm text-muted">
-            게시글 목록을 불러오는 중이다.
+            게시글 목록을 불러오는 중이야.
           </div>
         ) : result?.boards.length ? (
           <div>
@@ -138,7 +128,7 @@ export function BoardListPage({ initialQuery }: BoardListPageProps) {
                       {board.title}
                     </span>
                     <span className="truncate text-sm text-muted md:text-center">
-                      {readBoardAuthorLabel(board.authorName, authorLabels)}
+                      {getBoardAuthorLabel(board.authorUserId)}
                     </span>
                     <span className="text-sm text-muted md:text-right">
                       {formatBoardDateTime(board.regDate)}
@@ -150,11 +140,11 @@ export function BoardListPage({ initialQuery }: BoardListPageProps) {
           </div>
         ) : (
           <BoardEmptyState
-            className="border-0 rounded-none"
+            className="rounded-none border-0"
             text={
               activeKeyword
-                ? "검색 조건에 맞는 게시글이 없습니다."
-                : "등록된 게시글이 없습니다."
+                ? "검색 조건에 맞는 게시글이 없어."
+                : "등록된 게시글이 없어."
             }
           />
         )}

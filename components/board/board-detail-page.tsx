@@ -9,12 +9,10 @@ import {
   BoardLinkButton,
   BoardNotice,
   alertBoardError,
-  collectBoardCommentAuthorNames,
   countBoardComments,
   formatBoardDateTime,
-  readBoardAuthorLabel,
+  getBoardAuthorLabel,
   readBoardErrorMessage,
-  resolveBoardAuthorLabels,
   type NoticeState,
 } from "@/components/board/board-shared";
 import { SurfaceCard } from "@/components/site/surface-card";
@@ -34,14 +32,13 @@ function buildBoardDeleteConfirmText(title: string) {
   return [
     `"${title}" 게시글을 삭제할까?`,
     "",
-    "게시글과 하위 댓글이 함께 삭제된다.",
-    "삭제 후에는 복구할 수 없다.",
+    "게시글과 하위 댓글이 함께 삭제돼.",
+    "삭제 후에는 복구할 수 없어.",
   ].join("\n");
 }
 
 export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
   const router = useRouter();
-  const [authorLabels, setAuthorLabels] = useState<Record<string, string>>({});
   const [board, setBoard] = useState<BoardDetail | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,15 +59,6 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
         }
 
         setBoard(nextBoard);
-
-        const nextAuthorLabels = await resolveBoardAuthorLabels([
-          nextBoard.authorName,
-          ...collectBoardCommentAuthorNames(nextBoard.comments),
-        ]);
-
-        if (!cancelled) {
-          setAuthorLabels(nextAuthorLabels);
-        }
       } catch (error) {
         if (cancelled) {
           return;
@@ -109,15 +97,6 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
             }
           : current,
       );
-
-      const nextAuthorLabels = await resolveBoardAuthorLabels(
-        collectBoardCommentAuthorNames(comments),
-      );
-
-      setAuthorLabels((current) => ({
-        ...current,
-        ...nextAuthorLabels,
-      }));
       setNotice(null);
     } catch (error) {
       setNotice({
@@ -131,7 +110,7 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
     return (
       <div className="mx-auto w-full max-w-6xl">
         <SurfaceCard className="p-7 sm:p-8">
-          <BoardEmptyState text="게시글을 불러오는 중이다." />
+          <BoardEmptyState text="게시글을 불러오는 중이야." />
         </SurfaceCard>
       </div>
     );
@@ -142,7 +121,7 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
       <div className="mx-auto w-full max-w-6xl space-y-4">
         {notice ? <BoardNotice notice={notice} /> : null}
         <SurfaceCard className="p-7 sm:p-8">
-          <BoardEmptyState text="게시글을 찾지 못했다." />
+          <BoardEmptyState text="게시글을 찾지 못했어." />
         </SurfaceCard>
         <div className="flex justify-end">
           <BoardLinkButton href="/gallery">목록으로</BoardLinkButton>
@@ -160,7 +139,7 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
           {board.title}
         </h1>
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted">
-          <span>{readBoardAuthorLabel(board.authorName, authorLabels)}</span>
+          <span>{getBoardAuthorLabel(board.authorUserId)}</span>
           <span>{formatBoardDateTime(board.regDate)}</span>
           <span>댓글 {board.commentCount}개</span>
         </div>
@@ -179,7 +158,6 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
 
         <div className="mt-4 border-t border-line pt-4">
           <BoardCommentThread
-            authorLabels={authorLabels}
             boardId={board.id}
             comments={board.comments}
             onCommentsChanged={refreshComments}

@@ -1410,7 +1410,7 @@ export function DraftLiveDashboard({
   const myTeam = teams.find((team) => team.id === snapshot?.permissions?.myTeamId) ?? null;
   const canControl = snapshot?.permissions?.canControl ?? false;
   const canPick = snapshot?.permissions?.canPick ?? false;
-  const viewerRole = formatRoleBadge(user?.role);
+  const viewerRole: string | null = null;
   const isBusy = pendingAction !== null;
   const remainingSeconds = calculateRemainingSeconds(
     snapshot,

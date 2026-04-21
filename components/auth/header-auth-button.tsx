@@ -7,6 +7,14 @@ import { LoginForm } from "@/components/auth/login-form";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 
+function formatRoleBadge(role: string | null | undefined) {
+  if (!role) {
+    return null;
+  }
+
+  return role.replace(/^ROLE_/, "") || null;
+}
+
 export function HeaderAuthButton() {
   const pathname = usePathname();
   const router = useRouter();
@@ -45,10 +53,13 @@ export function HeaderAuthButton() {
   }
 
   if (user) {
+    const roleBadge = formatRoleBadge(user.role);
+
     return (
       <div className="flex items-center gap-2">
         <span className="inline-flex rounded-full border border-line px-4 py-2 text-sm text-foreground">
           {user.username}
+          {roleBadge ? ` · ${roleBadge}` : ""}
         </span>
         <Button
           onClick={() => {

@@ -51,7 +51,7 @@ export function OverlayDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/28 px-4 py-10 backdrop-blur-[2px] sm:items-center"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/28 px-3 py-3 backdrop-blur-[2px] sm:px-6 sm:py-6"
       onClick={onClose}
     >
       <div
@@ -59,12 +59,12 @@ export function OverlayDialog({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "w-full max-w-lg rounded-[28px] border border-line bg-surface p-6 shadow-[0_24px_80px_-40px_rgba(31,42,40,0.7)] backdrop-blur-xl",
-          panelClassName,
+          "flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden rounded-[28px] border border-line bg-surface p-6 shadow-[0_24px_80px_-40px_rgba(31,42,40,0.7)] backdrop-blur-xl sm:max-h-[calc(100dvh-3rem)]",
+          panelClassName || "max-w-lg",
         )}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4 border-b border-line/80 pb-5">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight text-foreground">
               {title}
@@ -79,7 +79,7 @@ export function OverlayDialog({
           </Button>
         </div>
 
-        <div className="mt-6">{children}</div>
+        <div className="mt-5 overflow-y-auto pr-1 sm:pr-2">{children}</div>
       </div>
     </div>,
     document.body,

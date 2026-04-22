@@ -104,6 +104,25 @@ function formatSelectedUser(user: RpsDraftUserSearchResult) {
   return `${user.name || user.userId} (@${user.userId})`;
 }
 
+function SelectedUserChip({
+  label,
+  user,
+}: {
+  label: string;
+  user: RpsDraftUserSearchResult | null;
+}) {
+  return (
+    <div className="rounded-2xl border border-line bg-surface-strong px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-semibold text-foreground">
+        {user ? formatSelectedUser(user) : "아직 선택 안 됨"}
+      </p>
+    </div>
+  );
+}
+
 function hasUser(user: RpsDraftUserSearchResult[], userId: number) {
   return user.some((entry) => entry.id === userId);
 }
@@ -375,100 +394,109 @@ export function RpsDraftListPage() {
         }}
         title="드래프트 생성"
         description="제목, 팀장 2명, 후보 목록을 여기서 모두 정합니다. 생성이 끝나면 바로 세션 상세로 이동합니다."
-        panelClassName="max-w-5xl"
+        panelClassName="max-w-6xl"
       >
         <form
-          className="space-y-5"
+          className="grid gap-5 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]"
           onSubmit={(event) => {
             event.preventDefault();
             void handleCreateSession();
           }}
         >
-          <div className="space-y-2">
-            <p className="text-sm font-semibold text-foreground">드래프트 제목</p>
-            <Input
-              value={form.title}
-              onChange={(event) => {
-                setCreateError(null);
-                setForm((current) => ({ ...current, title: event.target.value }));
-              }}
-              placeholder="예: 4월 팀배 컨텐츠전"
-              disabled={creating}
-            />
-          </div>
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-foreground">드래프트 제목</p>
+              <Input
+                value={form.title}
+                onChange={(event) => {
+                  setCreateError(null);
+                  setForm((current) => ({ ...current, title: event.target.value }));
+                }}
+                placeholder="예: 4월 팀배 컨텐츠전"
+                disabled={creating}
+              />
+            </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <SurfaceCard className="p-5">
-              <div className="flex items-center justify-between gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SelectedUserChip label="1팀 팀장" user={form.team1Picker} />
+              <SelectedUserChip label="2팀 팀장" user={form.team2Picker} />
+            </div>
+
+            <div className="grid gap-4">
+              <SurfaceCard className="p-5">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">1팀 팀장</h3>
                   <p className="mt-2 text-sm leading-7 text-muted">
                     후보와 겹치지 않게 선택합니다.
                   </p>
                 </div>
-                {form.team1Picker ? (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      handleClearTeam("team1Picker");
+
+                <div className="mt-4">
+                  <RpsDraftUserSearch
+                    label="팀장 검색"
+                    description="검색 결과를 눌러 1팀 팀장으로 지정합니다."
+                    selectedUser={form.team1Picker}
+                    onSelect={(nextUser) => {
+                      handleSelectTeam("team1Picker", nextUser);
                     }}
                     disabled={creating}
-                  >
-                    선택 해제
-                  </Button>
+                    disabledUserIds={team1DisabledUserIds}
+                    disabledUserMessage="다른 팀장이나 후보로 이미 선택된 유저입니다."
+                  />
+                </div>
+
+                {form.team1Picker ? (
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        handleClearTeam("team1Picker");
+                      }}
+                      disabled={creating}
+                    >
+                      선택 해제
+                    </Button>
+                  </div>
                 ) : null}
-              </div>
+              </SurfaceCard>
 
-              <div className="mt-4">
-                <RpsDraftUserSearch
-                  label="팀장 검색"
-                  description="검색 결과를 눌러 1팀 팀장으로 지정합니다."
-                  selectedUser={form.team1Picker}
-                  onSelect={(nextUser) => {
-                    handleSelectTeam("team1Picker", nextUser);
-                  }}
-                  disabled={creating}
-                  disabledUserIds={team1DisabledUserIds}
-                  disabledUserMessage="다른 팀장이나 후보로 이미 선택된 유저입니다."
-                />
-              </div>
-            </SurfaceCard>
-
-            <SurfaceCard className="p-5">
-              <div className="flex items-center justify-between gap-3">
+              <SurfaceCard className="p-5">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">2팀 팀장</h3>
                   <p className="mt-2 text-sm leading-7 text-muted">
                     후보와 겹치지 않게 선택합니다.
                   </p>
                 </div>
-                {form.team2Picker ? (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      handleClearTeam("team2Picker");
+
+                <div className="mt-4">
+                  <RpsDraftUserSearch
+                    label="팀장 검색"
+                    description="검색 결과를 눌러 2팀 팀장으로 지정합니다."
+                    selectedUser={form.team2Picker}
+                    onSelect={(nextUser) => {
+                      handleSelectTeam("team2Picker", nextUser);
                     }}
                     disabled={creating}
-                  >
-                    선택 해제
-                  </Button>
-                ) : null}
-              </div>
+                    disabledUserIds={team2DisabledUserIds}
+                    disabledUserMessage="다른 팀장이나 후보로 이미 선택된 유저입니다."
+                  />
+                </div>
 
-              <div className="mt-4">
-                <RpsDraftUserSearch
-                  label="팀장 검색"
-                  description="검색 결과를 눌러 2팀 팀장으로 지정합니다."
-                  selectedUser={form.team2Picker}
-                  onSelect={(nextUser) => {
-                    handleSelectTeam("team2Picker", nextUser);
-                  }}
-                  disabled={creating}
-                  disabledUserIds={team2DisabledUserIds}
-                  disabledUserMessage="다른 팀장이나 후보로 이미 선택된 유저입니다."
-                />
-              </div>
-            </SurfaceCard>
+                {form.team2Picker ? (
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        handleClearTeam("team2Picker");
+                      }}
+                      disabled={creating}
+                    >
+                      선택 해제
+                    </Button>
+                  </div>
+                ) : null}
+              </SurfaceCard>
+            </div>
           </div>
 
           <SurfaceCard className="p-5">
@@ -483,10 +511,10 @@ export function RpsDraftListPage() {
               <ValueBadge>선택 후보 {form.candidates.length}명</ValueBadge>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
               <RpsDraftUserSearch
                 label="후보 검색"
-                description="클릭하면 아래 후보 목록에 추가됩니다."
+                description="클릭하면 오른쪽 후보 목록에 바로 추가됩니다."
                 onSelect={(nextUser) => {
                   handleAddCandidate(nextUser);
                 }}
@@ -494,68 +522,85 @@ export function RpsDraftListPage() {
                 disabledUserIds={candidateDisabledUserIds}
                 disabledUserMessage="팀장이거나 이미 후보 목록에 들어간 유저입니다."
               />
-            </div>
 
-            {form.candidates.length === 0 ? (
-              <div className="mt-4 rounded-[24px] border border-dashed border-line px-5 py-8 text-sm text-muted">
-                아직 선택한 후보가 없습니다.
-              </div>
-            ) : (
-              <div className="mt-4 grid gap-3">
-                {form.candidates.map((candidate, index) => (
-                  <div
-                    key={candidate.id}
-                    className="flex flex-col gap-3 rounded-[22px] border border-line bg-surface-strong px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <ValueBadge>{index + 1}번 후보</ValueBadge>
-                        <span className="text-sm font-semibold text-foreground">
-                          {formatSelectedUser(candidate)}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs leading-6 text-muted">
-                        팀장과 중복되지 않도록 생성 전 목록을 확정합니다.
-                      </p>
-                    </div>
-
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        handleRemoveCandidate(candidate.id);
-                      }}
-                      disabled={creating}
-                    >
-                      후보 제거
-                    </Button>
+              <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">선택한 후보</p>
+                    <p className="mt-1 text-xs leading-6 text-muted">
+                      중복 없이 생성 전에 확정합니다.
+                    </p>
                   </div>
-                ))}
+                  <ValueBadge>{form.candidates.length}명</ValueBadge>
+                </div>
+
+                {form.candidates.length === 0 ? (
+                  <div className="mt-4 rounded-2xl border border-dashed border-line px-4 py-8 text-sm text-muted">
+                    아직 선택한 후보가 없습니다.
+                  </div>
+                ) : (
+                  <div className="mt-4 grid max-h-80 gap-3 overflow-y-auto pr-1">
+                    {form.candidates.map((candidate, index) => (
+                      <div
+                        key={candidate.id}
+                        className="rounded-2xl border border-line bg-white px-4 py-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <ValueBadge>{index + 1}번 후보</ValueBadge>
+                              <span className="text-sm font-semibold text-foreground">
+                                {formatSelectedUser(candidate)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              handleRemoveCandidate(candidate.id);
+                            }}
+                            disabled={creating}
+                          >
+                            제거
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </SurfaceCard>
 
-          {createError ? (
-            <p className="text-sm text-danger-ink">{createError}</p>
-          ) : null}
+          <div className="space-y-3 border-t border-line/80 pt-4 xl:col-span-2">
+            {createError ? (
+              <p className="text-sm text-danger-ink">{createError}</p>
+            ) : null}
 
-          {isAuthenticated ? (
-            <Button type="submit" variant="accent" fullWidth disabled={creating}>
-              {creating ? "생성하는 중..." : "생성하고 세션 열기"}
-            </Button>
-          ) : status === "loading" ? (
-            <Button variant="outline" fullWidth disabled>
-              로그인 확인 중...
-            </Button>
-          ) : (
-            <Link href={loginHref} className={primaryLinkClassName}>
-              로그인하고 생성하기
-            </Link>
-          )}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs leading-6 text-muted">
+                생성 전에 팀장 2명과 후보를 모두 정합니다. 생성되면 세션 상세에서
+                바로 시작만 하면 됩니다.
+              </p>
 
-          <p className="text-xs leading-6 text-muted">
-            생성 전에 팀장 2명과 후보를 모두 정합니다. 생성되면 세션 상세에서 바로
-            시작만 하면 됩니다.
-          </p>
+              <div className="sm:min-w-72">
+                {isAuthenticated ? (
+                  <Button type="submit" variant="accent" fullWidth disabled={creating}>
+                    {creating ? "생성하는 중..." : "생성하고 세션 열기"}
+                  </Button>
+                ) : status === "loading" ? (
+                  <Button variant="outline" fullWidth disabled>
+                    로그인 확인 중...
+                  </Button>
+                ) : (
+                  <Link href={loginHref} className={`${primaryLinkClassName} w-full`}>
+                    로그인하고 생성하기
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
         </form>
       </OverlayDialog>
     </>

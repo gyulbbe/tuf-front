@@ -786,16 +786,22 @@ function UserAutocompleteInput({
           }, 120);
         }}
         onKeyDown={(event) => {
+          const highlightedUser =
+            activeIndex >= 0 && visibleResults[activeIndex]
+              ? visibleResults[activeIndex]
+              : visibleResults[0];
+
           if (!isOpen && event.key === "ArrowDown") {
             setIsOpen(true);
             return;
           }
 
-          if (!isOpen) {
-            return;
-          }
-
           if (event.key === "ArrowDown") {
+            if (!isOpen) {
+              setIsOpen(true);
+              return;
+            }
+
             event.preventDefault();
             setActiveIndex((current) => {
               if (visibleResults.length === 0) {
@@ -811,6 +817,11 @@ function UserAutocompleteInput({
           }
 
           if (event.key === "ArrowUp") {
+            if (!isOpen) {
+              setIsOpen(true);
+              return;
+            }
+
             event.preventDefault();
             setActiveIndex((current) => {
               if (visibleResults.length === 0) {
@@ -825,13 +836,9 @@ function UserAutocompleteInput({
             });
           }
 
-          if (
-            event.key === "Enter" &&
-            activeIndex >= 0 &&
-            visibleResults[activeIndex]
-          ) {
+          if (event.key === "Enter" && highlightedUser) {
             event.preventDefault();
-            selectUser(visibleResults[activeIndex]);
+            selectUser(highlightedUser);
           }
 
           if (event.key === "Escape") {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,6 +25,13 @@ function describeUser(user: RpsDraftUserSearchResult) {
   return parts.join(" · ");
 }
 
+function findFirstSelectableUser(
+  users: RpsDraftUserSearchResult[],
+  disabledUserIds: readonly number[],
+) {
+  return users.find((user) => !disabledUserIds.includes(user.id)) ?? null;
+}
+
 export function RpsDraftUserSearch({
   description,
   disabled = false,
@@ -40,6 +47,11 @@ export function RpsDraftUserSearch({
   const [results, setResults] = useState<RpsDraftUserSearchResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [lastSearchedKeyword, setLastSearchedKeyword] = useState("");
+  const firstSelectableUser = useMemo(
+    () => findFirstSelectableUser(results, disabledUserIds),
+    [disabledUserIds, results],
+  );
 
   async function handleSearch() {
     const trimmedKeyword = keyword.trim();
@@ -47,6 +59,7 @@ export function RpsDraftUserSearch({
     if (!trimmedKeyword) {
       setResults([]);
       setError("검색어를 입력해 주세요.");
+      setLastSearchedKeyword("");
       return;
     }
 
@@ -56,6 +69,7 @@ export function RpsDraftUserSearch({
     try {
       const nextResults = await searchRpsDraftUsers(trimmedKeyword, 8);
       setResults(nextResults);
+      setLastSearchedKeyword(trimmedKeyword);
 
       if (nextResults.length === 0) {
         setError(emptyMessage);
@@ -67,6 +81,7 @@ export function RpsDraftUserSearch({
           ? searchError.message
           : "사용자 검색 중 오류가 발생했습니다.",
       );
+      setLastSearchedKeyword(trimmedKeyword);
     } finally {
       setLoading(false);
     }
@@ -85,10 +100,24 @@ export function RpsDraftUserSearch({
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input
             value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
+            onChange={(event) => {
+              setKeyword(event.target.value);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
+
+                const trimmedKeyword = keyword.trim();
+                if (
+                  !loading &&
+                  trimmedKeyword &&
+                  trimmedKeyword === lastSearchedKeyword &&
+                  firstSelectableUser
+                ) {
+                  onSelect(firstSelectableUser);
+                  return;
+                }
+
                 void handleSearch();
               }
             }}
@@ -97,6 +126,7 @@ export function RpsDraftUserSearch({
           />
           <Button
             variant="outline"
+            className="shrink-0 whitespace-nowrap"
             onClick={() => {
               void handleSearch();
             }}
@@ -118,7 +148,7 @@ export function RpsDraftUserSearch({
         {error ? <p className="text-xs text-danger-ink">{error}</p> : null}
 
         {results.length > 0 ? (
-          <div className="grid gap-2">
+          <div className="grid max-h-64 gap-2 overflow-y-auto pr-1">
             {results.map((user) => {
               const isSelected = selectedUser?.id === user.id;
               const isDisabledUser = disabledUserIds.includes(user.id);

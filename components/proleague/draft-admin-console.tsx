@@ -26,7 +26,6 @@ import {
   updateDraftSession,
   updateDraftTeam,
   type DraftCandidate,
-  type DraftMode,
   type DraftLiveTeam,
   type DraftOrder,
   type DraftPick,
@@ -50,7 +49,6 @@ type SessionFormState = {
   title: string;
   teamCount: string;
   pickTimeSeconds: string;
-  draftMode: DraftMode;
 };
 
 type TeamFormState = {
@@ -125,19 +123,6 @@ const CANDIDATE_STATUS_LABELS: Record<string, string> = {
   EXCLUDED: "제외",
 };
 
-const DRAFT_MODE_OPTIONS = [
-  {
-    value: "FIXED_ORDER" as const,
-    label: "고정 순서",
-    description: "미리 만든 순서표대로 자동 진행",
-  },
-  {
-    value: "MANUAL_CAPTAIN" as const,
-    label: "수동 팀장",
-    description: "매 픽마다 다음 팀을 직접 지정",
-  },
-];
-
 const SELECT_CLASS_NAME =
   "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
 
@@ -145,14 +130,12 @@ const EMPTY_CREATE_FORM: SessionFormState = {
   title: "",
   teamCount: "6",
   pickTimeSeconds: "30",
-  draftMode: "FIXED_ORDER",
 };
 
 const EMPTY_EDIT_FORM: SessionFormState = {
   title: "",
   teamCount: "",
   pickTimeSeconds: "",
-  draftMode: "FIXED_ORDER",
 };
 
 const EMPTY_CANDIDATE_FORM: CandidateFormState = {
@@ -208,21 +191,6 @@ function getTeamDeleteErrorMessage(error: unknown) {
   }
 
   return message;
-}
-
-function formatDraftMode(mode: DraftMode | string | null | undefined) {
-  switch (mode) {
-    case "FIXED_ORDER":
-      return "고정 순서";
-    case "MANUAL_CAPTAIN":
-      return "수동 팀장";
-    default:
-      return mode ?? "미정";
-  }
-}
-
-function isManualCaptainMode(mode: DraftMode | string | null | undefined) {
-  return mode === "MANUAL_CAPTAIN";
 }
 
 function logDraftAdminIssue(
@@ -1595,7 +1563,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   const waitingCandidateCount = sortedCandidates.filter(
     (candidate) => candidate.status === "WAITING",
   ).length;
-  const isManualCaptainSession = isManualCaptainMode(selectedSessionDetail?.draftMode);
   const orderGenerationTargetCount = getOrderGenerationTargetCount(sortedCandidates);
   const basicOrderPreview = formatOrderPlanPreview(
     buildGeneratedOrderPlan(
@@ -1736,8 +1703,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         title: detail.title,
         teamCount: String(detail.teamCount),
         pickTimeSeconds: String(detail.pickTimeSeconds),
-        draftMode:
-          detail.draftMode === "MANUAL_CAPTAIN" ? "MANUAL_CAPTAIN" : "FIXED_ORDER",
       });
       setTeamForm(createDefaultTeamForm(detail));
       setTeamLookups(createInitialTeamLookups(detail));
@@ -1920,7 +1885,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         title: createForm.title.trim(),
         teamCount: parsePositiveInt(createForm.teamCount, "팀 수", 2),
         pickTimeSeconds: parsePositiveInt(createForm.pickTimeSeconds, "픽 제한 시간"),
-        draftMode: createForm.draftMode,
       };
 
       if (!payload.title) {
@@ -1956,7 +1920,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         title: editForm.title.trim(),
         teamCount: parsePositiveInt(editForm.teamCount, "팀 수", 2),
         pickTimeSeconds: parsePositiveInt(editForm.pickTimeSeconds, "픽 제한 시간"),
-        draftMode: editForm.draftMode,
       };
 
       if (!payload.title) {
@@ -2412,22 +2375,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               }}
               placeholder="드래프트 이름"
             />
-            <select
-              className={SELECT_CLASS_NAME}
-              value={createForm.draftMode}
-              onChange={(event) => {
-                setCreateForm((current) => ({
-                  ...current,
-                  draftMode: event.target.value as DraftMode,
-                }));
-              }}
-            >
-              {DRAFT_MODE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input
                 type="number"
@@ -2453,11 +2400,8 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                 }}
                 placeholder="픽 제한 시간(초)"
               />
-            </div>
-            <div className="rounded-[22px] bg-surface-muted px-4 py-4 text-sm leading-7 text-muted">
-              {createForm.draftMode === "MANUAL_CAPTAIN"
-                ? "수동 팀장 모드는 시작 직후에도 현재 픽 팀이 비어 있고, 라이브 화면에서 다음 픽 팀을 직접 지정해야 한다."
-                : "고정 순서 모드는 미리 만든 순서표를 따라 자동으로 현재 픽 팀이 정해진다."}
+            </div>            <div className="rounded-[22px] bg-surface-muted px-4 py-4 text-sm leading-7 text-muted">
+              고정 순서 기준으로 순서표를 만들고 라이브 드래프트를 진행한다.
             </div>
             <Button
               variant="accent"
@@ -2497,7 +2441,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {session.title} · {formatDraftMode(session.draftMode)}
+                  {session.title}
                 </option>
               ))}
             </select>
@@ -2513,23 +2457,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               }}
               placeholder="드래프트 이름"
             />
-            <select
-              className={SELECT_CLASS_NAME}
-              value={editForm.draftMode}
-              disabled={selectedSessionId === null}
-              onChange={(event) => {
-                setEditForm((current) => ({
-                  ...current,
-                  draftMode: event.target.value as DraftMode,
-                }));
-              }}
-            >
-              {DRAFT_MODE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input
                 type="number"
@@ -2561,7 +2488,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
 
             {selectedSessionDetail ? (
               <div className="rounded-[22px] bg-surface-muted px-4 py-4 text-sm leading-7 text-muted">
-                <p>모드: {formatDraftMode(selectedSessionDetail.draftMode)}</p>
                 <p>시작: {formatDateTime(selectedSessionDetail.startedAt)}</p>
                 <p>종료: {formatDateTime(selectedSessionDetail.endedAt)}</p>
               </div>
@@ -2769,13 +2695,11 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         <SurfaceCard className="p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-foreground">
-                {isManualCaptainSession ? "픽 팀 지정 기록" : "순서 등록 / 삭제"}
+                            <p className="text-sm font-semibold text-foreground">
+                순서 등록 / 삭제
               </p>
-              <p className="mt-2 text-sm leading-7 text-muted">
-                {isManualCaptainSession
-                  ? "MANUAL_CAPTAIN 모드는 순서표를 미리 만들지 않는다. 라이브 화면에서 현재 픽 번호의 다음 팀을 지정하면 그 기록이 여기에 쌓인다."
-                  : "순서는 드래프트 인원 수 기준으로 자동 생성한다. 버튼을 누르면 기존 순서를 전부 지우고 `pickNo`만 다시 1번부터 맞춘다. 기본은 팀 순서를 반복하고, 스네이크는 한 바퀴마다 방향을 뒤집는다."}
+                            <p className="mt-2 text-sm leading-7 text-muted">
+                순서표는 드래프트 인원 수 기준으로 자동 생성된다. 버튼을 누르면 기존 순서를 모두 지우고 `pickNo`를 1부터 다시 맞춘다. 기본은 팀 순서를 반복하고, 스네이크는 라운드마다 방향을 반대로 섞는다.
               </p>
             </div>
             <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
@@ -2791,31 +2715,6 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
             <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
               순서를 만들려면 먼저 팀이 있어야 한다.
             </div>
-          ) : isManualCaptainSession ? (
-            <>
-              <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
-                <p className="text-sm font-semibold text-foreground">수동 팀장 모드 안내</p>
-                <p className="mt-2 text-sm leading-7 text-muted">
-                  세션 시작 직후와 각 픽 직후에는 다시 “다음 픽 팀 지정 대기” 상태로 돌아간다.
-                  다음 팀 지정은 라이브 화면에서 처리하고, 여기서는 누적된 지정 기록만 확인하면 된다.
-                </p>
-              </div>
-
-              <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {sortedOrders.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted sm:col-span-2 xl:col-span-3">
-                    아직 픽 팀 지정 기록이 없다.
-                  </div>
-                ) : (
-                  sortedOrders.map((order) => (
-                    <OrderRowCompact
-                      key={order.pickNo}
-                      order={order}
-                    />
-                  ))
-                )}
-              </div>
-            </>
           ) : (
             <>
               <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">

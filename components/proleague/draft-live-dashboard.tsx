@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   startTransition,
@@ -9,7 +9,6 @@ import {
   useState,
 } from "react";
 import {
-  assignNextDraftPicker,
   deleteDraftSession,
   extendDraftTurn,
   finishDraftSession,
@@ -24,7 +23,6 @@ import {
   type DraftCandidate,
   type DraftLiveNormalizedPosition,
   type DraftLivePreviewEndReason,
-  type DraftMode,
   type DraftLiveSessionInfo,
   type DraftLiveSnapshot,
   type DraftLiveTeam,
@@ -58,11 +56,6 @@ const STATUS_LABELS: Record<string, string> = {
   FINISHED: "종료",
 };
 
-const DRAFT_MODE_LABELS: Record<string, string> = {
-  FIXED_ORDER: "고정 순서",
-  MANUAL_CAPTAIN: "수동 팀장",
-};
-
 const CONNECTION_LABELS: Record<ConnectionState, string> = {
   connecting: "소켓 연결 중",
   connected: "실시간 연결됨",
@@ -77,18 +70,6 @@ function formatDraftStatus(status: string | null | undefined) {
   }
 
   return STATUS_LABELS[status] ?? status;
-}
-
-function formatDraftMode(mode: DraftMode | string | null | undefined) {
-  if (!mode) {
-    return "미정";
-  }
-
-  return DRAFT_MODE_LABELS[mode] ?? mode;
-}
-
-function isManualCaptainMode(mode: DraftMode | string | null | undefined) {
-  return mode === "MANUAL_CAPTAIN";
 }
 
 function formatUserRole(role: string | null | undefined) {
@@ -267,18 +248,17 @@ function mergeSessionSummary(
   return filterSessionsForView(
     [
       ...nextSessions,
-        {
-          id: session.id,
-          title: session.title,
-          status: session.status,
-          teamCount: session.teamCount,
-          pickTimeSeconds: session.pickTimeSeconds,
-          draftMode: session.draftMode,
-          currentPickNo: session.currentPickNo,
-          currentDraftTeamId: session.currentDraftTeamId,
-          deadlineAt: session.deadlineAt,
-          startedAt: session.startedAt,
-          endedAt: session.endedAt,
+      {
+        id: session.id,
+        title: session.title,
+        status: session.status,
+        teamCount: session.teamCount,
+        pickTimeSeconds: session.pickTimeSeconds,
+        currentPickNo: session.currentPickNo,
+        currentDraftTeamId: session.currentDraftTeamId,
+        deadlineAt: session.deadlineAt,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
       },
     ],
     adminMode,
@@ -679,23 +659,13 @@ function CandidateCard({
 }
 
 function CompactTeamCard({
-  assignButtonLabel,
-  canAssignNextPicker,
   candidateLookup,
   currentTeamId,
   draftTeam,
-  isAssignDisabled = false,
-  isAssignPending = false,
-  onAssignNextPicker,
 }: {
-  assignButtonLabel?: string;
-  canAssignNextPicker?: boolean;
   candidateLookup: Record<number, DraftCandidate>;
   currentTeamId: number | null;
   draftTeam: DraftLiveTeam;
-  isAssignDisabled?: boolean;
-  isAssignPending?: boolean;
-  onAssignNextPicker?: (() => void) | null;
 }) {
   const isCurrentTeam = draftTeam.id === currentTeamId;
 
@@ -717,19 +687,6 @@ function CompactTeamCard({
         {draftTeam.pickerName ? "픽커 지정됨" : "픽커 미지정"}
         {isCurrentTeam ? " · 현재 픽 팀" : ""}
       </p>
-
-      {canAssignNextPicker && onAssignNextPicker ? (
-        <Button
-          variant="outline"
-          disabled={isAssignDisabled || isAssignPending}
-          onClick={() => {
-            onAssignNextPicker();
-          }}
-          className="mt-3 w-full"
-        >
-          {isAssignPending ? "지정 중" : assignButtonLabel ?? "이 팀으로 지정"}
-        </Button>
-      ) : null}
 
       <div className="mt-3 space-y-1.5">
         {draftTeam.roster.length === 0 ? (
@@ -1503,18 +1460,6 @@ export function DraftLiveDashboard({
     );
   }
 
-  async function handleAssignNextPicker(draftTeamId: number) {
-    if (selectedSessionId === null) {
-      return;
-    }
-
-    await runSnapshotAction(
-      `next-picker:${draftTeamId}`,
-      () => assignNextDraftPicker(selectedSessionId, draftTeamId),
-      "다음 픽 팀을 지정했다.",
-    );
-  }
-
   const filteredCandidates = snapshot?.availableCandidates.filter((candidate) => {
     const keyword = deferredSearch.trim().toLowerCase();
 
@@ -1530,25 +1475,13 @@ export function DraftLiveDashboard({
     (snapshot?.availableCandidates.length ?? 0) +
     (snapshot?.pickedCandidates.length ?? 0);
   const currentTeamId =
-    snapshot?.session.currentDraftTeamId ?? snapshot?.currentTurn?.teamId ?? null;
+    snapshot?.currentTurn?.teamId ?? snapshot?.session.currentDraftTeamId ?? null;
   const currentTeam = teams.find((team) => team.id === currentTeamId) ?? null;
   const myTeam = teams.find((team) => team.id === snapshot?.permissions?.myTeamId) ?? null;
   const canControl = snapshot?.permissions?.canControl ?? false;
   const canPick = snapshot?.permissions?.canPick ?? false;
   const viewerRole: string | null = null;
   const isBusy = pendingAction !== null;
-  const isManualMode = isManualCaptainMode(snapshot?.session.draftMode);
-  const isWaitingForNextPicker =
-    Boolean(snapshot) &&
-    snapshot?.session.status === "LIVE" &&
-    isManualMode &&
-    snapshot.currentTurn === null;
-  const showTimer = Boolean(snapshot && !isManualMode);
-  const canAssignNextPicker =
-    Boolean(snapshot) &&
-    isManualMode &&
-    canControl &&
-    snapshot?.session.status === "LIVE";
   const remainingSeconds = calculateRemainingSeconds(
     snapshot,
     nowTickMs,
@@ -1618,16 +1551,13 @@ export function DraftLiveDashboard({
             <h2 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               {snapshot?.currentTurn
                 ? `${snapshot.currentTurn.teamName} 차례`
-                : isWaitingForNextPicker
-                  ? "다음 픽 팀 지정 대기"
-                  : "진행 중인 차례 없음"}
+                : "진행 중인 차례 없음"}
             </h2>
             <p className="mt-3 text-sm leading-7 text-muted">
               {dashboardDescription}
             </p>
             <p className="mt-2 text-sm leading-7 text-muted">
-              모드 {formatDraftMode(snapshot?.session.draftMode)} · 서버 시간{" "}
-              {formatDateTime(snapshot?.session.serverNow)}
+              서버 시간 {formatDateTime(snapshot?.session.serverNow)}
               {snapshot?.session.deadlineAt
                 ? ` · 마감 ${formatDateTime(snapshot.session.deadlineAt)}`
                 : ""}
@@ -1653,42 +1583,22 @@ export function DraftLiveDashboard({
 
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {session.title} · {formatDraftMode(session.draftMode)} · {formatDraftStatus(session.status)}
+                  {session.title} · {formatDraftStatus(session.status)}
                 </option>
               ))}
             </select>
 
-            {showTimer ? (
-              <div className="rounded-[24px] border border-line/70 bg-white/70 px-5 py-4 text-right">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
-                  Remaining
-                </p>
-                <p className="mt-2 text-4xl font-semibold tracking-tight text-foreground">
-                  {formatCountdown(remainingSeconds)}
-                </p>
-                <p className="mt-2 text-sm text-muted">
-                  {currentTeam ? `${currentTeam.teamName} 응답 대기` : "대기 중"}
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-[24px] border border-line/70 bg-white/70 px-5 py-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
-                  Manual Captain
-                </p>
-                <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                  {snapshot?.currentTurn
-                    ? snapshot.currentTurn.teamName
-                    : "다음 픽 팀 지정 대기"}
-                </p>
-                <p className="mt-2 text-sm leading-7 text-muted">
-                  {snapshot?.currentTurn
-                    ? "지정된 팀 픽커만 지금 지명할 수 있다."
-                    : canControl
-                      ? "팀 보드에서 다음 픽 팀을 지정하면 현재 턴이 열린다."
-                      : "관리자가 다음 픽 팀을 지정할 때까지 픽과 드래그가 잠겨 있다."}
-                </p>
-              </div>
-            )}
+            <div className="rounded-[24px] border border-line/70 bg-white/70 px-5 py-4 text-right">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                Remaining
+              </p>
+              <p className="mt-2 text-4xl font-semibold tracking-tight text-foreground">
+                {formatCountdown(remainingSeconds)}
+              </p>
+              <p className="mt-2 text-sm text-muted">
+                {currentTeam ? `${currentTeam.teamName} 응답 대기` : "대기 중"}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1721,9 +1631,7 @@ export function DraftLiveDashboard({
                         value: snapshot.session.currentPickNo ?? "-",
                         subtext: snapshot.currentTurn
                           ? `${snapshot.currentTurn.teamName} 차례`
-                          : isWaitingForNextPicker
-                            ? "다음 픽 팀 지정 대기"
-                            : "시작 대기",
+                          : "시작 대기",
                       },
                       {
                         label: "내 팀",
@@ -1749,17 +1657,6 @@ export function DraftLiveDashboard({
               ) : null}
             </section>
 
-            {isWaitingForNextPicker ? (
-              <section className="rounded-[24px] border border-accent-soft bg-accent-soft/40 px-5 py-5">
-                <p className="text-sm font-semibold text-foreground">다음 픽 팀 지정 대기</p>
-                <p className="mt-2 text-sm leading-7 text-muted">
-                  {canControl
-                    ? "아래 팀 보드에서 이번 픽을 진행할 팀을 지정해 달라. 지정이 끝나기 전까지는 누구도 픽할 수 없다."
-                    : "관리자가 이번 픽 팀을 지정하면 그 팀 픽커만 후보를 지명할 수 있다."}
-                </p>
-              </section>
-            ) : null}
-
             <section className="rounded-[28px] border border-line bg-surface-strong px-5 py-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -1769,11 +1666,7 @@ export function DraftLiveDashboard({
                   <p className="hidden">
                     드래프트 인원을 검색하고 현재 픽 권한이 있으면 바로 지명할 수 있다.
                   </p>
-                  <p className="mt-2 text-sm leading-7 text-muted">
-                    {isWaitingForNextPicker
-                      ? "다음 픽 팀이 지정될 때까지 픽 버튼과 드래그 프리뷰가 비활성화된다."
-                      : "지명할 선수를 확인하고 선택하면 된다."}
-                  </p>
+                  <p className="mt-2 text-sm leading-7 text-muted">지명할 선수를 확인하고 선택하면 된다.</p>
                 </div>
 
                 <div className="w-full max-w-xs">
@@ -1822,21 +1715,10 @@ export function DraftLiveDashboard({
               <div className="mt-5 grid gap-4 xl:grid-cols-2">
                 {teams.map((team) => (
                   <CompactTeamCard
-                    assignButtonLabel="이 팀으로 지정"
-                    canAssignNextPicker={canAssignNextPicker}
                     candidateLookup={candidateLookup}
                     key={team.id}
                     currentTeamId={currentTeamId}
                     draftTeam={team}
-                    isAssignDisabled={isBusy}
-                    isAssignPending={pendingAction === `next-picker:${team.id}`}
-                    onAssignNextPicker={
-                      canAssignNextPicker
-                        ? () => {
-                            void handleAssignNextPicker(team.id);
-                          }
-                        : null
-                    }
                   />
                 ))}
               </div>
@@ -1914,14 +1796,17 @@ export function DraftLiveDashboard({
                 </Button>
               </div>
 
-              {isManualMode ? (
+              <>
                 <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
-                  <p className="text-sm font-semibold text-foreground">수동 팀장 모드</p>
-                  <p className="mt-2 text-sm leading-7 text-muted">
-                    이 모드는 타이머와 연장 기능을 사실상 사용하지 않는다. LIVE 상태에서는
-                    팀 보드에서 다음 픽 팀을 지정하고, PAUSED 상태에서만 다시 재개하면 된다.
-                  </p>
-                  <div className="mt-3">
+                  <p className="text-sm font-semibold text-foreground">재개 시간</p>
+                  <div className="mt-3 flex gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={resumeSeconds}
+                      onChange={(event) => setResumeSeconds(event.target.value)}
+                      placeholder="기본 30"
+                    />
                     <Button
                       variant="accent"
                       disabled={!canControl || isBusy || snapshot.session.status !== "PAUSED"}
@@ -1932,104 +1817,70 @@ export function DraftLiveDashboard({
                           return;
                         }
 
-                        void runSnapshotAction(
-                          "resume",
-                          () => resumeDraftSession(sessionId),
-                          "드래프트를 재개했다.",
-                        );
+                        try {
+                          const seconds = parsePositiveSeconds(
+                            resumeSeconds,
+                            snapshot.session.pickTimeSeconds,
+                          );
+
+                          void runSnapshotAction(
+                            "resume",
+                            () => resumeDraftSession(sessionId, seconds),
+                            `${seconds}초로 드래프트를 재개했다.`,
+                          );
+                        } catch (error) {
+                          setNotice({
+                            tone: "error",
+                            text: readErrorMessage(error),
+                          });
+                        }
                       }}
                     >
                       {pendingAction === "resume" ? "재개 중" : "재개"}
                     </Button>
                   </div>
                 </div>
-              ) : (
-                <>
-                  <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
-                    <p className="text-sm font-semibold text-foreground">재개 시간</p>
-                    <div className="mt-3 flex gap-2">
-                      <Input
-                        type="number"
-                        min={1}
-                        value={resumeSeconds}
-                        onChange={(event) => setResumeSeconds(event.target.value)}
-                        placeholder="기본 30"
-                      />
-                      <Button
-                        variant="accent"
-                        disabled={!canControl || isBusy || snapshot.session.status !== "PAUSED"}
-                        onClick={() => {
-                          const sessionId = selectedSessionId;
 
-                          if (sessionId === null) {
-                            return;
-                          }
+                <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
+                  <p className="text-sm font-semibold text-foreground">현재 턴 연장</p>
+                  <div className="mt-3 flex gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={extendSeconds}
+                      onChange={(event) => setExtendSeconds(event.target.value)}
+                      placeholder="30"
+                    />
+                    <Button
+                      disabled={!canControl || isBusy || snapshot.session.status !== "LIVE"}
+                      onClick={() => {
+                        const sessionId = selectedSessionId;
 
-                          try {
-                            const seconds = parsePositiveSeconds(
-                              resumeSeconds,
-                              snapshot.session.pickTimeSeconds,
-                            );
+                        if (sessionId === null) {
+                          return;
+                        }
 
-                            void runSnapshotAction(
-                              "resume",
-                              () => resumeDraftSession(sessionId, seconds),
-                              `${seconds}초로 드래프트를 재개했다.`,
-                            );
-                          } catch (error) {
-                            setNotice({
-                              tone: "error",
-                              text: readErrorMessage(error),
-                            });
-                          }
-                        }}
-                      >
-                        {pendingAction === "resume" ? "재개 중" : "재개"}
-                      </Button>
-                    </div>
+                        try {
+                          const seconds = parsePositiveSeconds(extendSeconds);
+
+                          void runSnapshotAction(
+                            "extend",
+                            () => extendDraftTurn(sessionId, seconds),
+                            `${seconds}초 연장했다.`,
+                          );
+                        } catch (error) {
+                          setNotice({
+                            tone: "error",
+                            text: readErrorMessage(error),
+                          });
+                        }
+                      }}
+                    >
+                      {pendingAction === "extend" ? "연장 중" : "연장"}
+                    </Button>
                   </div>
-
-                  <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
-                    <p className="text-sm font-semibold text-foreground">현재 턴 연장</p>
-                    <div className="mt-3 flex gap-2">
-                      <Input
-                        type="number"
-                        min={1}
-                        value={extendSeconds}
-                        onChange={(event) => setExtendSeconds(event.target.value)}
-                        placeholder="30"
-                      />
-                      <Button
-                        disabled={!canControl || isBusy || snapshot.session.status !== "LIVE"}
-                        onClick={() => {
-                          const sessionId = selectedSessionId;
-
-                          if (sessionId === null) {
-                            return;
-                          }
-
-                          try {
-                            const seconds = parsePositiveSeconds(extendSeconds);
-
-                            void runSnapshotAction(
-                              "extend",
-                              () => extendDraftTurn(sessionId, seconds),
-                              `${seconds}초 연장했다.`,
-                            );
-                          } catch (error) {
-                            setNotice({
-                              tone: "error",
-                              text: readErrorMessage(error),
-                            });
-                          }
-                        }}
-                      >
-                        {pendingAction === "extend" ? "연장 중" : "연장"}
-                      </Button>
-                    </div>
-                  </div>
-                </>
-              )}
+                </div>
+              </>
 
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button
@@ -2133,9 +1984,7 @@ export function DraftLiveDashboard({
               <p className="mt-1 text-sm text-muted">
                 {snapshot?.currentTurn
                   ? `${snapshot.currentTurn.pickNo}번째 픽`
-                  : isWaitingForNextPicker
-                    ? "다음 픽 팀 지정 대기"
-                    : "대기 중"}
+                  : "대기 중"}
               </p>
             </div>
 
@@ -2146,11 +1995,7 @@ export function DraftLiveDashboard({
               <p className="mt-2 text-lg font-semibold text-foreground">
                 {currentTeam?.pickerName ? "지정됨" : snapshot?.currentTurn ? "미지정" : "대기 중"}
               </p>
-              <p className="mt-1 text-sm text-muted">
-                {isManualMode && snapshot?.currentTurn === null
-                  ? "다음 픽 팀이 정해지면 해당 팀 픽커만 활성화된다."
-                  : "이름 비공개"}
-              </p>
+              <p className="mt-1 text-sm text-muted">이름 비공개</p>
             </div>
 
             <div className="rounded-[22px] bg-surface-muted px-4 py-4">

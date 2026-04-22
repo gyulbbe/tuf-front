@@ -270,10 +270,16 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
           <div
             key={menuKey}
             className="relative flex flex-col"
-            onMouseEnter={() => setOpenMenuKey(menuKey)}
-            onMouseLeave={() =>
-              setOpenMenuKey((current) => (current === menuKey ? null : current))
-            }
+            onMouseEnter={() => {
+              if (tab.href) {
+                setOpenMenuKey(menuKey);
+              }
+            }}
+            onMouseLeave={() => {
+              if (tab.href) {
+                setOpenMenuKey((current) => (current === menuKey ? null : current));
+              }
+            }}
             onFocusCapture={() => setOpenMenuKey(menuKey)}
             onBlurCapture={(event) => handleTabBlur(event, menuKey)}
           >

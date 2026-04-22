@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DraftLiveDashboard } from "@/components/proleague/draft-live-dashboard";
+import { ProleagueDraftListPage } from "@/components/proleague/proleague-draft-list-page";
 import { requireServerAuth } from "@/lib/auth/server-auth";
 
 export const metadata: Metadata = {
@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 export default async function ProleagueDraftPage() {
   await requireServerAuth("/proleague/draft");
 
-  return <DraftLiveDashboard variant="proleague" />;
+  return <ProleagueDraftListPage />;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   startTransition,
   useEffect,
@@ -33,9 +34,15 @@ import {
   type DraftSessionSummary,
   type DraftUserSearchResult,
 } from "@/lib/api/draft";
+import { useAuth } from "@/components/auth/auth-provider";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { canManageOwnedResource } from "@/lib/auth/roles";
+import {
+  proleagueDraftListPath,
+  proleagueDraftLivePath,
+} from "@/lib/proleague-draft/routes";
 import { cn } from "@/lib/utils";
 
 type NoticeTone = "error" | "neutral" | "success";
@@ -97,6 +104,8 @@ type TeamEditState = {
 
 type DraftAdminConsoleProps = {
   onDataChanged?: () => void;
+  onSessionDeleted?: (sessionId: number) => void;
+  sessionId?: number | null;
 };
 
 type UserAutocompleteInputProps = {
@@ -137,6 +146,12 @@ const EMPTY_EDIT_FORM: SessionFormState = {
   teamCount: "",
   pickTimeSeconds: "",
 };
+
+const secondaryLinkClassName =
+  "inline-flex items-center justify-center rounded-full border border-line px-4 py-3 text-sm font-medium text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground";
+
+const primaryLinkClassName =
+  "inline-flex items-center justify-center rounded-full bg-accent px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-ink";
 
 const EMPTY_CANDIDATE_FORM: CandidateFormState = {
   query: "",
@@ -316,7 +331,7 @@ function sortSessions(sessions: DraftSessionSummary[]) {
 }
 
 function filterManageableSessions(sessions: DraftSessionSummary[]) {
-  return sessions.filter((session) => session.status === "READY");
+  return sessions.filter((session) => session.status !== "FINISHED");
 }
 
 function sortTeams(teams: DraftLiveTeam[]) {
@@ -1510,9 +1525,18 @@ function OrderRowCompact({ order }: { order: DraftOrder }) {
   );
 }
 
-export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
+export function DraftAdminConsole({
+  onDataChanged,
+  onSessionDeleted,
+  sessionId,
+}: DraftAdminConsoleProps) {
+  const { user } = useAuth();
+  const fixedSessionId = typeof sessionId === "number" ? sessionId : null;
+  const isSessionScoped = fixedSessionId !== null;
   const [sessions, setSessions] = useState<DraftSessionSummary[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(
+    fixedSessionId,
+  );
   const [selectedSessionDetail, setSelectedSessionDetail] =
     useState<DraftSessionDetail | null>(null);
   const [createForm, setCreateForm] = useState<SessionFormState>(EMPTY_CREATE_FORM);
@@ -1583,6 +1607,21 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     sortedCandidates,
     candidateDirectory,
   );
+  const canManageSession = canManageOwnedResource({
+    ownerUserId: selectedSessionDetail?.ownerUserId,
+    role: user?.role,
+    userPk: user?.userPk,
+  });
+
+  useEffect(() => {
+    if (fixedSessionId === null) {
+      return;
+    }
+
+    startTransition(() => {
+      setSelectedSessionId(fixedSessionId);
+    });
+  }, [fixedSessionId]);
 
   useEffect(() => {
     if (sortedCandidates.length === 0) {
@@ -1712,6 +1751,28 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   }
 
   async function refreshSelectedSession(sessionId: number) {
+    if (fixedSessionId !== null) {
+      startTransition(() => {
+        setSelectedSessionId(sessionId);
+      });
+
+      try {
+        const detail = await getDraftSessionDetail(sessionId);
+
+        applyDetail(detail);
+        notifyChange();
+
+        return detail;
+      } catch (error) {
+        if (isMissingSessionError(error)) {
+          await syncAfterSessionRemoval();
+          return null;
+        }
+
+        throw error;
+      }
+    }
+
     const nextSessions = await listDraftSessions();
     const filteredSessions = sortSessions(filterManageableSessions(nextSessions));
     const nextSelectedSessionId = chooseSessionId(filteredSessions, sessionId, null);
@@ -1745,6 +1806,16 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   }
 
   async function syncAfterSessionRemoval() {
+    if (fixedSessionId !== null) {
+      startTransition(() => {
+        setSelectedSessionId(null);
+      });
+      resetDetailState();
+      notifyChange();
+      onSessionDeleted?.(fixedSessionId);
+      return;
+    }
+
     const nextSessions = sortSessions(filterManageableSessions(await listDraftSessions()));
     const nextSelectedSessionId = chooseSessionId(nextSessions, null, null);
 
@@ -1763,6 +1834,11 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
   }
 
   useEffect(() => {
+    if (fixedSessionId !== null) {
+      setLoadingSessions(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function bootstrap() {
@@ -1799,7 +1875,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fixedSessionId]);
 
   useEffect(() => {
     if (selectedSessionId === null) {
@@ -1832,6 +1908,14 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
           if (!cancelled) {
             setNotice({
               tone: "neutral",
+              text:
+                fixedSessionId !== null
+                  ? "선택한 드래프트를 찾을 수 없습니다."
+                  : "선택한 드래프트가 삭제되어 목록에서 제거했습니다.",
+            });
+            return;
+            setNotice({
+              tone: "neutral",
               text: "선택한 드래프트가 이미 삭제되어 목록에서 제거했다.",
             });
           }
@@ -1851,7 +1935,7 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     return () => {
       cancelled = true;
     };
-  }, [selectedSessionId]);
+  }, [fixedSessionId, selectedSessionId]);
 
   function updateLookup(teamId: number, patch: Partial<TeamPickerLookupState>) {
     setTeamLookups((current) => ({
@@ -2307,6 +2391,35 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
     }
   }
 
+  if (isSessionScoped && !loadingDetail && selectedSessionDetail && !canManageSession) {
+    return (
+      <SurfaceCard className="p-6 sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
+          Draft Setup
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+          {selectedSessionDetail.title}
+        </h1>
+        <p className="mt-4 text-base leading-8 text-muted">
+          이 설정 화면은 방장이나 관리자만 수정할 수 있습니다. 진행 상황은 라이브 화면에서
+          확인해 주세요.
+        </p>
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Link
+            href={proleagueDraftLivePath(selectedSessionDetail.id)}
+            className={primaryLinkClassName}
+          >
+            라이브/관전
+          </Link>
+          <Link href={proleagueDraftListPath()} className={secondaryLinkClassName}>
+            목록
+          </Link>
+        </div>
+      </SurfaceCard>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <SurfaceCard className="p-6">
@@ -2361,8 +2474,9 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
         </div>
       </SurfaceCard>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <SurfaceCard className="p-6">
+      <div className={cn("grid gap-4", isSessionScoped ? undefined : "xl:grid-cols-2")}>
+        {!isSessionScoped ? (
+          <SurfaceCard className="p-6">
           <p className="text-sm font-semibold text-foreground">드래프트 생성</p>
           <div className="mt-4 grid gap-3">
             <Input
@@ -2413,14 +2527,20 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
               {pendingAction === "session-create" ? "생성 중" : "드래프트 생성"}
             </Button>
           </div>
-        </SurfaceCard>
+          </SurfaceCard>
+        ) : null}
 
         <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">
+          {isSessionScoped ? (
+            <p className="text-sm font-semibold text-foreground">드래프트 설정</p>
+          ) : (
+            <p className="text-sm font-semibold text-foreground">
             드래프트 선택 / 수정 / 삭제
-          </p>
+            </p>
+          )}
           <div className="mt-4 grid gap-3">
-            <select
+            {isSessionScoped ? null : (
+              <select
               className={SELECT_CLASS_NAME}
               value={selectedSessionId ?? ""}
               onChange={(event) => {
@@ -2444,7 +2564,8 @@ export function DraftAdminConsole({ onDataChanged }: DraftAdminConsoleProps) {
                   {session.title}
                 </option>
               ))}
-            </select>
+              </select>
+            )}
 
             <Input
               value={editForm.title}

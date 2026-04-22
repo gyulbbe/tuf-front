@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { RpsDraftLivePage } from "@/components/rps-draft/rps-draft-live-page";
 
 export const metadata: Metadata = {
-  title: "가위바위보 팀 정하기 진행",
+  title: "팀배/컨텐츠 드래프트 진행",
 };
 
 type DraftRpsLivePageProps = {

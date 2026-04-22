@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { RpsDraftSessionPage } from "@/components/rps-draft/rps-draft-session-page";
 
 export const metadata: Metadata = {
-  title: "가위바위보 팀 정하기 설정",
+  title: "팀배/컨텐츠 드래프트 설정",
 };
 
 type DraftRpsSessionPageProps = {

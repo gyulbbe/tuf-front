@@ -1,7 +1,7 @@
 export const RPS_DRAFT_BASE_PATH = "/draft/rps";
 
 export function rpsDraftListPath() {
-  return RPS_DRAFT_BASE_PATH;
+  return "/draft";
 }
 
 export function rpsDraftSessionPath(sessionId: number) {

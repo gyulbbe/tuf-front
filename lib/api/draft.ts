@@ -15,6 +15,8 @@ type ErrorResponseBody = {
 export type DraftSessionSummary = {
   id: number;
   title: string;
+  ownerUserId: number;
+  ownerName: string | null;
   status: string;
   teamCount: number;
   pickTimeSeconds: number;
@@ -81,6 +83,8 @@ export type DraftOrder = {
 export type DraftLiveSessionInfo = {
   id: number;
   title: string;
+  ownerUserId: number;
+  ownerName: string | null;
   status: string;
   teamCount: number;
   pickTimeSeconds: number;
@@ -154,6 +158,8 @@ export type DraftLiveEvent = {
 export type DraftSessionDetail = {
   id: number;
   title: string;
+  ownerUserId: number;
+  ownerName: string | null;
   status: string;
   teamCount: number;
   pickTimeSeconds: number;
@@ -340,6 +346,19 @@ function readArray<T>(value: unknown, fallback: T[] = []) {
   return Array.isArray(value) ? (value as T[]) : fallback;
 }
 
+function normalizeOwnerName(value: string | null | undefined) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function normalizeDraftSessionSummary(
+  value: DraftSessionSummary,
+): DraftSessionSummary {
+  return {
+    ...value,
+    ownerName: normalizeOwnerName(value.ownerName),
+  };
+}
+
 function normalizeDraftTeam(value: DraftLiveTeam | DraftTeamRecord): DraftLiveTeam {
   return {
     id: value.id,
@@ -359,6 +378,10 @@ function normalizeDraftTeam(value: DraftLiveTeam | DraftTeamRecord): DraftLiveTe
 function normalizeDraftSnapshot(value: DraftLiveSnapshot): DraftLiveSnapshot {
   return {
     ...value,
+    session: {
+      ...value.session,
+      ownerName: normalizeOwnerName(value.session.ownerName),
+    },
     teams: readArray<DraftLiveTeam>(value.teams).map((team) =>
       normalizeDraftTeam(team),
     ),
@@ -372,6 +395,7 @@ function normalizeDraftSnapshot(value: DraftLiveSnapshot): DraftLiveSnapshot {
 function normalizeDraftSessionDetail(value: DraftSessionDetail): DraftSessionDetail {
   return {
     ...value,
+    ownerName: normalizeOwnerName(value.ownerName),
     teams: readArray<DraftLiveTeam>(value.teams).map((team) =>
       normalizeDraftTeam(team),
     ),
@@ -538,11 +562,15 @@ async function unwrapVoidResponse(
 }
 
 export async function listDraftSessions() {
-  return unwrapResponse(
+  const sessions = await unwrapResponse(
     apiClient.get<ApiEnvelope<DraftSessionSummary[]>>("/draft/sessions", {
       validateStatus: () => true,
     }),
     "드래프트 세션 목록을 불러오지 못했습니다.",
+  );
+
+  return readArray<DraftSessionSummary>(sessions).map((session) =>
+    normalizeDraftSessionSummary(session),
   );
 }
 
@@ -696,19 +724,21 @@ export async function getDraftSessionDetail(sessionId: number) {
 }
 
 export async function createDraftSession(payload: DraftSessionRequest) {
-  return unwrapResponse(
+  const session = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftSessionSummary>>("/draft/sessions", payload, {
       validateStatus: () => true,
     }),
     "드래프트 세션을 생성하지 못했습니다.",
   );
+
+  return normalizeDraftSessionSummary(session);
 }
 
 export async function updateDraftSession(
   sessionId: number,
   payload: DraftSessionRequest,
 ) {
-  return unwrapResponse(
+  const session = await unwrapResponse(
     apiClient.put<ApiEnvelope<DraftSessionSummary>>(
       `/draft/sessions/${sessionId}`,
       payload,
@@ -718,6 +748,8 @@ export async function updateDraftSession(
     ),
     "드래프트 세션을 수정하지 못했습니다.",
   );
+
+  return normalizeDraftSessionSummary(session);
 }
 
 export async function deleteDraftSession(sessionId: number) {

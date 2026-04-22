@@ -251,6 +251,8 @@ function mergeSessionSummary(
       {
         id: session.id,
         title: session.title,
+        ownerUserId: session.ownerUserId,
+        ownerName: session.ownerName,
         status: session.status,
         teamCount: session.teamCount,
         pickTimeSeconds: session.pickTimeSeconds,
@@ -778,18 +780,25 @@ function CompactCandidateCard({
 
 type DraftLiveDashboardProps = {
   adminMode?: boolean;
+  hideSessionPicker?: boolean;
   refreshSignal?: number;
+  sessionId?: number | null;
   variant?: "content" | "generic" | "proleague";
 };
 
 export function DraftLiveDashboard({
   adminMode = false,
+  hideSessionPicker = false,
   refreshSignal = 0,
+  sessionId = null,
   variant = "generic",
 }: DraftLiveDashboardProps) {
   const { user } = useAuth();
+  const fixedSessionId = typeof sessionId === "number" ? sessionId : null;
   const [sessions, setSessions] = useState<DraftSessionSummary[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(
+    fixedSessionId,
+  );
   const [snapshot, setSnapshot] = useState<DraftLiveSnapshot | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingSnapshot, setLoadingSnapshot] = useState(false);
@@ -1007,6 +1016,16 @@ export function DraftLiveDashboard({
   }
 
   useEffect(() => {
+    if (fixedSessionId === null) {
+      return;
+    }
+
+    startTransition(() => {
+      setSelectedSessionId(fixedSessionId);
+    });
+  }, [fixedSessionId]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
       setNowTickMs(Date.now());
     }, 1000);
@@ -1017,6 +1036,15 @@ export function DraftLiveDashboard({
   }, [refreshSignal]);
 
   useEffect(() => {
+    if (fixedSessionId !== null) {
+      startTransition(() => {
+        setLoadingSessions(false);
+        setSessions([]);
+        setSelectedSessionId(fixedSessionId);
+      });
+      return;
+    }
+
     let cancelled = false;
     const requestId = sessionsRequestRef.current + 1;
     sessionsRequestRef.current = requestId;
@@ -1083,9 +1111,13 @@ export function DraftLiveDashboard({
     return () => {
       cancelled = true;
     };
-  }, [adminMode, refreshSignal, variant]);
+  }, [adminMode, fixedSessionId, refreshSignal, variant]);
 
   useEffect(() => {
+    if (fixedSessionId !== null) {
+      return;
+    }
+
     if (selectedSessionId === null) {
       return;
     }
@@ -1114,9 +1146,23 @@ export function DraftLiveDashboard({
     return () => {
       window.clearTimeout(resetTimer);
     };
-  }, [selectedSessionId, sessions]);
+  }, [fixedSessionId, selectedSessionId, sessions]);
 
   async function syncAfterSessionRemoval(missingSessionId: number) {
+    if (fixedSessionId !== null) {
+      startTransition(() => {
+        setSelectedSessionId(null);
+        setSnapshot((currentSnapshot) =>
+          currentSnapshot?.session.id === missingSessionId ? null : currentSnapshot,
+        );
+        setServerOffsetMs(0);
+        setConnectionState("disconnected");
+        setRemotePreviews({});
+      });
+      resetLocalPreviewState();
+      return;
+    }
+
     const nextSessions = filterSessionsForView(await listDraftSessions(), adminMode);
     const nextSelectedSessionId = chooseInitialSessionId(nextSessions);
 
@@ -1171,6 +1217,16 @@ export function DraftLiveDashboard({
           return;
         }
 
+        if (fixedSessionId !== null && isMissingSessionError(error)) {
+          setSnapshot(null);
+          setSelectedSessionId(null);
+          setNotice({
+            tone: "neutral",
+            text: "선택한 드래프트를 찾을 수 없습니다.",
+          });
+          return;
+        }
+
         if (isMissingSessionError(error)) {
           await syncAfterSessionRemoval(sessionId).catch(() => undefined);
           setNotice({
@@ -1196,7 +1252,7 @@ export function DraftLiveDashboard({
     return () => {
       cancelled = true;
     };
-  }, [selectedSessionId, refreshSignal]);
+  }, [fixedSessionId, selectedSessionId, refreshSignal]);
 
   useEffect(() => {
     if (selectedSessionId === null) {
@@ -1565,28 +1621,30 @@ export function DraftLiveDashboard({
           </div>
 
           <div className="w-full max-w-sm space-y-3">
-            <select
-              className="w-full rounded-[20px] border border-line bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white"
-              value={selectedSessionId ?? ""}
-              onChange={(event) => {
-                const nextSessionId = event.target.value
-                  ? Number(event.target.value)
-                  : null;
-                setSelectedSessionId(nextSessionId);
-              }}
-            >
-              {loadingSessions && sessions.length === 0 ? (
-                <option value="">드래프트 목록 불러오는 중</option>
-              ) : sessions.length === 0 ? (
-                <option value="">드래프트 없음</option>
-              ) : null}
+            {hideSessionPicker ? null : (
+              <select
+                className="w-full rounded-[20px] border border-line bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white"
+                value={selectedSessionId ?? ""}
+                onChange={(event) => {
+                  const nextSessionId = event.target.value
+                    ? Number(event.target.value)
+                    : null;
+                  setSelectedSessionId(nextSessionId);
+                }}
+              >
+                {loadingSessions && sessions.length === 0 ? (
+                  <option value="">드래프트 목록 불러오는 중</option>
+                ) : sessions.length === 0 ? (
+                  <option value="">드래프트 없음</option>
+                ) : null}
 
-              {sessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {session.title} · {formatDraftStatus(session.status)}
-                </option>
-              ))}
-            </select>
+                {sessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.title} · {formatDraftStatus(session.status)}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <div className="rounded-[24px] border border-line/70 bg-white/70 px-5 py-4 text-right">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">

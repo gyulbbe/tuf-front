@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { RpsDraftListPage } from "@/components/rps-draft/rps-draft-list-page";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "가위바위보 팀 정하기",
+  title: "팀배/컨텐츠 드래프트",
 };
 
 export default function DraftRpsPage() {
-  return <RpsDraftListPage />;
+  redirect("/draft");
 }

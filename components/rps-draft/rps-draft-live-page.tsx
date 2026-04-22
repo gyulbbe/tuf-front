@@ -533,7 +533,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-              RPS Team Draft
+              Draft
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {snapshot ? <StatusBadge status={snapshot.session.status} /> : null}
@@ -542,7 +542,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
               ) : null}
             </div>
             <h1 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              {snapshot?.session.title ?? "가위바위보 팀 정하기"}
+              {snapshot?.session.title ?? "팀배/컨텐츠 드래프트"}
             </h1>
             <p className="mt-4 text-base leading-8 text-muted">
               {snapshot ? describeTurn(snapshot) : "진행 화면을 불러오는 중입니다."}

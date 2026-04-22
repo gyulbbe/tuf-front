@@ -1,0 +1,87 @@
+"use client";
+
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+type OverlayDialogProps = {
+  children: React.ReactNode;
+  description?: string;
+  onClose: () => void;
+  open: boolean;
+  panelClassName?: string;
+  title: string;
+};
+
+export function OverlayDialog({
+  children,
+  description,
+  onClose,
+  open,
+  panelClassName,
+  title,
+}: OverlayDialogProps) {
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const originalOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose, open]);
+
+  if (!open || typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/28 px-4 py-10 backdrop-blur-[2px] sm:items-center"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={cn(
+          "w-full max-w-lg rounded-[28px] border border-line bg-surface p-6 shadow-[0_24px_80px_-40px_rgba(31,42,40,0.7)] backdrop-blur-xl",
+          panelClassName,
+        )}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+              {title}
+            </h2>
+            {description ? (
+              <p className="mt-3 text-sm leading-7 text-muted">{description}</p>
+            ) : null}
+          </div>
+
+          <Button aria-label="닫기" onClick={onClose} size="sm">
+            닫기
+          </Button>
+        </div>
+
+        <div className="mt-6">{children}</div>
+      </div>
+    </div>,
+    document.body,
+  );
+}

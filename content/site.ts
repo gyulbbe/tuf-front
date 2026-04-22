@@ -39,12 +39,7 @@ export const siteTabs: SiteTab[] = [
       {
         label: "컨텐츠 드래프트",
         href: "/draft",
-        description: "컨텐츠 드래프트 화면으로 이동합니다.",
-      },
-      {
-        label: "가위바위보 팀 정하기",
-        href: "/draft/rps",
-        description: "가위바위보로 팀을 나누는 전용 드래프트 화면으로 이동합니다.",
+        description: "팀배/컨텐츠 드래프트 화면으로 이동합니다.",
       },
     ],
   },

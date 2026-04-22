@@ -20,6 +20,7 @@ import {
   type RpsDraftUserSearchResult,
 } from "@/lib/api/rps-draft";
 import { buildLoginHref } from "@/lib/auth/auth-navigation";
+import { canManageOwnedResource } from "@/lib/auth/roles";
 import {
   rpsDraftListPath,
   rpsDraftLivePath,
@@ -69,8 +70,8 @@ function sortCandidates(candidates: RpsDraftCandidate[]) {
 
 function describeSetupHelp(options: {
   canManageReady: boolean;
+  canManageSession: boolean;
   isAuthenticated: boolean;
-  isOwner: boolean;
   isReady: boolean;
   waitingCandidateCount: number;
   teams: RpsDraftTeam[];
@@ -79,8 +80,8 @@ function describeSetupHelp(options: {
     return "로그인 후 세션 설정을 계속할 수 있습니다.";
   }
 
-  if (!options.isOwner) {
-    return "설정은 방장만 할 수 있습니다.";
+  if (!options.canManageSession) {
+    return "설정은 방장이나 관리자만 할 수 있습니다.";
   }
 
   if (!options.isReady) {
@@ -245,9 +246,13 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
   const waitingCandidates = sortedCandidates.filter(
     (candidate) => candidate.status === "WAITING",
   );
-  const isOwner = session && user ? session.ownerUserId === user.userPk : false;
+  const canManageSession = canManageOwnedResource({
+    ownerUserId: session?.ownerUserId,
+    role: user?.role,
+    userPk: user?.userPk,
+  });
   const isReady = session?.status === "READY";
-  const canManageReady = Boolean(isOwner && isReady);
+  const canManageReady = Boolean(canManageSession && isReady);
   const canStart =
     canManageReady &&
     sortedTeams.length === 2 &&
@@ -258,8 +263,8 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
   });
   const setupHelp = describeSetupHelp({
     canManageReady,
+    canManageSession: Boolean(canManageSession),
     isAuthenticated,
-    isOwner: Boolean(isOwner),
     isReady: Boolean(isReady),
     waitingCandidateCount: waitingCandidates.length,
     teams: sortedTeams,
@@ -271,7 +276,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-              RPS Team Draft
+              Draft
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {session ? <StatusBadge status={session.status} /> : null}
@@ -283,9 +288,11 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
               ) : null}
             </div>
             <h1 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              {session?.title ?? "가위바위보 팀 정하기"}
+              {session?.title ?? "팀배/컨텐츠 드래프트"}
             </h1>
-            <p className="mt-4 text-base leading-8 text-muted">{setupHelp}</p>
+            <p className="mt-4 text-base leading-8 text-muted">
+              {setupHelp} 가위바위보 기반으로 선픽 순서를 정한 뒤 진행합니다.
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">

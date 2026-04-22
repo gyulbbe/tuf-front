@@ -280,7 +280,11 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                 setOpenMenuKey((current) => (current === menuKey ? null : current));
               }
             }}
-            onFocusCapture={() => setOpenMenuKey(menuKey)}
+            onFocusCapture={() => {
+              if (tab.href) {
+                setOpenMenuKey(menuKey);
+              }
+            }}
             onBlurCapture={(event) => handleTabBlur(event, menuKey)}
           >
             <div className="flex items-center gap-2">

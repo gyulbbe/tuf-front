@@ -102,9 +102,6 @@ export function HeaderAuthButton() {
                   <h2 className="text-2xl font-semibold tracking-tight text-foreground">
                     로그인
                   </h2>
-                  <p className="mt-2 text-sm leading-6 text-muted">
-                    아이디와 비밀번호를 입력하면 바로 로그인된다.
-                  </p>
                 </div>
 
                 <Button

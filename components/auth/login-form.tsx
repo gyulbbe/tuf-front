@@ -189,7 +189,7 @@ export function LoginForm({
             href="/gallery"
             className="transition-colors hover:text-foreground"
           >
-            공지사항으로 돌아가기
+            터프 갤러리로 돌아가기
           </Link>
         </div>
       ) : null}

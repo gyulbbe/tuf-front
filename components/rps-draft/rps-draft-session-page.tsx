@@ -7,7 +7,6 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { RpsDraftUserSearch } from "@/components/rps-draft/rps-draft-user-search";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   assignRpsDraftPicker,
   getRpsDraftSession,
@@ -32,14 +31,6 @@ import {
   StatusBadge,
   ValueBadge,
 } from "@/components/rps-draft/rps-draft-ui";
-
-const RACE_OPTIONS = [
-  { label: "자동", value: "" },
-  { label: "저그", value: "ZERG" },
-  { label: "테란", value: "TERRAN" },
-  { label: "프로토스", value: "PROTOSS" },
-  { label: "랜덤", value: "RANDOM" },
-] as const;
 
 const secondaryLinkClassName =
   "inline-flex items-center justify-center rounded-full border border-line px-4 py-3 text-sm font-medium text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground";
@@ -69,34 +60,38 @@ function sortCandidates(candidates: RpsDraftCandidate[]) {
 }
 
 function describeSetupHelp(options: {
-  canManageReady: boolean;
   canManageSession: boolean;
   isAuthenticated: boolean;
   isReady: boolean;
+  needsFallbackSetup: boolean;
+  teamCount: number;
   waitingCandidateCount: number;
-  teams: RpsDraftTeam[];
 }) {
   if (!options.isAuthenticated) {
     return "로그인 후 세션 설정을 계속할 수 있습니다.";
   }
 
   if (!options.canManageSession) {
-    return "설정은 방장이나 관리자만 할 수 있습니다.";
+    return "팀장과 후보 구성이 완료된 세션입니다. 진행 상황만 확인할 수 있습니다.";
   }
 
   if (!options.isReady) {
     return "이미 시작된 세션입니다. 진행 화면에서 계속 확인하세요.";
   }
 
-  if (options.teams.some((team) => typeof team.pickerUserId !== "number")) {
-    return "두 팀의 팀장을 먼저 정해 주세요.";
+  if (options.teamCount !== 2) {
+    return "세션 팀 구성이 올바르지 않습니다. 다시 확인해 주세요.";
+  }
+
+  if (options.needsFallbackSetup) {
+    return "이 세션은 생성 정보가 덜 들어와 있어 시작 전에 보정이 필요합니다.";
   }
 
   if (options.waitingCandidateCount === 0) {
-    return "후보를 1명 이상 추가하면 시작할 수 있습니다.";
+    return "후보가 없습니다. 다시 확인해 주세요.";
   }
 
-  return "준비가 끝났습니다. 시작 버튼을 누르면 바로 진행됩니다.";
+  return "생성 시점에 팀장과 후보가 모두 확정된 세션입니다. 확인 후 바로 시작하면 됩니다.";
 }
 
 export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
@@ -113,8 +108,6 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
   >({});
   const [candidateUser, setCandidateUser] =
     useState<RpsDraftUserSearchResult | null>(null);
-  const [candidateName, setCandidateName] = useState("");
-  const [candidateRace, setCandidateRace] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -206,12 +199,8 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
     try {
       await registerRpsDraftCandidate(sessionId, {
         candidateUserId: candidateUser.id,
-        candidateName: candidateName.trim() || undefined,
-        race: candidateRace || undefined,
       });
       setCandidateUser(null);
-      setCandidateName("");
-      setCandidateRace("");
       await refreshPage("후보를 추가했습니다.");
     } catch (registerError) {
       setActionMessage(
@@ -253,6 +242,10 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
   });
   const isReady = session?.status === "READY";
   const canManageReady = Boolean(canManageSession && isReady);
+  const needsFallbackSetup =
+    Boolean(isReady) &&
+    (sortedTeams.some((team) => typeof team.pickerUserId !== "number") ||
+      waitingCandidates.length === 0);
   const canStart =
     canManageReady &&
     sortedTeams.length === 2 &&
@@ -262,13 +255,19 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
     redirectTo: rpsDraftSessionPath(sessionId),
   });
   const setupHelp = describeSetupHelp({
-    canManageReady,
     canManageSession: Boolean(canManageSession),
     isAuthenticated,
     isReady: Boolean(isReady),
+    needsFallbackSetup,
+    teamCount: sortedTeams.length,
     waitingCandidateCount: waitingCandidates.length,
-    teams: sortedTeams,
   });
+  const candidateDisabledUserIds = [
+    ...sortedTeams
+      .map((team) => team.pickerUserId)
+      .filter((value): value is number => typeof value === "number"),
+    ...sortedCandidates.map((candidate) => candidate.candidateUserId),
+  ];
 
   return (
     <div className="grid gap-4">
@@ -342,9 +341,20 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
         </div>
       ) : session ? (
         <>
+          {needsFallbackSetup ? (
+            <SurfaceCard className="border-amber-300/40 bg-amber-100 p-5">
+              <p className="text-sm font-medium text-amber-900">
+                이 세션은 예전 흐름으로 만들어져 팀장 또는 후보 정보가 비어 있습니다.
+                기본 경로는 생성 화면에서 팀장 2명과 후보를 모두 정하고 들어오는
+                방식이며, 아래 보정 UI는 기존 세션을 살리기 위한 예외 처리입니다.
+              </p>
+            </SurfaceCard>
+          ) : null}
+
           <div className="grid gap-4 lg:grid-cols-2">
             {sortedTeams.map((team) => {
               const isAssigning = pendingAction === `picker:${team.id}`;
+              const needsPicker = typeof team.pickerUserId !== "number";
 
               return (
                 <SurfaceCard key={team.id} className="p-5 sm:p-6">
@@ -359,120 +369,106 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                     팀장 {team.pickerName || "지정 안 됨"}
                   </p>
 
-                  <div className="mt-5 space-y-3">
-                    <RpsDraftUserSearch
-                      label="팀장 검색"
-                      description="방장만 바꿀 수 있습니다."
-                      selectedUser={selectedPickers[team.id] ?? null}
-                      onSelect={(nextUser) => {
-                        setSelectedPickers((current) => ({
-                          ...current,
-                          [team.id]: nextUser,
-                        }));
-                      }}
-                      disabled={!canManageReady || pendingAction !== null}
-                    />
-                    <Button
-                      variant="outline"
-                      fullWidth
-                      disabled={!canManageReady || pendingAction !== null}
-                      onClick={() => {
-                        void handleAssignPicker(team.id);
-                      }}
-                    >
-                      {isAssigning ? "지정하는 중..." : "팀장 지정"}
-                    </Button>
-                  </div>
+                  {needsFallbackSetup ? (
+                    needsPicker && canManageReady ? (
+                      <div className="mt-5 space-y-3">
+                        <RpsDraftUserSearch
+                          label="팀장 검색"
+                          description="기존 세션 보정을 위해 비어 있는 팀장만 지정합니다."
+                          selectedUser={selectedPickers[team.id] ?? null}
+                          onSelect={(nextUser) => {
+                            setSelectedPickers((current) => ({
+                              ...current,
+                              [team.id]: nextUser,
+                            }));
+                          }}
+                          disabled={!canManageReady || pendingAction !== null}
+                          disabledUserIds={candidateDisabledUserIds}
+                          disabledUserMessage="후보나 다른 팀장으로 이미 들어간 유저입니다."
+                        />
+                        <Button
+                          variant="outline"
+                          fullWidth
+                          disabled={!canManageReady || pendingAction !== null}
+                          onClick={() => {
+                            void handleAssignPicker(team.id);
+                          }}
+                        >
+                          {isAssigning ? "지정하는 중..." : "팀장 지정"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="mt-5 text-xs leading-6 text-muted">
+                        생성 시점에 이미 확정된 팀장입니다.
+                      </p>
+                    )
+                  ) : (
+                    <p className="mt-5 text-xs leading-6 text-muted">
+                      생성 화면에서 확정된 팀장 구성입니다.
+                    </p>
+                  )}
                 </SurfaceCard>
               );
             })}
           </div>
 
           <SurfaceCard className="p-6 sm:p-8">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-2xl">
-                <h2 className="text-xl font-semibold text-foreground">후보 추가</h2>
-                <p className="mt-3 text-sm leading-7 text-muted">
-                  유저를 검색해서 후보에 넣습니다. 표시 이름과 종족은 필요할 때만 바꾸면 됩니다.
-                </p>
-              </div>
-
-              <Button
-                variant="accent"
-                disabled={!canManageReady || pendingAction !== null}
-                onClick={() => {
-                  void handleRegisterCandidate();
-                }}
-              >
-                {pendingAction === "candidate" ? "추가하는 중..." : "후보 추가"}
-              </Button>
-            </div>
-
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <RpsDraftUserSearch
-                label="후보 검색"
-                description="후보로 넣을 유저를 찾으세요."
-                selectedUser={candidateUser}
-                onSelect={(nextUser) => {
-                  setCandidateUser(nextUser);
-                  setCandidateRace(nextUser.race ?? "");
-                }}
-                disabled={!canManageReady || pendingAction !== null}
-              />
-
-              <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
-                <div className="space-y-3">
-                  <Input
-                    value={candidateName}
-                    onChange={(event) => setCandidateName(event.target.value)}
-                    placeholder="표시 이름 (선택)"
-                    disabled={!canManageReady || pendingAction !== null}
-                  />
-
-                  <label className="flex flex-col gap-2 text-sm text-foreground">
-                    <span>종족</span>
-                    <select
-                      value={candidateRace}
-                      onChange={(event) => setCandidateRace(event.target.value)}
-                      disabled={!canManageReady || pendingAction !== null}
-                      className="w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {RACE_OPTIONS.map((option) => (
-                        <option key={option.value || "auto"} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  {candidateUser ? (
-                    <div className="rounded-2xl bg-surface-muted px-4 py-3 text-sm text-foreground">
-                      선택한 후보: {candidateUser.name || candidateUser.userId}
-                    </div>
-                  ) : (
-                    <p className="text-xs leading-6 text-muted">
-                      먼저 후보를 선택해 주세요.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </SurfaceCard>
-
-          <SurfaceCard className="p-6 sm:p-8">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
+              <div className="max-w-2xl">
                 <h2 className="text-xl font-semibold text-foreground">후보 목록</h2>
                 <p className="mt-3 text-sm leading-7 text-muted">
-                  시작 전에는 대기 중 후보만 모으면 됩니다.
+                  {needsFallbackSetup
+                    ? "기존 세션의 누락된 후보만 보정합니다. 새 세션은 생성 화면에서 후보를 모두 고르고 들어옵니다."
+                    : "생성 화면에서 선택한 후보들입니다. 시작 전 후보 구성을 한 번 더 확인하세요."}
                 </p>
               </div>
               <ValueBadge>대기 중 {waitingCandidates.length}명</ValueBadge>
             </div>
 
+            {needsFallbackSetup && canManageReady ? (
+              <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+                <RpsDraftUserSearch
+                  label="후보 검색"
+                  description="기존 세션 보정을 위해 누락된 후보를 추가합니다."
+                  selectedUser={candidateUser}
+                  onSelect={(nextUser) => {
+                    setCandidateUser(nextUser);
+                  }}
+                  disabled={!canManageReady || pendingAction !== null}
+                  disabledUserIds={candidateDisabledUserIds}
+                  disabledUserMessage="팀장이나 기존 후보와 중복되는 유저입니다."
+                />
+
+                <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
+                  <div className="space-y-3">
+                    {candidateUser ? (
+                      <div className="rounded-2xl bg-surface-muted px-4 py-3 text-sm text-foreground">
+                        선택한 후보: {candidateUser.name || candidateUser.userId}
+                      </div>
+                    ) : (
+                      <p className="text-xs leading-6 text-muted">
+                        먼저 후보를 선택해 주세요.
+                      </p>
+                    )}
+
+                    <Button
+                      variant="accent"
+                      fullWidth
+                      disabled={!canManageReady || pendingAction !== null}
+                      onClick={() => {
+                        void handleRegisterCandidate();
+                      }}
+                    >
+                      {pendingAction === "candidate" ? "추가하는 중..." : "후보 추가"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             {sortedCandidates.length === 0 ? (
               <div className="mt-5 rounded-[24px] border border-dashed border-line px-6 py-8 text-sm text-muted">
-                아직 추가한 후보가 없습니다.
+                아직 등록된 후보가 없습니다.
               </div>
             ) : (
               <div className="mt-5 grid gap-3">

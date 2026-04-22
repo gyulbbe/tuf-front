@@ -11,6 +11,8 @@ import {
 type RpsDraftUserSearchProps = {
   description?: string;
   disabled?: boolean;
+  disabledUserIds?: number[];
+  disabledUserMessage?: string;
   emptyMessage?: string;
   label: string;
   onSelect: (user: RpsDraftUserSearchResult) => void;
@@ -26,6 +28,8 @@ function describeUser(user: RpsDraftUserSearchResult) {
 export function RpsDraftUserSearch({
   description,
   disabled = false,
+  disabledUserIds = [],
+  disabledUserMessage = "이미 선택된 유저입니다.",
   emptyMessage = "검색 결과가 없습니다.",
   label,
   onSelect,
@@ -117,12 +121,14 @@ export function RpsDraftUserSearch({
           <div className="grid gap-2">
             {results.map((user) => {
               const isSelected = selectedUser?.id === user.id;
+              const isDisabledUser = disabledUserIds.includes(user.id);
+              const isUnavailable = disabled || isDisabledUser;
 
               return (
                 <button
                   key={user.id}
                   type="button"
-                  disabled={disabled}
+                  disabled={isUnavailable}
                   onClick={() => onSelect(user)}
                   className="rounded-2xl border border-line bg-surface-strong px-4 py-3 text-left transition-colors hover:border-accent-soft hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
                 >
@@ -134,11 +140,18 @@ export function RpsDraftUserSearch({
                       <span className="rounded-full bg-accent-soft px-2 py-1 text-[11px] font-semibold text-accent-ink">
                         선택됨
                       </span>
+                    ) : isDisabledUser ? (
+                      <span className="rounded-full bg-surface-muted px-2 py-1 text-[11px] font-semibold text-muted">
+                        중복 선택 불가
+                      </span>
                     ) : null}
                   </div>
                   <p className="mt-1 text-xs leading-6 text-muted">
                     {describeUser(user)}
                   </p>
+                  {isDisabledUser ? (
+                    <p className="mt-1 text-xs text-muted">{disabledUserMessage}</p>
+                  ) : null}
                 </button>
               );
             })}

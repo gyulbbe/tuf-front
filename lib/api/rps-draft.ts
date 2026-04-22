@@ -149,8 +149,9 @@ export type RpsDraftLiveEvent = {
 
 export type RpsDraftSessionCreateRequest = {
   title: string;
-  team1Name?: string;
-  team2Name?: string;
+  team1PickerUserId: number;
+  team2PickerUserId: number;
+  candidateUserIds: number[];
 };
 
 export type RpsDraftPickerAssignRequest = {

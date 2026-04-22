@@ -1,9 +1,8 @@
 "use client";
 
-import type { FocusEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import type { SiteSubTab, SiteTab } from "@/content/site";
 import { isAdminRole } from "@/lib/auth/roles";
@@ -203,30 +202,35 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
   const pathname = usePathname();
   const { user } = useAuth();
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
   const canSeeAdminTab = isAdminRole(user?.role);
   const visibleTabs = filterVisibleTabs(tabs, canSeeAdminTab);
+
+  useEffect(() => {
+    if (!openMenuKey) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (navRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setOpenMenuKey(null);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [openMenuKey]);
 
   function closeMenus() {
     setOpenMenuKey(null);
   }
 
-  function handleTabBlur(
-    event: FocusEvent<HTMLDivElement>,
-    menuKey: string | null,
-  ) {
-    if (!menuKey) {
-      return;
-    }
-
-    if (event.currentTarget.contains(event.relatedTarget)) {
-      return;
-    }
-
-    setOpenMenuKey((current) => (current === menuKey ? null : current));
-  }
-
   return (
-    <nav className="flex flex-wrap gap-2" aria-label="Primary tabs">
+    <nav ref={navRef} className="flex flex-wrap gap-2" aria-label="Primary tabs">
       {visibleTabs.map((tab) => {
         const menuKey = tab.href ?? tab.label;
         const hasItems = Boolean(tab.items?.length);
@@ -280,12 +284,6 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                 setOpenMenuKey((current) => (current === menuKey ? null : current));
               }
             }}
-            onFocusCapture={() => {
-              if (tab.href) {
-                setOpenMenuKey(menuKey);
-              }
-            }}
-            onBlurCapture={(event) => handleTabBlur(event, menuKey)}
           >
             <div className="flex items-center gap-2">
               {tab.href ? (

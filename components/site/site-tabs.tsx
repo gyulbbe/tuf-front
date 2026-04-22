@@ -326,8 +326,7 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
 
             <div
               className={cn(
-                "hidden pt-2",
-                isMenuOpen && "block",
+                isMenuOpen ? "block pt-2" : "hidden pt-2",
                 "sm:absolute sm:left-0 sm:top-full sm:z-30 sm:min-w-56",
               )}
             >

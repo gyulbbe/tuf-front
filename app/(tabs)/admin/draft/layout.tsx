@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { AdminDraftTabs } from "@/components/proleague/admin-draft-tabs";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { requireServerAuth } from "@/lib/auth/server-auth";
 import { isAdminRole } from "@/lib/auth/roles";
@@ -21,19 +20,11 @@ export default async function AdminDraftLayout({
           접근 권한 없음
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-8 text-muted">
-          이 화면은 드래프트를 준비하고 정리하는 관리자 전용 공간이다.
+          이 화면은 드래프트를 준비하고 운영하는 관리자 전용 공간이다.
         </p>
       </SurfaceCard>
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <SurfaceCard className="p-4">
-        <AdminDraftTabs />
-      </SurfaceCard>
-
-      {children}
-    </div>
-  );
+  return children;
 }

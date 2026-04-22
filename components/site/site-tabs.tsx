@@ -78,6 +78,34 @@ function TabLink({
   );
 }
 
+function TabTrigger({
+  label,
+  description,
+  className,
+  isOpen,
+  onClick,
+}: {
+  label: string;
+  description: string;
+  className: string;
+  isOpen: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={description}
+      aria-label={`${label} 메뉴`}
+      aria-haspopup="menu"
+      aria-expanded={isOpen}
+      className={className}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
 function ExternalTabLink({
   href,
   label,
@@ -250,28 +278,42 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
             onBlurCapture={(event) => handleTabBlur(event, menuKey)}
           >
             <div className="flex items-center gap-2">
-              <TabLink
-                href={tab.href}
-                label={tab.label}
-                description={tab.description}
-                className={tabClassName}
-                onClick={closeMenus}
-              />
+              {tab.href ? (
+                <TabLink
+                  href={tab.href}
+                  label={tab.label}
+                  description={tab.description}
+                  className={tabClassName}
+                  onClick={closeMenus}
+                />
+              ) : (
+                <TabTrigger
+                  label={tab.label}
+                  description={tab.description}
+                  className={tabClassName}
+                  isOpen={isMenuOpen}
+                  onClick={() => {
+                    setOpenMenuKey((current) => (current === menuKey ? null : menuKey));
+                  }}
+                />
+              )}
 
-              <button
-                type="button"
-                aria-label={`${tab.label} 하위 메뉴`}
-                aria-expanded={isMenuOpen}
-                className={cn(
-                  "rounded-full border border-line px-3 py-2 text-xs text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground sm:hidden",
-                  isMenuOpen && "border-accent bg-accent-soft text-accent-ink",
-                )}
-                onClick={() => {
-                  setOpenMenuKey((current) => (current === menuKey ? null : menuKey));
-                }}
-              >
-                메뉴
-              </button>
+              {tab.href ? (
+                <button
+                  type="button"
+                  aria-label={`${tab.label} 하위 메뉴`}
+                  aria-expanded={isMenuOpen}
+                  className={cn(
+                    "rounded-full border border-line px-3 py-2 text-xs text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground sm:hidden",
+                    isMenuOpen && "border-accent bg-accent-soft text-accent-ink",
+                  )}
+                  onClick={() => {
+                    setOpenMenuKey((current) => (current === menuKey ? null : menuKey));
+                  }}
+                >
+                  메뉴
+                </button>
+              ) : null}
             </div>
 
             <div

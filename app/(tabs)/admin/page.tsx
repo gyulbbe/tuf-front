@@ -11,21 +11,8 @@ export const metadata: Metadata = {
 const adminTools = [
   {
     href: "/admin/draft",
-    title: "팀배/컨텐츠 드래프트 관리",
-    description:
-      "팀배/컨텐츠 드래프트 세션을 만들고, 팀/픽커/후보를 정리하고, 수동 팀장 모드까지 관리한다.",
-  },
-  {
-    href: "/draft",
-    title: "팀배/컨텐츠 드래프트 화면",
-    description:
-      "실제 사용자 화면 기준으로 팀배/컨텐츠 드래프트 진행 상태를 확인한다.",
-  },
-  {
-    href: "/proleague/draft",
-    title: "프로리그 드래프트 화면",
-    description:
-      "기존 프로리그 드래프트 화면도 따로 열어서 비교 확인할 수 있다.",
+    title: "드래프트 관리",
+    description: "프로리그 드래프트와 팀배/컨텐츠 드래프트 등록, 수정, 운영을 관리합니다.",
   },
 ];
 
@@ -42,7 +29,7 @@ export default async function AdminPage() {
           접근 권한 없음
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-8 text-muted">
-          관리자 탭과 관리자 페이지는 `ROLE_MASTER`, `ROLE_MANAGER`, `ROLE_ADMIN`
+          관리자 메뉴와 관리자 페이지는 `ROLE_MASTER`, `ROLE_MANAGER`, `ROLE_ADMIN`
           권한 계정만 볼 수 있다.
         </p>
       </SurfaceCard>
@@ -50,56 +37,29 @@ export default async function AdminPage() {
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-      <SurfaceCard className="p-7 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-          Admin
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-          관리자 작업 공간
-        </h1>
-        <p className="mt-4 max-w-3xl text-base leading-8 text-muted">
-          드래프트 운영과 검수 동선을 관리자 메뉴 아래로 모아둔다. 이제 팀배/컨텐츠
-          드래프트와 프로리그 드래프트 UI 진입점을 분리해서 확인할 수 있다.
-        </p>
+    <SurfaceCard className="p-7 sm:p-8">
+      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
+        Admin
+      </p>
+      <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+        관리자 작업 공간
+      </h1>
+      <p className="mt-4 max-w-2xl text-base leading-8 text-muted">
+        필요한 관리 화면만 남겨서 드래프트 운영 동선을 단순화했다.
+      </p>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {adminTools.map((tool) => (
-            <Link
-              key={tool.href}
-              href={tool.href}
-              className="rounded-[28px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.86)_100%)] px-6 py-6 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)] transition-colors hover:border-accent-soft hover:bg-white"
-            >
-              <p className="text-lg font-semibold text-foreground">{tool.title}</p>
-              <p className="mt-3 text-sm leading-7 text-muted">{tool.description}</p>
-            </Link>
-          ))}
-        </div>
-      </SurfaceCard>
-
-      <div className="grid gap-4">
-        <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">현재 정책</p>
-          <div className="mt-4 space-y-3 text-sm leading-7 text-muted">
-            <p className="rounded-[22px] bg-surface-muted px-4 py-4">
-              관리자 탭은 관리자 권한 계정에게만 노출된다.
-            </p>
-            <p className="rounded-[22px] bg-surface-muted px-4 py-4">
-              팀배/컨텐츠 드래프트는 관리자 메뉴와 상단 `드래프트` 탭에서 각각 관리/확인할 수 있다.
-            </p>
-            <p className="rounded-[22px] bg-surface-muted px-4 py-4">
-              프로리그 드래프트와 팀배/컨텐츠 드래프트는 UI 진입점만 분리되고 같은 백엔드 세션 데이터를 사용한다.
-            </p>
-          </div>
-        </SurfaceCard>
-
-        <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">접속 계정</p>
-          <p className="mt-3 text-sm leading-7 text-muted">
-            {session.user.username} · {session.user.role}
-          </p>
-        </SurfaceCard>
+      <div className="mt-8 grid gap-4 md:max-w-xl">
+        {adminTools.map((tool) => (
+          <Link
+            key={tool.href}
+            href={tool.href}
+            className="rounded-[28px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.86)_100%)] px-6 py-6 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)] transition-colors hover:border-accent-soft hover:bg-white"
+          >
+            <p className="text-lg font-semibold text-foreground">{tool.title}</p>
+            <p className="mt-3 text-sm leading-7 text-muted">{tool.description}</p>
+          </Link>
+        ))}
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

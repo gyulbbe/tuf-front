@@ -19,14 +19,7 @@ type RpsDraftUserSearchProps = {
 };
 
 function describeUser(user: RpsDraftUserSearchResult) {
-  const parts = [
-    user.name || user.userId,
-    `@${user.userId}`,
-    `#${user.id}`,
-    user.race ? user.race : null,
-    user.tier ? user.tier : null,
-  ].filter(Boolean);
-
+  const parts = [`@${user.userId}`, user.race, user.tier].filter(Boolean);
   return parts.join(" · ");
 }
 
@@ -36,7 +29,7 @@ export function RpsDraftUserSearch({
   emptyMessage = "검색 결과가 없습니다.",
   label,
   onSelect,
-  placeholder = "user_id 또는 이름으로 검색",
+  placeholder = "아이디나 이름으로 검색",
   selectedUser,
 }: RpsDraftUserSearchProps) {
   const [keyword, setKeyword] = useState("");
@@ -49,7 +42,7 @@ export function RpsDraftUserSearch({
 
     if (!trimmedKeyword) {
       setResults([]);
-      setError("검색어를 먼저 입력해 주세요.");
+      setError("검색어를 입력해 주세요.");
       return;
     }
 
@@ -68,7 +61,7 @@ export function RpsDraftUserSearch({
       setError(
         searchError instanceof Error
           ? searchError.message
-          : "유저 검색 중 오류가 발생했습니다.",
+          : "사용자 검색 중 오류가 발생했습니다.",
       );
     } finally {
       setLoading(false);
@@ -111,7 +104,10 @@ export function RpsDraftUserSearch({
 
         {selectedUser ? (
           <div className="rounded-2xl bg-surface-muted px-4 py-3 text-sm text-foreground">
-            선택됨: {describeUser(selectedUser)}
+            선택됨: {selectedUser.name || selectedUser.userId}
+            <span className="mt-1 block text-xs text-muted">
+              {describeUser(selectedUser)}
+            </span>
           </div>
         ) : null}
 

@@ -20,7 +20,7 @@ export function formatDateTime(value: string | null | undefined) {
 
 export function formatRelativePickNo(value: number | null | undefined) {
   if (typeof value !== "number") {
-    return "대기";
+    return "대기 중";
   }
 
   return `${value}픽`;
@@ -31,19 +31,19 @@ export function formatSessionStatus(status: string | null | undefined) {
     case "READY":
       return "준비";
     case "RPS_PENDING":
-      return "RPS 대기";
+      return "가위바위보 대기";
     case "PICKING":
-      return "지명 중";
+      return "선수 선택 중";
     case "FINISHED":
-      return "종료";
+      return "완료";
     case "WAITING":
-      return "대기";
+      return "대기 중";
     case "PICKED":
-      return "지명 완료";
+      return "선택 완료";
     case "EXCLUDED":
       return "제외";
     default:
-      return status || "알 수 없음";
+      return status || "상태 없음";
   }
 }
 
@@ -71,22 +71,22 @@ export function formatRace(race: string | null | undefined) {
     case "RANDOM":
       return "랜덤";
     default:
-      return race || "미지정";
+      return race || "미정";
   }
 }
 
 export function formatRole(role: string | null | undefined) {
   switch (role) {
     case "OWNER":
-      return "오너";
+      return "방장";
     case "PICKER":
-      return "픽커";
+      return "팀장";
     case "OWNER_PICKER":
-      return "오너 / 픽커";
+      return "방장 · 팀장";
     case "VIEWER":
-      return "조회자";
+      return "관전자";
     default:
-      return role || "조회자";
+      return role || "관전자";
   }
 }
 
@@ -99,24 +99,22 @@ export function formatRoundResult(result: string | null | undefined) {
     case "DRAW":
       return "무승부";
     case "PENDING":
-      return "판정 대기";
+      return "결과 대기";
     default:
-      return result || "대기";
+      return result || "결과 대기";
   }
 }
 
 function buildBadgeClassName(status: string | null | undefined) {
   switch (status) {
     case "READY":
+    case "WAITING":
       return "border-line bg-surface-strong text-foreground";
     case "RPS_PENDING":
       return "border-accent/20 bg-accent-soft text-accent-ink";
     case "PICKING":
       return "border-amber-300/40 bg-amber-100 text-amber-900";
     case "FINISHED":
-      return "border-emerald-300/40 bg-emerald-100 text-emerald-900";
-    case "WAITING":
-      return "border-line bg-surface-strong text-foreground";
     case "PICKED":
       return "border-emerald-300/40 bg-emerald-100 text-emerald-900";
     case "EXCLUDED":

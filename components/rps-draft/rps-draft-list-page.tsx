@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { SectionCard } from "@/components/site/section-card";
 import { SurfaceCard } from "@/components/site/surface-card";
-import { TabPageShell } from "@/components/site/tab-page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,11 +16,22 @@ import {
 } from "@/lib/api/rps-draft";
 import { buildLoginHref } from "@/lib/auth/auth-navigation";
 import {
+  rpsDraftListPath,
+  rpsDraftLivePath,
+  rpsDraftSessionPath,
+} from "@/lib/rps-draft/routes";
+import {
   formatDateTime,
   formatRelativePickNo,
   StatusBadge,
   ValueBadge,
 } from "@/components/rps-draft/rps-draft-ui";
+
+const secondaryLinkClassName =
+  "inline-flex items-center justify-center rounded-full border border-line px-4 py-3 text-sm font-medium text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground";
+
+const primaryLinkClassName =
+  "inline-flex items-center justify-center rounded-full bg-accent px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-ink";
 
 function toTimestamp(value: string | null | undefined) {
   if (!value) {
@@ -43,6 +53,18 @@ function sortSessions(sessions: RpsDraftSessionSummary[]) {
 
     return delta;
   });
+}
+
+function describeSchedule(session: RpsDraftSessionSummary) {
+  if (session.endedAt) {
+    return `종료 ${formatDateTime(session.endedAt)}`;
+  }
+
+  if (session.startedAt) {
+    return `시작 ${formatDateTime(session.startedAt)}`;
+  }
+
+  return "시작 전";
 }
 
 export function RpsDraftListPage() {
@@ -98,7 +120,7 @@ export function RpsDraftListPage() {
     const title = form.title.trim();
 
     if (!title) {
-      setCreateError("세션 제목을 입력해 주세요.");
+      setCreateError("세션 이름을 입력해 주세요.");
       return;
     }
 
@@ -112,12 +134,12 @@ export function RpsDraftListPage() {
         team2Name: form.team2Name?.trim() || undefined,
       });
 
-      router.push(`/rps-draft/${createdSession.id}`);
+      router.push(rpsDraftSessionPath(createdSession.id));
     } catch (createSessionError) {
       setCreateError(
         createSessionError instanceof Error
           ? createSessionError.message
-          : "세션 생성에 실패했습니다.",
+          : "세션을 만들지 못했습니다.",
       );
     } finally {
       setCreating(false);
@@ -125,145 +147,151 @@ export function RpsDraftListPage() {
   }
 
   const sortedSessions = sortSessions(sessions);
-  const loginHref = buildLoginHref({ redirectTo: "/rps-draft" });
+  const loginHref = buildLoginHref({ redirectTo: rpsDraftListPath() });
 
   return (
-    <TabPageShell
-      label="RPS Draft"
-      title="가위바위보 드래프트"
-      description="기존 드래프트와 분리된 2팀 전용 RPS 세션 목록이다. 세션 조회는 누구나 가능하고, 생성과 제어는 권한에 따라 열린다."
-      sidebar={
-        <>
-          <SectionCard
-            title="새 세션"
-            description="READY 상태에서 픽커와 후보를 구성한 뒤 시작한다. 팀명은 비워 두면 백엔드 기본값 1팀 / 2팀이 사용된다."
-          >
-            <div className="mt-5 space-y-3">
-              <Input
-                value={form.title}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, title: event.target.value }))
-                }
-                placeholder="세션 제목"
-                disabled={creating}
-              />
-              <Input
-                value={form.team1Name ?? ""}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    team1Name: event.target.value,
-                  }))
-                }
-                placeholder="1팀명 (선택)"
-                disabled={creating}
-              />
-              <Input
-                value={form.team2Name ?? ""}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    team2Name: event.target.value,
-                  }))
-                }
-                placeholder="2팀명 (선택)"
-                disabled={creating}
-              />
-              {createError ? (
-                <p className="text-sm text-danger-ink">{createError}</p>
-              ) : null}
-              {isAuthenticated ? (
-                <Button
-                  variant="accent"
-                  fullWidth
-                  disabled={creating}
-                  onClick={() => {
-                    void handleCreateSession();
-                  }}
-                >
-                  {creating ? "생성 중..." : "세션 만들기"}
-                </Button>
-              ) : status === "loading" ? (
-                <Button variant="outline" fullWidth disabled>
-                  인증 확인 중...
-                </Button>
-              ) : (
-                <Link
-                  href={loginHref}
-                  className="inline-flex w-full items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-ink"
-                >
-                  로그인 후 세션 만들기
-                </Link>
-              )}
-            </div>
-          </SectionCard>
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_320px]">
+      <SurfaceCard className="p-6 sm:p-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
+              Draft
+            </p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              가위바위보 팀 정하기
+            </h1>
+            <p className="mt-4 text-base leading-8 text-muted">
+              세션을 만들고, 방장이 팀장 2명과 후보를 정한 뒤 바로 시작하면 된다.
+            </p>
+          </div>
 
-          <SectionCard
-            title="흐름"
-            description="오너가 세션을 시작하면 RPS 제출 대기 상태로 바뀐다. 양 팀이 제출하면 승자가 선픽, 패자가 후픽을 가져가고 후보가 끝나면 종료된다."
-          />
-        </>
-      }
-    >
-      {error ? (
-        <SurfaceCard className="border-danger-ink/20 bg-danger-soft p-5">
-          <p className="text-sm font-medium text-danger-ink">{error}</p>
-        </SurfaceCard>
-      ) : null}
+          <Link href="/draft" className={secondaryLinkClassName}>
+            기존 드래프트
+          </Link>
+        </div>
 
-      {loading ? (
-        <div className="rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
-          세션 목록을 불러오는 중...
-        </div>
-      ) : sortedSessions.length === 0 ? (
-        <div className="rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
-          아직 생성된 RPS 드래프트 세션이 없다.
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {sortedSessions.map((session) => (
-            <SurfaceCard key={session.id} className="p-5 sm:p-6">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={session.status} />
-                    <ValueBadge>{formatRelativePickNo(session.currentPickNo)}</ValueBadge>
-                    <ValueBadge>owner {session.ownerName || session.ownerUserId}</ValueBadge>
-                  </div>
+        {error ? (
+          <div className="mt-6 rounded-[24px] border border-danger-ink/20 bg-danger-soft px-5 py-4">
+            <p className="text-sm font-medium text-danger-ink">{error}</p>
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="mt-6 rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
+            세션 목록을 불러오는 중입니다.
+          </div>
+        ) : sortedSessions.length === 0 ? (
+          <div className="mt-6 rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
+            아직 만든 세션이 없습니다.
+          </div>
+        ) : (
+          <div className="mt-6 grid gap-3">
+            {sortedSessions.map((session) => (
+              <SurfaceCard key={session.id} className="p-5 sm:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <h2 className="text-xl font-semibold text-foreground">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge status={session.status} />
+                      <ValueBadge>{formatRelativePickNo(session.currentPickNo)}</ValueBadge>
+                      <ValueBadge>
+                        방장 {session.ownerName || "이름 없음"}
+                      </ValueBadge>
+                    </div>
+                    <h2 className="mt-3 text-xl font-semibold text-foreground">
                       {session.title}
                     </h2>
                     <p className="mt-2 text-sm leading-7 text-muted">
-                      시작 {formatDateTime(session.startedAt)} · 종료{" "}
-                      {formatDateTime(session.endedAt)}
+                      {describeSchedule(session)}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2 text-xs text-muted">
-                    <span>현재 팀 ID {session.currentDraftTeamId ?? "없음"}</span>
-                    <span>대기 팀 ID {session.pendingDraftTeamId ?? "없음"}</span>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={rpsDraftSessionPath(session.id)}
+                      className={secondaryLinkClassName}
+                    >
+                      설정
+                    </Link>
+                    <Link
+                      href={rpsDraftLivePath(session.id)}
+                      className={primaryLinkClassName}
+                    >
+                      진행 화면
+                    </Link>
                   </div>
                 </div>
+              </SurfaceCard>
+            ))}
+          </div>
+        )}
+      </SurfaceCard>
 
-                <div className="flex flex-wrap gap-2">
-                  <Link
-                    href={`/rps-draft/${session.id}`}
-                    className="inline-flex items-center justify-center rounded-full border border-line px-4 py-2 text-sm text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground"
-                  >
-                    설정
-                  </Link>
-                  <Link
-                    href={`/rps-draft/${session.id}/live`}
-                    className="inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-ink"
-                  >
-                    라이브
-                  </Link>
-                </div>
-              </div>
-            </SurfaceCard>
-          ))}
+      <SectionCard
+        title="새 세션"
+        description="세션 이름과 두 팀 이름만 넣으면 바로 만들 수 있습니다."
+      >
+        <div className="mt-5 space-y-3">
+          <Input
+            value={form.title}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, title: event.target.value }))
+            }
+            placeholder="세션 이름"
+            disabled={creating}
+          />
+          <Input
+            value={form.team1Name ?? ""}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                team1Name: event.target.value,
+              }))
+            }
+            placeholder="1팀 이름"
+            disabled={creating}
+          />
+          <Input
+            value={form.team2Name ?? ""}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                team2Name: event.target.value,
+              }))
+            }
+            placeholder="2팀 이름"
+            disabled={creating}
+          />
+
+          {createError ? (
+            <p className="text-sm text-danger-ink">{createError}</p>
+          ) : null}
+
+          {isAuthenticated ? (
+            <Button
+              variant="accent"
+              fullWidth
+              disabled={creating}
+              onClick={() => {
+                void handleCreateSession();
+              }}
+            >
+              {creating ? "만드는 중..." : "세션 만들기"}
+            </Button>
+          ) : status === "loading" ? (
+            <Button variant="outline" fullWidth disabled>
+              로그인 확인 중...
+            </Button>
+          ) : (
+            <Link href={loginHref} className={primaryLinkClassName}>
+              로그인하고 만들기
+            </Link>
+          )}
+
+          <p className="text-xs leading-6 text-muted">
+            세션을 만든 뒤 방장이 팀장과 후보를 정합니다.
+          </p>
         </div>
-      )}
-    </TabPageShell>
+      </SectionCard>
+    </div>
   );
 }

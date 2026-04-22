@@ -37,16 +37,21 @@ export const siteTabs: SiteTab[] = [
         description: "프로리그 드래프트 화면으로 이동합니다.",
       },
       {
-        label: "팀배/컨텐츠 드래프트",
+        label: "컨텐츠 드래프트",
         href: "/draft",
-        description: "팀배/컨텐츠 드래프트 화면으로 이동합니다.",
+        description: "컨텐츠 드래프트 화면으로 이동합니다.",
+      },
+      {
+        label: "가위바위보 팀 정하기",
+        href: "/draft/rps",
+        description: "가위바위보로 팀을 나누는 전용 드래프트 화면으로 이동합니다.",
       },
     ],
   },
   {
     label: "게임",
     href: "/game",
-    description: "게임 관련 안내와 준비 중인 기능을 확인합니다.",
+    description: "게임 안내와 준비 중인 기능을 확인합니다.",
   },
   {
     label: "TuF 갤러리",

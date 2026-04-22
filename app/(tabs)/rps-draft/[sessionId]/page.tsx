@@ -1,26 +1,14 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { RpsDraftSessionPage } from "@/components/rps-draft/rps-draft-session-page";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "가위바위보 드래프트 설정",
-};
-
-type RpsDraftSessionDetailPageProps = {
+type LegacyRpsDraftSessionPageProps = {
   params: Promise<{
     sessionId: string;
   }>;
 };
 
-export default async function RpsDraftSessionDetailPage({
+export default async function LegacyRpsDraftSessionPage({
   params,
-}: RpsDraftSessionDetailPageProps) {
+}: LegacyRpsDraftSessionPageProps) {
   const resolvedParams = await params;
-  const sessionId = Number(resolvedParams.sessionId);
-
-  if (!Number.isInteger(sessionId) || sessionId < 1) {
-    notFound();
-  }
-
-  return <RpsDraftSessionPage sessionId={sessionId} />;
+  redirect(`/draft/rps/${resolvedParams.sessionId}`);
 }

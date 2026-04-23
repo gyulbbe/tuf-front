@@ -770,6 +770,16 @@ export async function createDraftTeam(payload: DraftTeamRequest) {
   );
 }
 
+export async function createDefaultDraftTeams(sessionId: number, teamCount: number) {
+  for (let displayOrder = 1; displayOrder <= teamCount; displayOrder += 1) {
+    await createDraftTeam({
+      draftSessionId: sessionId,
+      teamName: `${displayOrder}팀`,
+      displayOrder,
+    });
+  }
+}
+
 export async function updateDraftTeam(teamId: number, payload: DraftTeamRequest) {
   return unwrapResponse(
     apiClient.put<ApiEnvelope<DraftTeamRecord>>(`/draft/teams/${teamId}`, payload, {

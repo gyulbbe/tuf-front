@@ -11,7 +11,6 @@ import {
 import {
   deleteDraftSession,
   extendDraftTurn,
-  finishDraftSession,
   getDraftSnapshot,
   isDraftApiError,
   listDraftSessions,
@@ -836,10 +835,10 @@ export function DraftLiveDashboard({
         : "드래프트 라이브";
   const dashboardDescription =
     variant === "content"
-      ? "팀배와 컨텐츠용 세션을 실시간으로 진행하고, 수동 팀장 모드도 여기서 확인한다."
+      ? "팀배와 컨텐츠용 드래프트를 실시간으로 진행하고, 수동 팀장 모드도 여기서 확인한다."
       : variant === "proleague"
         ? "기존 고정 순서 기반 프로리그 드래프트 진행 화면이다."
-        : "드래프트 세션 상태와 픽 진행을 실시간으로 확인한다.";
+        : "드래프트 상태와 픽 진행을 실시간으로 확인한다.";
 
   function clearLocalPreviewAnimationFrame() {
     if (localPreviewAnimationFrameRef.current === null) {
@@ -1086,7 +1085,7 @@ export function DraftLiveDashboard({
             tone: "neutral",
             text:
               variant === "content"
-                ? "등록된 팀배/컨텐츠 드래프트가 없다. 관리자 화면에서 먼저 세션을 만들어 달라."
+                ? "등록된 팀배/컨텐츠 드래프트가 없다. 관리자 화면에서 먼저 드래프트를 만들어 달라."
                 : "등록된 드래프트가 없다. 관리자 화면에서 먼저 드래프트를 만들어 달라.",
           });
         }
@@ -1791,7 +1790,7 @@ export function DraftLiveDashboard({
 
           {snapshot ? (
             <div className="mt-5 space-y-4">
-              {adminMode ? (
+              {canControl ? (
                 <div className="rounded-[22px] border border-danger-ink/15 bg-danger-soft px-4 py-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -1966,25 +1965,6 @@ export function DraftLiveDashboard({
                   {pendingAction === "skip" ? "스킵 중" : "강제 스킵"}
                 </Button>
 
-                <Button
-                  variant="danger"
-                  disabled={!canControl || isBusy || snapshot.session.status === "FINISHED"}
-                  onClick={() => {
-                    const sessionId = selectedSessionId;
-
-                    if (sessionId === null) {
-                      return;
-                    }
-
-                    void runSnapshotAction(
-                      "finish",
-                      () => finishDraftSession(sessionId, "manual-finish"),
-                      "드래프트를 종료했다.",
-                    );
-                  }}
-                >
-                  {pendingAction === "finish" ? "종료 중" : "드래프트 종료"}
-                </Button>
               </div>
 
               {false ? (

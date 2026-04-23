@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { ProleagueDraftSessionPage } from "@/components/proleague/proleague-draft-session-page";
-import { requireServerAuth } from "@/lib/auth/server-auth";
+import { notFound, redirect } from "next/navigation";
+import { proleagueDraftListPath } from "@/lib/proleague-draft/routes";
 
 export const metadata: Metadata = {
   title: "프로리그 드래프트 설정",
@@ -23,7 +22,5 @@ export default async function ProleagueDraftSessionRoute({
     notFound();
   }
 
-  await requireServerAuth(`/proleague/draft/${sessionId}`);
-
-  return <ProleagueDraftSessionPage sessionId={sessionId} />;
+  redirect(proleagueDraftListPath());
 }

@@ -9,6 +9,7 @@ import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  createDefaultDraftTeams,
   createDraftSession,
   listDraftSessions,
   searchDraftUsers,
@@ -20,7 +21,6 @@ import { canManageOwnedResource } from "@/lib/auth/roles";
 import {
   proleagueDraftListPath,
   proleagueDraftLivePath,
-  proleagueDraftSessionPath,
 } from "@/lib/proleague-draft/routes";
 import { cn } from "@/lib/utils";
 
@@ -44,8 +44,8 @@ function buildDefaultDraftTitle(username?: string | null) {
 function createEmptyForm(title = ""): CreateFormState {
   return {
     title,
-    teamCount: "6",
-    pickTimeSeconds: "30",
+    teamCount: "",
+    pickTimeSeconds: "",
   };
 }
 
@@ -77,6 +77,27 @@ function resolveOwnerUserId(
   });
 
   return exactTextMatch?.userId ?? null;
+}
+
+function mergeOwnerUserIdMap(
+  current: Record<number, string>,
+  incoming: Record<number, string>,
+) {
+  let hasChanges = false;
+  const next = { ...current };
+
+  for (const [ownerUserId, resolvedUserId] of Object.entries(incoming)) {
+    const numericOwnerUserId = Number(ownerUserId);
+
+    if (!resolvedUserId || current[numericOwnerUserId] === resolvedUserId) {
+      continue;
+    }
+
+    next[numericOwnerUserId] = resolvedUserId;
+    hasChanges = true;
+  }
+
+  return hasChanges ? next : current;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -182,7 +203,7 @@ function describeActivity(session: DraftSessionSummary) {
     return `종료 ${formatDateTime(session.endedAt)}`;
   }
 
-  return "아직 시작 전";
+  return null;
 }
 
 export function ProleagueDraftListPage() {
@@ -245,10 +266,7 @@ export function ProleagueDraftListPage() {
       }
 
       if (Object.keys(knownOwnerUserIds).length > 0) {
-        setOwnerUserIds((current) => ({
-          ...current,
-          ...knownOwnerUserIds,
-        }));
+        setOwnerUserIds((current) => mergeOwnerUserIdMap(current, knownOwnerUserIds));
       }
 
       const unresolvedSessions = sessions.filter((session) => {
@@ -300,10 +318,7 @@ export function ProleagueDraftListPage() {
       }
 
       if (Object.keys(nextOwnerUserIds).length > 0) {
-        setOwnerUserIds((current) => ({
-          ...current,
-          ...nextOwnerUserIds,
-        }));
+        setOwnerUserIds((current) => mergeOwnerUserIdMap(current, nextOwnerUserIds));
       }
     }
 
@@ -344,6 +359,16 @@ export function ProleagueDraftListPage() {
         pickTimeSeconds,
       });
 
+      try {
+        await createDefaultDraftTeams(createdSession.id, teamCount);
+      } catch (teamError) {
+        throw new Error(
+          teamError instanceof Error
+            ? `드래프트는 생성됐지만 기본 팀 준비에 실패했다. ${teamError.message}`
+            : "드래프트는 생성됐지만 기본 팀 준비에 실패했다.",
+        );
+      }
+
       setEditingSessionId(createdSession.id);
       try {
         const nextSessions = await listDraftSessions();
@@ -366,6 +391,12 @@ export function ProleagueDraftListPage() {
     setCreateError(null);
     setEditingSessionId(null);
     setForm(createEmptyForm(buildDefaultDraftTitle(user?.username)));
+    setIsCreateOpen(true);
+  }
+
+  function handleOpenEditDialog(sessionId: number) {
+    setCreateError(null);
+    setEditingSessionId(sessionId);
     setIsCreateOpen(true);
   }
 
@@ -392,10 +423,6 @@ export function ProleagueDraftListPage() {
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
               프로리그 드래프트
             </h1>
-            <p className="mt-4 text-base leading-8 text-muted">
-              진행 중인 프로리그 드래프트를 바로 확인하고, 새 세션을 만들어 바로 설정을
-              이어갈 수 있습니다.
-            </p>
           </div>
 
           <Button variant="accent" onClick={handleOpenCreateDialog}>
@@ -425,6 +452,10 @@ export function ProleagueDraftListPage() {
                 role: user?.role,
                 userPk: user?.userPk,
               });
+              const ownerLabel =
+                session.ownerUserId === user?.userPk && user?.username
+                  ? user.username
+                  : ownerUserIds[session.ownerUserId] ?? `user_pk:${session.ownerUserId}`;
               const settingsClassName = canManage
                 ? primaryLinkClassName
                 : secondaryLinkClassName;
@@ -446,7 +477,7 @@ export function ProleagueDraftListPage() {
                           {formatStatus(session.status)}
                         </span>
                         <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-foreground">
-                          방장 {ownerUserIds[session.ownerUserId] ?? `user_pk:${session.ownerUserId}`}
+                          방장 {ownerLabel}
                         </span>
                         <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-foreground">
                           팀 {session.teamCount}
@@ -459,18 +490,23 @@ export function ProleagueDraftListPage() {
                       <h2 className="mt-3 text-xl font-semibold text-foreground">
                         {session.title}
                       </h2>
-                      <p className="mt-2 text-sm leading-7 text-muted">
-                        {describeActivity(session)}
-                      </p>
+                      {describeActivity(session) ? (
+                        <p className="mt-2 text-sm leading-7 text-muted">
+                          {describeActivity(session)}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Link
-                        href={proleagueDraftSessionPath(session.id)}
+                      <button
+                        type="button"
                         className={settingsClassName}
+                        onClick={() => {
+                          handleOpenEditDialog(session.id);
+                        }}
                       >
                         설정
-                      </Link>
+                      </button>
                       <Link
                         href={proleagueDraftLivePath(session.id)}
                         className={liveClassName}
@@ -492,11 +528,6 @@ export function ProleagueDraftListPage() {
         closeOnBackdropClick={false}
         closeOnEscape={false}
         title={editingSessionId ? "프로리그 드래프트 설정" : "드래프트 생성"}
-        description={
-          editingSessionId
-            ? undefined
-            : "세션을 만들고 같은 팝업 안에서 바로 설정을 이어갑니다."
-        }
         panelClassName="max-w-7xl"
       >
         {editingSessionId ? (
@@ -574,7 +605,7 @@ export function ProleagueDraftListPage() {
 
             {isAuthenticated ? (
               <Button type="submit" variant="accent" fullWidth disabled={creating}>
-                {creating ? "생성하는 중..." : "생성하고 설정 계속하기"}
+                {creating ? "생성하는 중..." : "드래프트 생성"}
               </Button>
             ) : status === "loading" ? (
               <Button variant="outline" fullWidth disabled>

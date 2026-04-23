@@ -6,9 +6,9 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import {
-  finishRpsDraftSession,
   getRpsDraftSnapshot,
   pickRpsDraftCandidate,
+  searchRpsDraftUsers,
   startRpsDraftSession,
   submitRpsDraftChoice,
   type RpsChoice,
@@ -23,8 +23,12 @@ import {
 import {
   rpsDraftListPath,
   rpsDraftLivePath,
-  rpsDraftSessionPath,
 } from "@/lib/rps-draft/routes";
+import {
+  formatRpsDraftUserId,
+  mergeRpsDraftUserIdMap,
+  resolveRpsDraftUserId,
+} from "@/lib/rps-draft/user-id-display";
 import {
   formatChoice,
   formatDateTime,
@@ -159,11 +163,13 @@ function describeRpsHelp(options: {
 
 function TeamPanel({
   myTeamId,
+  resolvedUserIds,
   sessionCurrentTeamId,
   sessionPendingTeamId,
   team,
 }: {
   myTeamId: number | null;
+  resolvedUserIds: Record<number, string>;
   sessionCurrentTeamId: number | null;
   sessionPendingTeamId: number | null;
   team: RpsDraftLiveTeam;
@@ -194,7 +200,7 @@ function TeamPanel({
       </div>
 
       <p className="mt-3 text-sm text-muted">
-        팀장 {team.pickerName || "지정 안 됨"}
+        팀장 {formatRpsDraftUserId(team.pickerUserId, resolvedUserIds)}
       </p>
 
       <div className="mt-5 space-y-3">
@@ -211,7 +217,7 @@ function TeamPanel({
               <div className="flex flex-wrap items-center gap-2">
                 <ValueBadge>{item.pickNo}픽</ValueBadge>
                 <span className="text-sm font-semibold text-foreground">
-                  {item.candidateName}
+                  {formatRpsDraftUserId(item.candidateUserId, resolvedUserIds)}
                 </span>
               </div>
               <p className="mt-2 text-xs leading-6 text-muted">
@@ -226,8 +232,9 @@ function TeamPanel({
 }
 
 export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
-  const { isAuthenticated, status } = useAuth();
+  const { isAuthenticated, status, user } = useAuth();
   const [liveState, setLiveState] = useState(INITIAL_LIVE_STATE);
+  const [resolvedUserIds, setResolvedUserIds] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -260,6 +267,111 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
     [],
   );
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateResolvedUserIds() {
+      const knownUserIds: Record<number, string> = {};
+
+      if (user?.username && typeof user.userPk === "number") {
+        knownUserIds[user.userPk] = user.username;
+      }
+
+      if (Object.keys(knownUserIds).length > 0) {
+        setResolvedUserIds((current) =>
+          mergeRpsDraftUserIdMap(current, knownUserIds),
+        );
+      }
+
+      const snapshot = liveState.snapshot;
+
+      if (!snapshot) {
+        return;
+      }
+
+      const unresolvedTargets = new Map<number, string>();
+
+      const addUnresolvedTarget = (
+        userPk: number | null | undefined,
+        fallbackText: string | null | undefined,
+      ) => {
+        if (typeof userPk !== "number" || !fallbackText?.trim()) {
+          return;
+        }
+
+        if (knownUserIds[userPk] || resolvedUserIds[userPk]) {
+          return;
+        }
+
+        unresolvedTargets.set(userPk, fallbackText);
+      };
+
+      for (const team of snapshot.teams) {
+        addUnresolvedTarget(team.pickerUserId, team.pickerName);
+
+        for (const item of team.roster) {
+          addUnresolvedTarget(item.candidateUserId, item.candidateName);
+          addUnresolvedTarget(item.pickedByUserId, item.pickedByUserName);
+        }
+      }
+
+      for (const candidate of snapshot.availableCandidates) {
+        addUnresolvedTarget(candidate.candidateUserId, candidate.candidateName);
+      }
+
+      for (const candidate of snapshot.pickedCandidates) {
+        addUnresolvedTarget(candidate.candidateUserId, candidate.candidateName);
+      }
+
+      for (const pick of snapshot.recentPicks) {
+        addUnresolvedTarget(pick.candidateUserId, pick.candidateName);
+        addUnresolvedTarget(pick.pickedByUserId, pick.pickedByUserName);
+      }
+
+      if (unresolvedTargets.size === 0) {
+        return;
+      }
+
+      const resolvedEntries = await Promise.all(
+        Array.from(unresolvedTargets.entries()).map(async ([userPk, keyword]) => {
+          try {
+            const users = await searchRpsDraftUsers(keyword, 8);
+            return [
+              userPk,
+              resolveRpsDraftUserId(userPk, keyword, users),
+            ] as const;
+          } catch {
+            return [userPk, null] as const;
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const nextResolvedUserIds: Record<number, string> = {};
+
+      for (const [userPk, resolvedUserId] of resolvedEntries) {
+        if (resolvedUserId) {
+          nextResolvedUserIds[userPk] = resolvedUserId;
+        }
+      }
+
+      if (Object.keys(nextResolvedUserIds).length > 0) {
+        setResolvedUserIds((current) =>
+          mergeRpsDraftUserIdMap(current, nextResolvedUserIds),
+        );
+      }
+    }
+
+    void hydrateResolvedUserIds();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [liveState.snapshot, resolvedUserIds, user?.userPk, user?.username]);
+
   const refreshSnapshot = useCallback(
     async (options?: { background?: boolean; keepMessage?: boolean }) => {
       if (!options?.background) {
@@ -281,7 +393,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
           setError(
             refreshError instanceof Error
               ? refreshError.message
-              : "진행 화면을 불러오지 못했습니다.",
+              : "드래프트 진행 화면을 불러오지 못했습니다.",
           );
         }
       } finally {
@@ -316,7 +428,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
         setError(
           loadError instanceof Error
             ? loadError.message
-            : "진행 화면을 불러오지 못했습니다.",
+            : "드래프트 진행 화면을 불러오지 못했습니다.",
         );
         setLoading(false);
       }
@@ -424,33 +536,13 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
     try {
       const nextSnapshot = await startRpsDraftSession(sessionId);
       applySnapshot(nextSnapshot);
-      setActionMessage("세션을 시작했습니다.");
+      setActionMessage("드래프트를 시작했습니다.");
       setError(null);
     } catch (startError) {
       setActionMessage(
         startError instanceof Error
           ? startError.message
-          : "세션을 시작하지 못했습니다.",
-      );
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function handleFinish() {
-    setPendingAction("finish");
-    setActionMessage(null);
-
-    try {
-      const nextSnapshot = await finishRpsDraftSession(sessionId);
-      applySnapshot(nextSnapshot);
-      setActionMessage("세션을 종료했습니다.");
-      setError(null);
-    } catch (finishError) {
-      setActionMessage(
-        finishError instanceof Error
-          ? finishError.message
-          : "세션을 종료하지 못했습니다.",
+          : "드래프트를 시작하지 못했습니다.",
       );
     } finally {
       setPendingAction(null);
@@ -492,7 +584,11 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
       applySnapshot(nextSnapshot);
       setActionMessage(
         pickedCandidate
-          ? `${pickedCandidate.candidateName}을 선택했습니다.`
+          ? `${formatRpsDraftUserId(
+              pickedCandidate.candidateUserId,
+              resolvedUserIds,
+              "선수",
+            )}을 선택했습니다.`
           : "선수를 선택했습니다.",
       );
       setError(null);
@@ -545,11 +641,17 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
               {snapshot?.session.title ?? "팀배/컨텐츠 드래프트"}
             </h1>
             <p className="mt-4 text-base leading-8 text-muted">
-              {snapshot ? describeTurn(snapshot) : "진행 화면을 불러오는 중입니다."}
+              {snapshot ? describeTurn(snapshot) : "드래프트 진행 화면을 불러오는 중입니다."}
             </p>
             {latestPick ? (
               <p className="mt-3 text-sm text-muted">
-                최근 선택: {latestPick.pickNo}픽 {latestPick.candidateName} ·{" "}
+                최근 선택: {latestPick.pickNo}픽{" "}
+                {formatRpsDraftUserId(
+                  latestPick.candidateUserId,
+                  resolvedUserIds,
+                  "선수",
+                )}{" "}
+                ·{" "}
                 {latestPick.rpsDraftTeamName}
               </p>
             ) : null}
@@ -567,9 +669,6 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
             <Link href={rpsDraftListPath()} className={secondaryLinkClassName}>
               목록
             </Link>
-            <Link href={rpsDraftSessionPath(sessionId)} className={secondaryLinkClassName}>
-              세션 설정
-            </Link>
             {snapshot?.session.status === "READY" && canControl ? (
               <Button
                 variant="accent"
@@ -579,17 +678,6 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                 }}
               >
                 {pendingAction === "start" ? "시작하는 중..." : "시작"}
-              </Button>
-            ) : null}
-            {canControl && snapshot?.session.status !== "FINISHED" ? (
-              <Button
-                variant="danger"
-                disabled={pendingAction !== null}
-                onClick={() => {
-                  void handleFinish();
-                }}
-              >
-                {pendingAction === "finish" ? "종료하는 중..." : "종료"}
               </Button>
             ) : null}
           </div>
@@ -635,7 +723,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
 
       {loading ? (
         <div className="rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
-          진행 화면을 불러오는 중입니다.
+          드래프트 진행 화면을 불러오는 중입니다.
         </div>
       ) : snapshot ? (
         <>
@@ -751,7 +839,11 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-semibold text-foreground">
-                              {candidate.candidateName}
+                              {formatRpsDraftUserId(
+                                candidate.candidateUserId,
+                                resolvedUserIds,
+                                "user",
+                              )}
                             </span>
                             <ValueBadge>{formatRace(candidate.race)}</ValueBadge>
                           </div>
@@ -780,6 +872,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                 key={team.id}
                 team={team}
                 myTeamId={myTeamId}
+                resolvedUserIds={resolvedUserIds}
                 sessionCurrentTeamId={snapshot.session.currentDraftTeamId}
                 sessionPendingTeamId={snapshot.session.pendingDraftTeamId}
               />

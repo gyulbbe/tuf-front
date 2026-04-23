@@ -12,13 +12,12 @@ import {
 import {
   assignDraftPicker,
   createDraftCandidate,
+  createDefaultDraftTeams,
   createDraftOrder,
   createDraftSession,
-  createDraftTeam,
   deleteDraftCandidate,
   deleteDraftOrder,
   deleteDraftSession,
-  deleteDraftTeam,
   getDraftErrorDebugInfo,
   getDraftSessionDetail,
   isDraftApiError,
@@ -56,11 +55,6 @@ type SessionFormState = {
   title: string;
   teamCount: string;
   pickTimeSeconds: string;
-};
-
-type TeamFormState = {
-  teamName: string;
-  displayOrder: string;
 };
 
 type TeamPickerLookupState = {
@@ -196,16 +190,6 @@ function buildSessionDeleteConfirmText(sessionTitle: string) {
     "팀, 드래프트 인원, 순서, 픽 기록이 함께 삭제된다.",
     "삭제 후에는 되돌릴 수 없다.",
   ].join("\n");
-}
-
-function getTeamDeleteErrorMessage(error: unknown) {
-  const message = readErrorMessage(error);
-
-  if (message.includes("현재 차례 팀은 삭제할 수 없습니다.")) {
-    return "지금 차례인 팀은 삭제할 수 없다. 턴을 넘기거나 드래프트를 멈춘 뒤 다시 시도해 달라.";
-  }
-
-  return message;
 }
 
 function logDraftAdminIssue(
@@ -507,17 +491,6 @@ function createInitialTeamEdits(detail: DraftSessionDetail) {
   }
 
   return nextState;
-}
-
-function createDefaultTeamForm(detail?: DraftSessionDetail | null): TeamFormState {
-  const nextDisplayOrder = detail
-    ? Math.max(0, ...detail.teams.map((team) => team.displayOrder)) + 1
-    : 1;
-
-  return {
-    teamName: `${nextDisplayOrder}팀`,
-    displayOrder: String(nextDisplayOrder),
-  };
 }
 
 function getOrderGenerationTargetCount(candidates: DraftCandidate[]) {
@@ -892,30 +865,21 @@ function TeamRow({
   draftTeam,
   editState,
   pendingAction,
-  rosterCount,
   onChange,
-  onDelete,
   onSave,
 }: {
   draftTeam: DraftLiveTeam;
   editState: TeamEditState;
   pendingAction: string | null;
-  rosterCount: number;
   onChange: (patch: Partial<TeamEditState>) => void;
-  onDelete: () => Promise<void>;
   onSave: () => Promise<void>;
 }) {
   return (
     <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-foreground">
-            {draftTeam.teamName}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            픽커 {draftTeam.pickerName ? "지정됨" : "미지정"} · 로스터 {rosterCount}명
-          </p>
-        </div>
+        <p className="text-sm font-semibold text-foreground">
+          {draftTeam.teamName}
+        </p>
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
@@ -924,17 +888,7 @@ function TeamRow({
               void onSave();
             }}
           >
-            {pendingAction === `team-save:${draftTeam.id}` ? "저장 중" : "저장"}
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            disabled={pendingAction !== null}
-            onClick={() => {
-              void onDelete();
-            }}
-          >
-            {pendingAction === `team-delete:${draftTeam.id}` ? "삭제 중" : "삭제"}
+            {pendingAction === `team-save:${draftTeam.id}` ? "수정 중" : "팀 이름 수정"}
           </Button>
         </div>
       </div>
@@ -985,15 +939,7 @@ function TeamPickerManager({
       </div>
 
       <div className="mt-5 rounded-[24px] border border-line bg-surface px-4 py-4">
-        <p className="text-sm font-semibold text-foreground">
-          아이디 검색으로 픽커 지정
-        </p>
-        <p className="mt-2 text-sm leading-7 text-muted">
-          아이디 일부만 입력해도 검색 결과가 내려온다. 결과를 고르면 pickerUserId가
-          자동으로 채워지고, 필요하면 직접 수정할 수도 있다.
-        </p>
-
-        <div className="mt-4 grid gap-3">
+        <div className="grid gap-3">
           <UserAutocompleteInput
             disabled={pendingAction !== null}
             value={lookupState.query}
@@ -1034,7 +980,6 @@ function TeamPickerManager({
                 <p className="font-semibold text-foreground">
                   팀마다 픽커는 1명만 가진다.
                 </p>
-                <p className="mt-1">다른 사람을 지정하면 이 팀의 픽커가 새 사람으로 바뀐다.</p>
               </>
             )}
           </div>
@@ -1263,15 +1208,7 @@ function TeamPickerManagerClean({
       </div>
 
       <div className="mt-5 rounded-[24px] border border-line bg-surface px-4 py-4">
-        <p className="text-sm font-semibold text-foreground">
-          아이디 검색으로 픽커 지정
-        </p>
-        <p className="mt-2 text-sm leading-7 text-muted">
-          아이디 일부만 입력해도 검색 결과가 내려온다. 결과를 고르면 선택값이
-          자동으로 채워지고, 필요하면 직접 입력할 수도 있다.
-        </p>
-
-        <div className="mt-4 grid gap-3">
+        <div className="grid gap-3">
           <UserAutocompleteInput
             disabled={pendingAction !== null}
             value={lookupState.query}
@@ -1310,7 +1247,6 @@ function TeamPickerManagerClean({
                 <p className="font-semibold text-foreground">
                   팀마다 픽커는 1명만 지정할 수 있다.
                 </p>
-                <p className="mt-1">다른 사람을 지정하면 현재 픽커가 새 사람으로 바뀐다.</p>
               </>
             )}
           </div>
@@ -1548,7 +1484,6 @@ export function DraftAdminConsole({
     useState<DraftSessionDetail | null>(null);
   const [createForm, setCreateForm] = useState<SessionFormState>(EMPTY_CREATE_FORM);
   const [editForm, setEditForm] = useState<SessionFormState>(EMPTY_EDIT_FORM);
-  const [teamForm, setTeamForm] = useState<TeamFormState>(createDefaultTeamForm());
   const [teamLookups, setTeamLookups] = useState<
     Record<number, TeamPickerLookupState>
   >({});
@@ -1586,10 +1521,6 @@ export function DraftAdminConsole({
       ...sortedPicks.map((pick) => pick.candidateUserId),
     ]),
   );
-  const rosterCountByTeamId = sortedPicks.reduce<Record<number, number>>((acc, pick) => {
-    acc[pick.draftTeamId] = (acc[pick.draftTeamId] ?? 0) + 1;
-    return acc;
-  }, {});
   const pickerTeamCount = sortedTeams.filter((team) => team.pickerUserId).length;
   const waitingCandidateCount = sortedCandidates.filter(
     (candidate) => candidate.status === "WAITING",
@@ -1735,7 +1666,6 @@ export function DraftAdminConsole({
     startTransition(() => {
       setSelectedSessionDetail(null);
       setEditForm(EMPTY_EDIT_FORM);
-      setTeamForm(createDefaultTeamForm());
       setTeamLookups({});
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setTeamEdits({});
@@ -1750,7 +1680,6 @@ export function DraftAdminConsole({
         teamCount: String(detail.teamCount),
         pickTimeSeconds: String(detail.pickTimeSeconds),
       });
-      setTeamForm(createDefaultTeamForm(detail));
       setTeamLookups(createInitialTeamLookups(detail));
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setTeamEdits(createInitialTeamEdits(detail));
@@ -1869,7 +1798,7 @@ export function DraftAdminConsole({
           return;
         }
 
-        handleActionError("세션 목록 초기 로드", error);
+        handleActionError("드래프트 목록 초기 로드", error);
       } finally {
         if (!cancelled) {
           setLoadingSessions(false);
@@ -1929,7 +1858,7 @@ export function DraftAdminConsole({
           return;
         }
 
-        handleActionError("세션 상세 로드", error, { sessionId });
+        handleActionError("드래프트 상세 로드", error, { sessionId });
       } finally {
         if (!cancelled) {
           setLoadingDetail(false);
@@ -1983,14 +1912,25 @@ export function DraftAdminConsole({
       }
 
       const created = await createDraftSession(payload);
+
+      try {
+        await createDefaultDraftTeams(created.id, payload.teamCount);
+      } catch (teamError) {
+        throw new Error(
+          teamError instanceof Error
+            ? `드래프트는 생성됐지만 기본 팀 준비에 실패했다. ${teamError.message}`
+            : "드래프트는 생성됐지만 기본 팀 준비에 실패했다.",
+        );
+      }
+
       await refreshSelectedSession(created.id);
       setCreateForm(EMPTY_CREATE_FORM);
       setNotice({
         tone: "success",
-        text: "드래프트를 생성했다.",
+        text: "드래프트와 기본 팀을 생성했다.",
       });
     } catch (error) {
-      handleActionError("세션 생성", error, {
+      handleActionError("드래프트 생성", error, {
         form: createForm,
       });
     } finally {
@@ -2024,7 +1964,7 @@ export function DraftAdminConsole({
         text: "드래프트 정보를 저장했다.",
       });
     } catch (error) {
-      handleActionError("세션 수정", error, {
+      handleActionError("드래프트 수정", error, {
         form: editForm,
         sessionId: selectedSessionId,
       });
@@ -2066,45 +2006,8 @@ export function DraftAdminConsole({
         return;
       }
 
-      handleActionError("세션 삭제", error, {
+      handleActionError("드래프트 삭제", error, {
         sessionId,
-      });
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function handleCreateTeam() {
-    if (selectedSessionId === null) {
-      return;
-    }
-
-    setPendingAction("team-create");
-    setNotice(null);
-
-    try {
-      const payload = {
-        draftSessionId: selectedSessionId,
-        teamName: teamForm.teamName.trim(),
-        displayOrder: parsePositiveInt(teamForm.displayOrder, "displayOrder"),
-      };
-
-      if (!payload.teamName) {
-        throw new Error("팀 이름을 입력해야 한다.");
-      }
-
-      const detail = await createDraftTeam(payload).then(() =>
-        refreshSelectedSession(selectedSessionId),
-      );
-      setTeamForm(createDefaultTeamForm(detail));
-      setNotice({
-        tone: "success",
-        text: "팀을 생성했다.",
-      });
-    } catch (error) {
-      handleActionError("팀 생성", error, {
-        form: teamForm,
-        sessionId: selectedSessionId,
       });
     } finally {
       setPendingAction(null);
@@ -2147,36 +2050,6 @@ export function DraftAdminConsole({
         editState,
         sessionId: selectedSessionId,
         teamId,
-      });
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function handleDeleteTeam(teamId: number) {
-    if (selectedSessionId === null) {
-      return;
-    }
-
-    setPendingAction(`team-delete:${teamId}`);
-    setNotice(null);
-
-    try {
-      await deleteDraftTeam(teamId);
-      const detail = await refreshSelectedSession(selectedSessionId);
-      setTeamForm(createDefaultTeamForm(detail));
-      setNotice({
-        tone: "success",
-        text: "팀을 삭제했다.",
-      });
-    } catch (error) {
-      logDraftAdminIssue("팀 삭제", error, {
-        sessionId: selectedSessionId,
-        teamId,
-      });
-      setNotice({
-        tone: "error",
-        text: getTeamDeleteErrorMessage(error),
       });
     } finally {
       setPendingAction(null);
@@ -2445,7 +2318,7 @@ export function DraftAdminConsole({
           <SetupStatCard
             label="팀"
             value={selectedSessionDetail ? String(sortedTeams.length) : "0"}
-            description="팀 생성 / 수정 / 삭제"
+            description="기본 팀 이름 수정"
             ready={sortedTeams.length > 0}
           />
           <SetupStatCard
@@ -2574,6 +2447,44 @@ export function DraftAdminConsole({
               </select>
             )}
 
+            {isSessionScoped ? (
+              selectedSessionDetail ? (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                      제목
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-foreground">
+                      {selectedSessionDetail.title}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                      팀 수
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-foreground">
+                      {selectedSessionDetail.teamCount}
+                    </p>
+                  </div>
+                  <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                      픽 제한 시간
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-foreground">
+                      {selectedSessionDetail.pickTimeSeconds}초
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-[22px] border border-dashed border-line px-4 py-4 text-sm text-muted">
+                  {loadingDetail
+                    ? "드래프트 정보를 불러오는 중입니다."
+                    : "드래프트 정보를 불러오지 못했습니다."}
+                </div>
+              )
+            ) : (
+              <>
+
             <Input
               value={editForm.title}
               disabled={selectedSessionId === null}
@@ -2636,20 +2547,9 @@ export function DraftAdminConsole({
               >
                 {pendingAction === "session-save" ? "저장 중" : "드래프트 저장"}
               </Button>
-              <Button
-                variant="danger"
-                disabled={pendingAction !== null || selectedSessionId === null}
-                onClick={() => {
-                  void handleDeleteSession();
-                }}
-              >
-                {pendingAction === "session-delete" ? "삭제 중" : "드래프트 삭제"}
-              </Button>
             </div>
-            <p className="text-sm leading-7 text-danger-ink">
-              드래프트 삭제를 누르면 이 드래프트에 연결된 팀, 드래프트 인원, 순서, 픽 기록이
-              함께 지워진다.
-            </p>
+              </>
+            )}
           </div>
         </SurfaceCard>
       </div>
@@ -2658,10 +2558,10 @@ export function DraftAdminConsole({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-foreground">
-              팀 생성 / 수정 / 삭제
+              팀 이름 수정
             </p>
             <p className="mt-2 text-sm leading-7 text-muted">
-              팀은 드래프트 준비의 기본 데이터다. 팀 순서는 내부 값으로 자동 관리된다.
+              드래프트를 만들 때 팀 수만큼 기본 팀을 먼저 만든다. 여기서는 팀 이름만 정리하면 된다.
             </p>
           </div>
           {selectedSessionDetail ? (
@@ -2676,58 +2576,30 @@ export function DraftAdminConsole({
             먼저 드래프트를 선택해 달라.
           </div>
         ) : (
-          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
-            <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
-              <div className="grid gap-3">
-                <Input
-                  value={teamForm.teamName}
-                  onChange={(event) => {
-                    setTeamForm((current) => ({
-                      ...current,
-                      teamName: event.target.value,
-                    }));
-                  }}
-                  placeholder="팀 이름"
-                />
-                <Button
-                  variant="accent"
-                  disabled={pendingAction !== null || !teamForm.teamName.trim()}
-                  onClick={() => {
-                    void handleCreateTeam();
-                  }}
-                >
-                  {pendingAction === "team-create" ? "생성 중" : "팀 생성"}
-                </Button>
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {sortedTeams.length === 0 ? (
+              <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted md:col-span-2 xl:col-span-3">
+                아직 준비된 팀이 없다.
               </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {sortedTeams.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted md:col-span-2 xl:col-span-3">
-                  아직 등록한 팀이 없다.
-                </div>
-              ) : (
-                sortedTeams.map((team) => (
-                  <TeamRow
-                    key={team.id}
-                    draftTeam={team}
-                    editState={
-                      teamEdits[team.id] ?? {
-                        teamName: team.teamName,
-                        displayOrder: String(team.displayOrder),
-                      }
+            ) : (
+              sortedTeams.map((team) => (
+                <TeamRow
+                  key={team.id}
+                  draftTeam={team}
+                  editState={
+                    teamEdits[team.id] ?? {
+                      teamName: team.teamName,
+                      displayOrder: String(team.displayOrder),
                     }
-                    pendingAction={pendingAction}
-                    rosterCount={rosterCountByTeamId[team.id] ?? 0}
-                    onChange={(patch) => {
-                      updateTeamEdit(team.id, patch);
-                    }}
-                    onDelete={() => handleDeleteTeam(team.id)}
-                    onSave={() => handleSaveTeam(team.id)}
-                  />
-                ))
-              )}
-            </div>
+                  }
+                  pendingAction={pendingAction}
+                  onChange={(patch) => {
+                    updateTeamEdit(team.id, patch);
+                  }}
+                  onSave={() => handleSaveTeam(team.id)}
+                />
+              ))
+            )}
           </div>
         )}
       </SurfaceCard>
@@ -2736,10 +2608,6 @@ export function DraftAdminConsole({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-foreground">팀별 픽커 지정</p>
-            <p className="mt-2 text-sm leading-7 text-muted">
-              운영진 목록 없이 팀마다 픽커 1명만 관리한다. 아이디 검색으로
-              바로 지정할 수 있다.
-            </p>
           </div>
           {selectedSessionDetail ? (
             <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
@@ -2823,15 +2691,7 @@ export function DraftAdminConsole({
         <SurfaceCard className="p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-                            <p className="text-sm font-semibold text-foreground">
-                순서 등록 / 삭제
-              </p>
-                            <p className="mt-2 text-sm leading-7 text-muted">
-                순서표는 드래프트 인원 수 기준으로 자동 생성된다. 버튼을 누르면 기존 순서를 모두 지우고 `pickNo`를 1부터 다시 맞춘다. 기본은 팀 순서를 반복하고, 스네이크는 라운드마다 방향을 반대로 섞는다.
-              </p>
-            </div>
-            <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
-              생성된 순서 {sortedOrders.length}개 · 대상 드래프트 인원 {orderGenerationTargetCount}명
+              <p className="text-sm font-semibold text-foreground">드래프트 방식</p>
             </div>
           </div>
 
@@ -2906,11 +2766,6 @@ export function DraftAdminConsole({
                           : "스네이크 방식 생성"}
                     </Button>
                   </div>
-
-                  <p className="text-sm leading-7 text-muted">
-                    자동 생성 기준은 현재 등록된 드래프트 인원 수이며, `EXCLUDED` 상태는 제외한다.
-                    이미 픽 기록이 있으면 먼저 이력 탭에서 정리한 뒤 다시 생성해야 한다.
-                  </p>
                 </div>
               </div>
 

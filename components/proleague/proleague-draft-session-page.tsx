@@ -30,7 +30,7 @@ export function ProleagueDraftSessionPage({ sessionId }: { sessionId: number }) 
               프로리그 드래프트 설정
             </h1>
             <p className="mt-4 text-base leading-8 text-muted">
-              세션 생성과 목록 선택은 랜딩에서 처리하고, 이 화면에서는 선택한 드래프트 한
+              드래프트 생성과 목록 선택은 랜딩에서 처리하고, 이 화면에서는 선택한 드래프트 한
               건만 설정합니다.
             </p>
           </div>

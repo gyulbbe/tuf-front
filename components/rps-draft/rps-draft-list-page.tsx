@@ -21,7 +21,6 @@ import { canManageOwnedResource } from "@/lib/auth/roles";
 import {
   rpsDraftListPath,
   rpsDraftLivePath,
-  rpsDraftSessionPath,
 } from "@/lib/rps-draft/routes";
 import {
   formatDateTime,
@@ -94,13 +93,13 @@ function describeSchedule(session: RpsDraftSessionSummary) {
     return `시작 ${formatDateTime(session.startedAt)}`;
   }
 
-  return "아직 시작 전";
+  return null;
 }
 
 function describeProgress(session: RpsDraftSessionSummary) {
   switch (session.status) {
     case "READY":
-      return "팀장과 후보 구성이 끝난 세션입니다. 바로 시작할 수 있습니다.";
+      return "팀장과 후보 구성이 끝난 드래프트입니다. 바로 시작할 수 있습니다.";
     case "RPS_PENDING":
       return "두 팀장이 가위바위보로 선픽 순서를 정하는 중입니다.";
     case "PICKING":
@@ -144,6 +143,27 @@ function resolveOwnerUserId(
   });
 
   return exactTextMatch?.userId ?? null;
+}
+
+function mergeOwnerUserIdMap(
+  current: Record<number, string>,
+  incoming: Record<number, string>,
+) {
+  let hasChanges = false;
+  const next = { ...current };
+
+  for (const [ownerUserId, resolvedUserId] of Object.entries(incoming)) {
+    const numericOwnerUserId = Number(ownerUserId);
+
+    if (!resolvedUserId || current[numericOwnerUserId] === resolvedUserId) {
+      continue;
+    }
+
+    next[numericOwnerUserId] = resolvedUserId;
+    hasChanges = true;
+  }
+
+  return hasChanges ? next : current;
 }
 
 function hasUser(user: RpsDraftUserSearchResult[], userId: number) {
@@ -236,10 +256,7 @@ export function RpsDraftListPage() {
       }
 
       if (Object.keys(knownOwnerUserIds).length > 0) {
-        setOwnerUserIds((current) => ({
-          ...current,
-          ...knownOwnerUserIds,
-        }));
+        setOwnerUserIds((current) => mergeOwnerUserIdMap(current, knownOwnerUserIds));
       }
 
       const unresolvedSessions = sessions.filter((session) => {
@@ -291,10 +308,7 @@ export function RpsDraftListPage() {
       }
 
       if (Object.keys(nextOwnerUserIds).length > 0) {
-        setOwnerUserIds((current) => ({
-          ...current,
-          ...nextOwnerUserIds,
-        }));
+        setOwnerUserIds((current) => mergeOwnerUserIdMap(current, nextOwnerUserIds));
       }
     }
 
@@ -326,7 +340,7 @@ export function RpsDraftListPage() {
 
       setIsCreateOpen(false);
       setForm(createEmptyForm());
-      router.push(rpsDraftSessionPath(createdSession.id));
+      router.push(rpsDraftLivePath(createdSession.id));
     } catch (createSessionError) {
       setCreateError(
         createSessionError instanceof Error
@@ -421,7 +435,7 @@ export function RpsDraftListPage() {
               팀배/컨텐츠 드래프트
             </h1>
             <p className="mt-4 text-base leading-8 text-muted">
-              세션 생성 전에 팀장 2명과 후보 목록을 한 번에 정하고, 생성 직후 바로
+              드래프트 생성 전에 팀장 2명과 후보 목록을 한 번에 정하고, 생성 직후 바로
               시작 단계로 넘어가는 팀배/컨텐츠 드래프트입니다.
             </p>
           </div>
@@ -453,12 +467,13 @@ export function RpsDraftListPage() {
                 role: user?.role,
                 userPk: user?.userPk,
               });
-              const settingsClassName = canManage
+              const ownerLabel =
+                session.ownerUserId === user?.userPk && user?.username
+                  ? user.username
+                  : ownerUserIds[session.ownerUserId] ?? `user_pk:${session.ownerUserId}`;
+              const liveClassName = canManage
                 ? primaryLinkClassName
                 : secondaryLinkClassName;
-              const liveClassName = canManage
-                ? secondaryLinkClassName
-                : primaryLinkClassName;
 
               return (
                 <SurfaceCard key={session.id} className="p-5 sm:p-6">
@@ -468,7 +483,7 @@ export function RpsDraftListPage() {
                         <StatusBadge status={session.status} />
                         <ValueBadge>{formatRelativePickNo(session.currentPickNo)}</ValueBadge>
                         <ValueBadge>
-                          방장 {ownerUserIds[session.ownerUserId] ?? `user_pk:${session.ownerUserId}`}
+                          방장 {ownerLabel}
                         </ValueBadge>
                       </div>
                       <h2 className="mt-3 text-xl font-semibold text-foreground">
@@ -477,16 +492,12 @@ export function RpsDraftListPage() {
                       <p className="mt-2 text-sm leading-7 text-muted">
                         {describeProgress(session)}
                       </p>
-                      <p className="mt-2 text-sm text-muted">{describeSchedule(session)}</p>
+                      {describeSchedule(session) ? (
+                        <p className="mt-2 text-sm text-muted">{describeSchedule(session)}</p>
+                      ) : null}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Link
-                        href={rpsDraftSessionPath(session.id)}
-                        className={settingsClassName}
-                      >
-                        세션 상세
-                      </Link>
                       <Link href={rpsDraftLivePath(session.id)} className={liveClassName}>
                         진행 화면
                       </Link>
@@ -505,7 +516,7 @@ export function RpsDraftListPage() {
         closeOnBackdropClick={false}
         closeOnEscape={false}
         title="드래프트 생성"
-        description="제목, 팀장 2명, 후보 목록을 여기서 모두 정합니다. 생성이 끝나면 바로 세션 상세로 이동합니다."
+        description="제목, 팀장 2명, 후보 목록을 여기서 모두 정합니다. 생성이 끝나면 바로 진행 화면으로 이동합니다."
         panelClassName="max-w-6xl bg-white backdrop-blur-none"
       >
         <form
@@ -669,14 +680,14 @@ export function RpsDraftListPage() {
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs leading-6 text-muted">
-                생성 전에 팀장 2명과 후보를 모두 정합니다. 생성되면 세션 상세에서
-                바로 시작만 하면 됩니다.
+                생성 전에 팀장 2명과 후보를 모두 정합니다. 생성되면 진행 화면에서
+                바로 시작하면 됩니다.
               </p>
 
               <div className="sm:min-w-72">
                 {isAuthenticated ? (
                   <Button type="submit" variant="accent" fullWidth disabled={creating}>
-                    {creating ? "생성하는 중..." : "생성하고 세션 열기"}
+                    {creating ? "생성하는 중..." : "생성하고 진행 화면 열기"}
                   </Button>
                 ) : status === "loading" ? (
                   <Button variant="outline" fullWidth disabled>

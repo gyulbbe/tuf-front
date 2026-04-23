@@ -146,7 +146,7 @@ export function DraftHistoryConsole() {
           return;
         }
 
-        logDraftHistoryIssue("세션 목록 초기 로드", error);
+        logDraftHistoryIssue("드래프트 목록 초기 로드", error);
         setNotice({
           tone: "error",
           text: readErrorMessage(error),
@@ -208,7 +208,7 @@ export function DraftHistoryConsole() {
           return;
         }
 
-        logDraftHistoryIssue("세션 상세 로드", error, { sessionId });
+        logDraftHistoryIssue("드래프트 상세 로드", error, { sessionId });
         setNotice({
           tone: "error",
           text: readErrorMessage(error),

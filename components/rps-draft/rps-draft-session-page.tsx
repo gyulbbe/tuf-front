@@ -12,6 +12,7 @@ import {
   getRpsDraftSession,
   listRpsDraftCandidates,
   registerRpsDraftCandidate,
+  searchRpsDraftUsers,
   startRpsDraftSession,
   type RpsDraftCandidate,
   type RpsDraftSessionDetail,
@@ -25,6 +26,11 @@ import {
   rpsDraftLivePath,
   rpsDraftSessionPath,
 } from "@/lib/rps-draft/routes";
+import {
+  formatRpsDraftUserId,
+  mergeRpsDraftUserIdMap,
+  resolveRpsDraftUserId,
+} from "@/lib/rps-draft/user-id-display";
 import {
   formatRace,
   formatRelativePickNo,
@@ -68,30 +74,30 @@ function describeSetupHelp(options: {
   waitingCandidateCount: number;
 }) {
   if (!options.isAuthenticated) {
-    return "로그인 후 세션 설정을 계속할 수 있습니다.";
+    return "로그인 후 드래프트 설정을 계속할 수 있습니다.";
   }
 
   if (!options.canManageSession) {
-    return "팀장과 후보 구성이 완료된 세션입니다. 진행 상황만 확인할 수 있습니다.";
+    return "팀장과 후보 구성이 완료된 드래프트입니다. 진행 상황만 확인할 수 있습니다.";
   }
 
   if (!options.isReady) {
-    return "이미 시작된 세션입니다. 진행 화면에서 계속 확인하세요.";
+    return "이미 시작된 드래프트입니다. 진행 화면에서 계속 확인하세요.";
   }
 
   if (options.teamCount !== 2) {
-    return "세션 팀 구성이 올바르지 않습니다. 다시 확인해 주세요.";
+    return "드래프트 팀 구성이 올바르지 않습니다. 다시 확인해 주세요.";
   }
 
   if (options.needsFallbackSetup) {
-    return "이 세션은 생성 정보가 덜 들어와 있어 시작 전에 보정이 필요합니다.";
+    return "이 드래프트는 생성 정보가 덜 들어와 있어 시작 전에 보정이 필요합니다.";
   }
 
   if (options.waitingCandidateCount === 0) {
     return "후보가 없습니다. 다시 확인해 주세요.";
   }
 
-  return "생성 시점에 팀장과 후보가 모두 확정된 세션입니다. 확인 후 바로 시작하면 됩니다.";
+  return "생성 시점에 팀장과 후보가 모두 확정된 드래프트입니다. 확인 후 바로 시작하면 됩니다.";
 }
 
 export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
@@ -99,6 +105,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
   const { isAuthenticated, status, user } = useAuth();
   const [session, setSession] = useState<RpsDraftSessionDetail | null>(null);
   const [candidates, setCandidates] = useState<RpsDraftCandidate[]>([]);
+  const [resolvedUserIds, setResolvedUserIds] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -131,7 +138,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "세션 정보를 불러오지 못했습니다.",
+              : "드래프트 정보를 불러오지 못했습니다.",
           );
         }
       } finally {
@@ -147,6 +154,97 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
       cancelled = true;
     };
   }, [sessionId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateResolvedUserIds() {
+      const knownUserIds: Record<number, string> = {};
+
+      if (user?.username && typeof user.userPk === "number") {
+        knownUserIds[user.userPk] = user.username;
+      }
+
+      if (Object.keys(knownUserIds).length > 0) {
+        setResolvedUserIds((current) =>
+          mergeRpsDraftUserIdMap(current, knownUserIds),
+        );
+      }
+
+      if (!session) {
+        return;
+      }
+
+      const unresolvedTargets = new Map<number, string>();
+
+      const addUnresolvedTarget = (
+        userPk: number | null | undefined,
+        fallbackText: string | null | undefined,
+      ) => {
+        if (typeof userPk !== "number" || !fallbackText?.trim()) {
+          return;
+        }
+
+        if (knownUserIds[userPk] || resolvedUserIds[userPk]) {
+          return;
+        }
+
+        unresolvedTargets.set(userPk, fallbackText);
+      };
+
+      addUnresolvedTarget(session.ownerUserId, session.ownerName);
+
+      for (const team of session.teams) {
+        addUnresolvedTarget(team.pickerUserId, team.pickerName);
+      }
+
+      for (const candidate of candidates) {
+        addUnresolvedTarget(candidate.candidateUserId, candidate.candidateName);
+      }
+
+      if (unresolvedTargets.size === 0) {
+        return;
+      }
+
+      const resolvedEntries = await Promise.all(
+        Array.from(unresolvedTargets.entries()).map(async ([userPk, keyword]) => {
+          try {
+            const users = await searchRpsDraftUsers(keyword, 8);
+            return [
+              userPk,
+              resolveRpsDraftUserId(userPk, keyword, users),
+            ] as const;
+          } catch {
+            return [userPk, null] as const;
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const nextResolvedUserIds: Record<number, string> = {};
+
+      for (const [userPk, resolvedUserId] of resolvedEntries) {
+        if (resolvedUserId) {
+          nextResolvedUserIds[userPk] = resolvedUserId;
+        }
+      }
+
+      if (Object.keys(nextResolvedUserIds).length > 0) {
+        setResolvedUserIds((current) =>
+          mergeRpsDraftUserIdMap(current, nextResolvedUserIds),
+        );
+      }
+    }
+
+    void hydrateResolvedUserIds();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [candidates, resolvedUserIds, session, user?.userPk, user?.username]);
 
   async function refreshPage(message?: string | null) {
     const [nextSession, nextCandidates] = await Promise.all([
@@ -224,7 +322,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
       setActionMessage(
         startError instanceof Error
           ? startError.message
-          : "세션을 시작하지 못했습니다.",
+          : "드래프트를 시작하지 못했습니다.",
       );
       setPendingAction(null);
     }
@@ -284,9 +382,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
               ) : null}
               {session ? (
                 <ValueBadge>
-                  방장 {session.ownerUserId === user?.userPk && user?.username
-                    ? user.username
-                    : `user_pk:${session.ownerUserId}`}
+                  방장 {formatRpsDraftUserId(session.ownerUserId, resolvedUserIds)}
                 </ValueBadge>
               ) : null}
             </div>
@@ -341,16 +437,16 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
 
       {loading ? (
         <div className="rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
-          세션 정보를 불러오는 중입니다.
+          드래프트 정보를 불러오는 중입니다.
         </div>
       ) : session ? (
         <>
           {needsFallbackSetup ? (
             <SurfaceCard className="border-amber-300/40 bg-amber-100 p-5">
               <p className="text-sm font-medium text-amber-900">
-                이 세션은 예전 흐름으로 만들어져 팀장 또는 후보 정보가 비어 있습니다.
+                이 드래프트는 예전 흐름으로 만들어져 팀장 또는 후보 정보가 비어 있습니다.
                 기본 경로는 생성 화면에서 팀장 2명과 후보를 모두 정하고 들어오는
-                방식이며, 아래 보정 UI는 기존 세션을 살리기 위한 예외 처리입니다.
+                방식이며, 아래 보정 UI는 기존 드래프트를 살리기 위한 예외 처리입니다.
               </p>
             </SurfaceCard>
           ) : null}
@@ -370,7 +466,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                   </div>
 
                   <p className="mt-3 text-sm text-muted">
-                    팀장 {team.pickerName || "지정 안 됨"}
+                    팀장 {formatRpsDraftUserId(team.pickerUserId, resolvedUserIds)}
                   </p>
 
                   {needsFallbackSetup ? (
@@ -378,7 +474,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                       <div className="mt-5 space-y-3">
                         <RpsDraftUserSearch
                           label="팀장 검색"
-                          description="기존 세션 보정을 위해 비어 있는 팀장만 지정합니다."
+                          description="기존 드래프트 보정을 위해 비어 있는 팀장만 지정합니다."
                           selectedUser={selectedPickers[team.id] ?? null}
                           onSelect={(nextUser) => {
                             setSelectedPickers((current) => ({
@@ -422,7 +518,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                 <h2 className="text-xl font-semibold text-foreground">후보 목록</h2>
                 <p className="mt-3 text-sm leading-7 text-muted">
                   {needsFallbackSetup
-                    ? "기존 세션의 누락된 후보만 보정합니다. 새 세션은 생성 화면에서 후보를 모두 고르고 들어옵니다."
+                    ? "기존 드래프트의 누락된 후보만 보정합니다. 새 드래프트는 생성 화면에서 후보를 모두 고르고 들어옵니다."
                     : "생성 화면에서 선택한 후보들입니다. 시작 전 후보 구성을 한 번 더 확인하세요."}
                 </p>
               </div>
@@ -433,7 +529,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
               <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
                 <RpsDraftUserSearch
                   label="팀원 검색"
-                  description="기존 세션 보정을 위해 누락된 후보를 추가합니다."
+                  description="기존 드래프트 보정을 위해 누락된 후보를 추가합니다."
                   selectedUser={candidateUser}
                   onSelect={(nextUser) => {
                     setCandidateUser(nextUser);
@@ -485,7 +581,10 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-semibold text-foreground">
-                            {candidate.candidateName}
+                            {formatRpsDraftUserId(
+                              candidate.candidateUserId,
+                              resolvedUserIds,
+                            )}
                           </span>
                           <StatusBadge status={candidate.status} />
                           <ValueBadge>{formatRace(candidate.race)}</ValueBadge>

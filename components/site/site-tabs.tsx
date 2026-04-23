@@ -12,6 +12,23 @@ type SiteTabsProps = {
   tabs: SiteTab[];
 };
 
+function describeElement(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  return {
+    tagName: target.tagName,
+    id: target.id || null,
+    className:
+      typeof target.className === "string"
+        ? target.className.slice(0, 160)
+        : String(target.className),
+    text: target.textContent?.trim().slice(0, 80) ?? "",
+    dataset: { ...target.dataset },
+  };
+}
+
 function isPathActive(pathname: string, href?: string) {
   if (!href) {
     return false;
@@ -203,11 +220,52 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
   const { user } = useAuth();
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
+  const openMenuKeyRef = useRef<string | null>(null);
   const canSeeAdminTab = isAdminRole(user?.role);
   const visibleTabs = filterVisibleTabs(tabs, canSeeAdminTab);
 
   useEffect(() => {
+    openMenuKeyRef.current = openMenuKey;
+  }, [openMenuKey]);
+
+  useEffect(() => {
+    console.debug("[SiteTabs] pathname changed -> close menu", {
+      pathname,
+      previousOpenMenuKey: openMenuKeyRef.current,
+    });
     setOpenMenuKey(null);
+  }, [pathname]);
+
+  useEffect(() => {
+    function handleDocumentPointerDown(event: PointerEvent) {
+      const topElement = document.elementFromPoint(event.clientX, event.clientY);
+      const overlayElements = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-overlay-dialog-root='true']"),
+      ).map((element) => ({
+        title: element.dataset.overlayDialogTitle ?? null,
+        display: window.getComputedStyle(element).display,
+        visibility: window.getComputedStyle(element).visibility,
+      }));
+
+      console.debug("[SiteTabs] document pointerdown", {
+        pathname,
+        openMenuKey: openMenuKeyRef.current,
+        pointer: {
+          x: event.clientX,
+          y: event.clientY,
+        },
+        target: describeElement(event.target),
+        topElement: describeElement(topElement),
+        insideNav: navRef.current?.contains(event.target as Node) ?? false,
+        overlayElements,
+      });
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+    };
   }, [pathname]);
 
   useEffect(() => {
@@ -217,9 +275,19 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
 
     function handlePointerDown(event: PointerEvent) {
       if (navRef.current?.contains(event.target as Node)) {
+        console.debug("[SiteTabs] outside-close skipped: pointer inside nav", {
+          pathname,
+          openMenuKey,
+          target: describeElement(event.target),
+        });
         return;
       }
 
+      console.debug("[SiteTabs] outside-close: pointer outside nav", {
+        pathname,
+        openMenuKey,
+        target: describeElement(event.target),
+      });
       setOpenMenuKey(null);
     }
 
@@ -230,11 +298,20 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
   }, [openMenuKey]);
 
   function closeMenus() {
+    console.debug("[SiteTabs] closeMenus()", {
+      pathname,
+      openMenuKey: openMenuKeyRef.current,
+    });
     setOpenMenuKey(null);
   }
 
   return (
-    <nav ref={navRef} className="flex flex-wrap gap-2" aria-label="Primary tabs">
+    <nav
+      ref={navRef}
+      className="flex flex-wrap gap-2"
+      aria-label="Primary tabs"
+      data-site-tabs-root="true"
+    >
       {visibleTabs.map((tab) => {
         const menuKey = tab.href ?? tab.label;
         const hasItems = Boolean(tab.items?.length);
@@ -269,7 +346,14 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
               label={tab.label}
               description={tab.description}
               className={tabClassName}
-              onClick={closeMenus}
+              onClick={() => {
+                console.debug("[SiteTabs] top-level tab click", {
+                  label: tab.label,
+                  href: tab.href ?? null,
+                  pathname,
+                });
+                closeMenus();
+              }}
             />
           );
         }
@@ -280,11 +364,21 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
             className="relative flex flex-col"
             onMouseEnter={() => {
               if (hasItems) {
+                console.debug("[SiteTabs] mouse enter menu", {
+                  label: tab.label,
+                  menuKey,
+                  pathname,
+                });
                 setOpenMenuKey(menuKey);
               }
             }}
             onMouseLeave={() => {
               if (hasItems) {
+                console.debug("[SiteTabs] mouse leave menu", {
+                  label: tab.label,
+                  menuKey,
+                  pathname,
+                });
                 setOpenMenuKey((current) => (current === menuKey ? null : current));
               }
             }}
@@ -296,7 +390,15 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                   label={tab.label}
                   description={tab.description}
                   className={tabClassName}
-                  onClick={closeMenus}
+                  onClick={() => {
+                    console.debug("[SiteTabs] parent tab click", {
+                      label: tab.label,
+                      href: tab.href ?? null,
+                      pathname,
+                      openMenuKey: openMenuKeyRef.current,
+                    });
+                    closeMenus();
+                  }}
                 />
               ) : (
                 <TabTrigger
@@ -305,6 +407,12 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                   className={tabClassName}
                   isOpen={isMenuOpen}
                   onClick={() => {
+                    console.debug("[SiteTabs] trigger toggle", {
+                      label: tab.label,
+                      menuKey,
+                      pathname,
+                      nextOpen: openMenuKey !== menuKey,
+                    });
                     setOpenMenuKey((current) => (current === menuKey ? null : menuKey));
                   }}
                 />
@@ -320,6 +428,12 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                     isMenuOpen && "border-accent bg-accent-soft text-accent-ink",
                   )}
                   onClick={() => {
+                    console.debug("[SiteTabs] mobile submenu toggle", {
+                      label: tab.label,
+                      menuKey,
+                      pathname,
+                      nextOpen: openMenuKey !== menuKey,
+                    });
                     setOpenMenuKey((current) => (current === menuKey ? null : menuKey));
                   }}
                 >
@@ -341,7 +455,16 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                       key={item.href ?? item.label}
                       item={item}
                       isActive={!item.external && isPathActive(pathname, item.href)}
-                      onClick={closeMenus}
+                      onClick={() => {
+                        console.debug("[SiteTabs] sub tab click", {
+                          parentLabel: tab.label,
+                          label: item.label,
+                          href: item.href ?? null,
+                          pathname,
+                          openMenuKey: openMenuKeyRef.current,
+                        });
+                        closeMenus();
+                      }}
                     />
                   ))}
                 </div>

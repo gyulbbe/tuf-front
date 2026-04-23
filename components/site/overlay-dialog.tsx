@@ -55,14 +55,24 @@ export function OverlayDialog({
 
   return createPortal(
     <div
+      data-overlay-dialog-root="true"
+      data-overlay-dialog-title={title}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/28 px-3 py-3 backdrop-blur-[2px] sm:px-6 sm:py-6"
       onClick={() => {
+        console.debug("[OverlayDialog] backdrop click", {
+          title,
+          closeOnBackdropClick,
+          closeOnEscape,
+          open,
+        });
         if (closeOnBackdropClick) {
           onClose();
         }
       }}
     >
       <div
+        data-overlay-dialog-panel="true"
+        data-overlay-dialog-title={title}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -70,7 +80,20 @@ export function OverlayDialog({
           "flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden rounded-[28px] border border-line bg-surface p-6 shadow-[0_24px_80px_-40px_rgba(31,42,40,0.7)] backdrop-blur-xl sm:max-h-[calc(100dvh-3rem)]",
           panelClassName || "max-w-lg",
         )}
-        onClick={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          console.debug("[OverlayDialog] panel click", {
+            title,
+            target:
+              event.target instanceof HTMLElement
+                ? {
+                    tagName: event.target.tagName,
+                    className: event.target.className,
+                    text: event.target.textContent?.trim().slice(0, 80) ?? "",
+                  }
+                : null,
+          });
+          event.stopPropagation();
+        }}
       >
         <div className="flex items-start justify-between gap-4 border-b border-line/80 pb-5">
           <div>

@@ -493,6 +493,39 @@ function createInitialTeamEdits(detail: DraftSessionDetail) {
   return nextState;
 }
 
+function getAssignedPickerUserIds(teams: DraftLiveTeam[]) {
+  return Array.from(
+    new Set(
+      teams.flatMap((team) =>
+        typeof team.pickerUserId === "number" ? [team.pickerUserId] : [],
+      ),
+    ),
+  );
+}
+
+function getRegisteredCandidateUserIds(candidates: DraftCandidate[], picks: DraftPick[]) {
+  return Array.from(
+    new Set([
+      ...candidates.map((candidate) => candidate.candidateUserId),
+      ...picks.map((pick) => pick.candidateUserId),
+    ]),
+  );
+}
+
+function buildBlockedPickerUserIds(
+  teamId: number,
+  teams: DraftLiveTeam[],
+  candidates: DraftCandidate[],
+  picks: DraftPick[],
+) {
+  const registeredCandidateUserIds = getRegisteredCandidateUserIds(candidates, picks);
+  const otherTeamPickerUserIds = teams.flatMap((team) =>
+    team.id !== teamId && typeof team.pickerUserId === "number" ? [team.pickerUserId] : [],
+  );
+
+  return Array.from(new Set([...registeredCandidateUserIds, ...otherTeamPickerUserIds]));
+}
+
 function getOrderGenerationTargetCount(candidates: DraftCandidate[]) {
   return candidates.filter((candidate) => candidate.status !== "EXCLUDED").length;
 }
@@ -910,39 +943,36 @@ function TeamPickerManager({
   draftTeam,
   lookupState,
   pendingAction,
+  excludedUserIds = [],
   onChangeLookup,
   onAssignPicker,
 }: {
   draftTeam: DraftLiveTeam;
   lookupState: TeamPickerLookupState;
   pendingAction: string | null;
+  excludedUserIds?: readonly number[];
   onChangeLookup: (teamId: number, patch: Partial<TeamPickerLookupState>) => void;
   onAssignPicker: (teamId: number) => Promise<void>;
 }) {
   const isAssignPending = pendingAction === `picker-assign:${draftTeam.id}`;
 
   return (
-    <article className="rounded-[28px] border border-line bg-surface-strong px-5 py-5 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
+    <article className="rounded-[24px] border border-line bg-surface-strong px-4 py-4 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-lg font-semibold text-foreground">{draftTeam.teamName}</p>
+          <p className="text-base font-semibold text-foreground">{draftTeam.teamName}</p>
           <p className="mt-1 text-sm text-muted">displayOrder {draftTeam.displayOrder}</p>{/*
             displayOrder {draftTeam.displayOrder} · teamId {draftTeam.id}
           */}
         </div>
-        <div className="rounded-[20px] bg-surface px-4 py-3 text-xs leading-6 text-muted">
-          <p>픽커</p>
-          <p className="font-semibold text-foreground">
-            {draftTeam.pickerName ? "지정됨" : "미지정"}
-          </p>
-        </div>
       </div>
 
-      <div className="mt-5 rounded-[24px] border border-line bg-surface px-4 py-4">
+      <div className="mt-4 rounded-[20px] border border-line bg-surface px-3 py-3">
         <div className="grid gap-3">
           <UserAutocompleteInput
             disabled={pendingAction !== null}
             value={lookupState.query}
+            excludedUserIds={excludedUserIds}
             placeholder="아이디 검색"
             onValueChange={(value) => {
               onChangeLookup(draftTeam.id, {
@@ -960,65 +990,15 @@ function TeamPickerManager({
             }}
           />
 
-          <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
-            {lookupState.selectedUser ? (
-              <>
-                <p className="font-semibold text-foreground">
-                  선택한 아이디: {lookupState.selectedUser.userId}
-                </p>
-                <p className="mt-1">이 유저를 현재 팀의 픽커로 지정한다.</p>
-              </>
-            ) : lookupState.pickerUserId ? (
-              <>
-                <p className="font-semibold text-foreground">
-                  수동 입력한 pickerUserId가 있다.
-                </p>
-                <p className="mt-1">검색 결과가 없으면 아래 직접 입력 흐름을 써도 된다.</p>
-              </>
-            ) : (
-              <>
-                <p className="font-semibold text-foreground">
-                  팀마다 픽커는 1명만 가진다.
-                </p>
-              </>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              className="text-xs font-semibold text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
-              disabled={pendingAction !== null}
-              onClick={() => {
-                onChangeLookup(draftTeam.id, {
-                  showManualIdInput: !lookupState.showManualIdInput,
-                });
-              }}
-            >
-              {lookupState.showManualIdInput
-                ? "직접 입력 접기"
-                : "검색이 안 되면 pickerUserId 직접 입력"}
-            </button>
-          </div>
-
-          {lookupState.showManualIdInput ? (
-            <Input
-              disabled={pendingAction !== null}
-              value={lookupState.pickerUserId}
-              onChange={(event) => {
-                onChangeLookup(draftTeam.id, {
-                  pickerUserId: event.target.value,
-                  selectedUser: null,
-                });
-              }}
-              placeholder="pickerUserId 직접 입력"
-            />
+          {lookupState.selectedUser ? (
+            <div className="rounded-[18px] bg-surface-muted px-3 py-3 text-sm text-muted">
+              <p className="font-semibold text-foreground">
+                선택한 아이디: {lookupState.selectedUser.userId}
+              </p>
+            </div>
           ) : null}
 
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
-              현재 팀 응답 기준 필드: pickerUserId / pickerName
-            </div>
             <Button
               variant="accent"
               className="whitespace-nowrap"
@@ -1027,13 +1007,13 @@ function TeamPickerManager({
                 void onAssignPicker(draftTeam.id);
               }}
             >
-              {isAssignPending ? "지정 중" : "픽커 지정"}
+              {isAssignPending ? "적용 중" : "적용"}
             </Button>
           </div>
         </div>
 
         {lookupState.selectedUser ? (
-          <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
+          <div className="mt-3 rounded-[18px] bg-surface-muted px-3 py-3">
             <p className="text-sm font-semibold text-foreground">순서</p><p className="hidden">
               선택됨: {lookupState.selectedUser.userId}
             </p>
@@ -1048,10 +1028,6 @@ function TeamPickerManager({
               {lookupState.selectedUser.race
                 ? ` · ${lookupState.selectedUser.race}`
                 : ""}
-            </p>
-            <p className="mt-2 text-xs leading-6 text-muted">
-              검색한 아이디 기준으로 pickerUserId {lookupState.selectedUser.id}가
-              자동 선택됐다.
             </p>
           </div>
         ) : null}
@@ -1182,36 +1158,33 @@ function TeamPickerManagerClean({
   draftTeam,
   lookupState,
   pendingAction,
+  excludedUserIds = [],
   onChangeLookup,
   onAssignPicker,
 }: {
   draftTeam: DraftLiveTeam;
   lookupState: TeamPickerLookupState;
   pendingAction: string | null;
+  excludedUserIds?: readonly number[];
   onChangeLookup: (teamId: number, patch: Partial<TeamPickerLookupState>) => void;
   onAssignPicker: (teamId: number) => Promise<void>;
 }) {
   const isAssignPending = pendingAction === `picker-assign:${draftTeam.id}`;
 
   return (
-    <article className="rounded-[28px] border border-line bg-surface-strong px-5 py-5 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
+    <article className="rounded-[24px] border border-line bg-surface-strong px-4 py-4 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-lg font-semibold text-foreground">{draftTeam.teamName}</p>
-        </div>
-        <div className="rounded-[20px] bg-surface px-4 py-3 text-xs leading-6 text-muted">
-          <p>픽커</p>
-          <p className="font-semibold text-foreground">
-            {draftTeam.pickerName ? "지정됨" : "미지정"}
-          </p>
+          <p className="text-base font-semibold text-foreground">{draftTeam.teamName}</p>
         </div>
       </div>
 
-      <div className="mt-5 rounded-[24px] border border-line bg-surface px-4 py-4">
+      <div className="mt-4 rounded-[20px] border border-line bg-surface px-3 py-3">
         <div className="grid gap-3">
           <UserAutocompleteInput
             disabled={pendingAction !== null}
             value={lookupState.query}
+            excludedUserIds={excludedUserIds}
             placeholder="아이디 검색"
             onValueChange={(value) => {
               onChangeLookup(draftTeam.id, {
@@ -1229,61 +1202,15 @@ function TeamPickerManagerClean({
             }}
           />
 
-          <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
-            {lookupState.selectedUser ? (
-              <>
-                <p className="font-semibold text-foreground">
-                  선택한 아이디: {lookupState.selectedUser.userId}
-                </p>
-                <p className="mt-1">이 유저를 현재 팀의 픽커로 지정한다.</p>
-              </>
-            ) : lookupState.pickerUserId ? (
-              <>
-                <p className="font-semibold text-foreground">직접 입력한 값이 있다.</p>
-                <p className="mt-1">검색 결과가 없으면 아래 입력칸에 직접 넣을 수 있다.</p>
-              </>
-            ) : (
-              <>
-                <p className="font-semibold text-foreground">
-                  팀마다 픽커는 1명만 지정할 수 있다.
-                </p>
-              </>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              className="text-xs font-semibold text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
-              disabled={pendingAction !== null}
-              onClick={() => {
-                onChangeLookup(draftTeam.id, {
-                  showManualIdInput: !lookupState.showManualIdInput,
-                });
-              }}
-            >
-              {lookupState.showManualIdInput ? "직접 입력 닫기" : "검색이 안 되면 직접 입력"}
-            </button>
-          </div>
-
-          {lookupState.showManualIdInput ? (
-            <Input
-              disabled={pendingAction !== null}
-              value={lookupState.pickerUserId}
-              onChange={(event) => {
-                onChangeLookup(draftTeam.id, {
-                  pickerUserId: event.target.value,
-                  selectedUser: null,
-                });
-              }}
-              placeholder="픽커 값 직접 입력"
-            />
+          {lookupState.selectedUser ? (
+            <div className="rounded-[18px] bg-surface-muted px-3 py-3 text-sm text-muted">
+              <p className="font-semibold text-foreground">
+                선택한 아이디: {lookupState.selectedUser.userId}
+              </p>
+            </div>
           ) : null}
 
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="rounded-[20px] bg-surface-muted px-4 py-4 text-sm text-muted">
-              선택한 유저를 이 팀의 픽커로 지정한다.
-            </div>
             <Button
               variant="accent"
               className="whitespace-nowrap"
@@ -1292,13 +1219,13 @@ function TeamPickerManagerClean({
                 void onAssignPicker(draftTeam.id);
               }}
             >
-              {isAssignPending ? "지정 중" : "픽커 지정"}
+              {isAssignPending ? "적용 중" : "적용"}
             </Button>
           </div>
         </div>
 
         {lookupState.selectedUser ? (
-          <div className="mt-4 rounded-[20px] bg-surface-muted px-4 py-4">
+          <div className="mt-3 rounded-[18px] bg-surface-muted px-3 py-3">
             <p className="text-sm font-semibold text-foreground">선택한 유저</p>
             <p className="mt-1 text-sm text-muted">
               {lookupState.selectedUser.userId}
@@ -1308,9 +1235,6 @@ function TeamPickerManagerClean({
               {lookupState.selectedUser.race
                 ? ` · ${lookupState.selectedUser.race}`
                 : ""}
-            </p>
-            <p className="mt-2 text-xs leading-6 text-muted">
-              검색한 아이디 기준으로 이 유저가 자동 선택됐다.
             </p>
           </div>
         ) : null}
@@ -1507,18 +1431,15 @@ export function DraftAdminConsole({
     .join("|");
   const sortedOrders = selectedSessionDetail ? sortOrders(selectedSessionDetail.orders) : [];
   const sortedPicks = selectedSessionDetail ? sortPicks(selectedSessionDetail.picks) : [];
+  const assignedPickerUserIds = getAssignedPickerUserIds(sortedTeams);
+  const registeredCandidateUserIds = getRegisteredCandidateUserIds(
+    sortedCandidates,
+    sortedPicks,
+  );
   const blockedCandidateUserIds = Array.from(
     new Set([
-      ...sortedTeams.flatMap((team) =>
-        typeof team.pickerUserId === "number" ? [team.pickerUserId] : [],
-      ),
-      ...sortedCandidates
-        .filter(
-          (candidate) =>
-            candidate.status === "PICKED" || candidate.pickedDraftTeamId !== null,
-        )
-        .map((candidate) => candidate.candidateUserId),
-      ...sortedPicks.map((pick) => pick.candidateUserId),
+      ...assignedPickerUserIds,
+      ...registeredCandidateUserIds,
     ]),
   );
   const pickerTeamCount = sortedTeams.filter((team) => team.pickerUserId).length;
@@ -2093,6 +2014,18 @@ export function DraftAdminConsole({
         return;
       }
 
+      if (registeredCandidateUserIds.includes(pickerUserId)) {
+        throw new Error("드래프트 인원으로 등록된 유저는 픽커로 지정할 수 없다.");
+      }
+
+      if (
+        sortedTeams.some(
+          (item) => item.id !== teamId && item.pickerUserId === pickerUserId,
+        )
+      ) {
+        throw new Error("이미 다른 팀에 지정된 픽커다.");
+      }
+
       await assignDraftPicker(teamId, pickerUserId);
       await refreshSelectedSession(selectedSessionId);
       setNotice({
@@ -2127,7 +2060,7 @@ export function DraftAdminConsole({
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setNotice({
         tone: "error",
-        text: "픽커나 이미 뽑힌 사람은 후보 선수로 추가할 수 없습니다.",
+        text: "픽커이거나 이미 등록된 드래프트 인원은 추가할 수 없다.",
       });
       return;
     }
@@ -2633,6 +2566,12 @@ export function DraftAdminConsole({
                   draftTeam={team}
                   lookupState={teamLookups[team.id] ?? createEmptyTeamLookupState()}
                   pendingAction={pendingAction}
+                  excludedUserIds={buildBlockedPickerUserIds(
+                    team.id,
+                    sortedTeams,
+                    sortedCandidates,
+                    sortedPicks,
+                  )}
                   onChangeLookup={updateLookup}
                   onAssignPicker={handleAssignPicker}
                 />

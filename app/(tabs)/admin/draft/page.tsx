@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { AdminProleagueWorkspace } from "@/components/proleague/admin-proleague-workspace";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "관리자 팀배/컨텐츠 드래프트 관리",
+  title: "관리자 드래프트 종료 이력으로 이동",
 };
 
 export default function AdminDraftPage() {
-  return <AdminProleagueWorkspace />;
+  redirect("/admin/draft/history");
 }

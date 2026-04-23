@@ -401,6 +401,74 @@ async function unwrapResponse<T>(
   }
 }
 
+async function unwrapVoidResponse(
+  request: Promise<{
+    config?: {
+      data?: unknown;
+      method?: string;
+      params?: unknown;
+      url?: string;
+    };
+    status: number;
+    data: ApiEnvelope<null> | ErrorResponseBody;
+  }>,
+  fallback: string,
+) {
+  try {
+    const response = await request;
+    const body = response.data as ApiEnvelope<null>;
+    const responseStatus =
+      typeof body.status === "number" ? body.status ?? null : response.status;
+    const normalizedResponseStatus = responseStatus ?? response.status;
+    const responseMessage = readErrorMessage(response.data, fallback);
+
+    if (response.status < 200 || response.status >= 300) {
+      throw createRpsDraftApiError(fallback, {
+        config: response.config,
+        httpStatus: response.status,
+        message: responseMessage,
+        responseData: response.data,
+        responseStatus: normalizedResponseStatus,
+      });
+    }
+
+    if (normalizedResponseStatus !== 200) {
+      throw createRpsDraftApiError(fallback, {
+        config: response.config,
+        httpStatus: response.status,
+        message: responseMessage,
+        responseData: response.data,
+        responseStatus: normalizedResponseStatus,
+      });
+    }
+  } catch (error) {
+    if (isRpsDraftApiError(error)) {
+      throw error;
+    }
+
+    if (axios.isAxiosError(error)) {
+      throw createRpsDraftApiError(fallback, {
+        config: error.config,
+        httpStatus: error.response?.status ?? null,
+        message: readErrorMessage(error.response?.data, error.message || fallback),
+        responseData: error.response?.data ?? null,
+        responseStatus:
+          typeof error.response?.data?.status === "number"
+            ? error.response.data.status
+            : null,
+      });
+    }
+
+    if (error instanceof Error) {
+      throw createRpsDraftApiError(fallback, {
+        message: error.message,
+      });
+    }
+
+    throw createRpsDraftApiError(fallback, {});
+  }
+}
+
 export async function listRpsDraftSessions() {
   return unwrapResponse(
     apiClient.get<ApiEnvelope<RpsDraftSessionSummary[]>>("/rps-drafts/sessions", {
@@ -439,6 +507,15 @@ export async function getRpsDraftSession(sessionId: number) {
   );
 
   return normalizeSessionDetail(detail);
+}
+
+export async function deleteRpsDraftSession(sessionId: number) {
+  return unwrapVoidResponse(
+    apiClient.delete<ApiEnvelope<null>>(`/rps-drafts/sessions/${sessionId}`, {
+      validateStatus: () => true,
+    }),
+    "가위바위보 드래프트를 삭제하지 못했습니다.",
+  );
 }
 
 export async function listRpsDraftTeams(sessionId: number) {

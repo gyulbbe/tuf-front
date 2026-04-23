@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   createRpsDraftSession,
+  deleteRpsDraftSession,
   listRpsDraftSessions,
   type RpsDraftSessionSummary,
   type RpsDraftUserSearchResult,
@@ -153,6 +154,7 @@ export function RpsDraftListPage() {
   const [error, setError] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [form, setForm] = useState<RpsDraftCreateFormState>(() =>
     createEmptyForm(buildDefaultDraftTitle(user?.username)),
@@ -288,6 +290,32 @@ export function RpsDraftListPage() {
     setIsCreateOpen(false);
   }
 
+  async function handleDeleteSession(sessionId: number, title: string) {
+    if (
+      !window.confirm(
+        [`"${title}" 드래프트를 삭제할까?`, "", "삭제 후에는 되돌릴 수 없다."].join("\n"),
+      )
+    ) {
+      return;
+    }
+
+    setDeletingSessionId(sessionId);
+    setError(null);
+
+    try {
+      await deleteRpsDraftSession(sessionId);
+      setSessions((current) => current.filter((session) => session.id !== sessionId));
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "드래프트를 삭제하지 못했습니다.",
+      );
+    } finally {
+      setDeletingSessionId(null);
+    }
+  }
+
   const activeSessions = filterActiveSessions(sessions);
   const loginHref = buildLoginHref({ redirectTo: rpsDraftListPath() });
   const candidateIds = form.candidates.map((candidate) => candidate.id);
@@ -385,6 +413,17 @@ export function RpsDraftListPage() {
                       <Link href={rpsDraftLivePath(session.id)} className={liveClassName}>
                         진행 화면
                       </Link>
+                      {canManage ? (
+                        <Button
+                          variant="danger"
+                          disabled={deletingSessionId === session.id}
+                          onClick={() => {
+                            void handleDeleteSession(session.id, session.title);
+                          }}
+                        >
+                          {deletingSessionId === session.id ? "삭제 중" : "삭제"}
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 </SurfaceCard>

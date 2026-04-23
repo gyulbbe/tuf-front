@@ -60,12 +60,6 @@ export const siteTabs: SiteTab[] = [
     requiresAdmin: true,
     items: [
       {
-        label: "드래프트 관리",
-        href: "/admin/draft",
-        description: "드래프트 등록과 운영을 관리합니다.",
-        requiresAdmin: true,
-      },
-      {
         label: "드래프트 이력",
         href: "/admin/draft/history",
         description: "종료된 드래프트 기록을 확인합니다.",

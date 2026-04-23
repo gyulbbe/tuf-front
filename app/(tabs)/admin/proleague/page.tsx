@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 
 export default async function AdminProleaguePage() {
   await requireServerAuth("/admin/draft");
-  redirect("/admin/draft");
+  redirect("/admin/draft/history");
 }

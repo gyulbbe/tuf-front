@@ -28,6 +28,19 @@ function isPathActive(pathname: string, href?: string) {
   return pathname.startsWith(`${href}/`);
 }
 
+function findBestMatchingSubTab(
+  pathname: string,
+  items: SiteSubTab[] | undefined,
+) {
+  if (!items?.length) {
+    return null;
+  }
+
+  return items
+    .filter((item) => !item.external && isPathActive(pathname, item.href))
+    .sort((left, right) => (right.href?.length ?? 0) - (left.href?.length ?? 0))[0] ?? null;
+}
+
 function buildTabClassName(isActive: boolean) {
   return cn(
     "rounded-full px-4 py-2 text-sm transition-colors",
@@ -238,14 +251,11 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
       {visibleTabs.map((tab) => {
         const menuKey = tab.href ?? tab.label;
         const hasItems = Boolean(tab.items?.length);
+        const activeSubTab = findBestMatchingSubTab(pathname, tab.items);
         const isCurrentTabActive =
           !tab.external &&
           (isPathActive(pathname, tab.href) ||
-            Boolean(
-              tab.items?.some(
-                (item) => !item.external && isPathActive(pathname, item.href),
-              ),
-            ));
+            Boolean(activeSubTab));
         const isMenuOpen = hasItems && openMenuKey === menuKey;
         const tabClassName = buildTabClassName(isCurrentTabActive);
 
@@ -340,7 +350,7 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                     <SubTabItem
                       key={item.href ?? item.label}
                       item={item}
-                      isActive={!item.external && isPathActive(pathname, item.href)}
+                      isActive={!item.external && activeSubTab?.href === item.href}
                       onClick={closeMenus}
                     />
                   ))}

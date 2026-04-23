@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function AdminDraftLivePage() {
-  redirect("/admin/draft");
+  redirect("/admin/draft/history");
 }

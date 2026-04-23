@@ -480,6 +480,19 @@ function createInitialTeamLookups(detail: DraftSessionDetail) {
   return nextState;
 }
 
+function createNextTeamLookups(
+  detail: DraftSessionDetail,
+  current: Record<number, TeamPickerLookupState>,
+) {
+  const nextState: Record<number, TeamPickerLookupState> = {};
+
+  for (const team of detail.teams) {
+    nextState[team.id] = current[team.id] ?? createEmptyTeamLookupState();
+  }
+
+  return nextState;
+}
+
 function createInitialTeamEdits(detail: DraftSessionDetail) {
   const nextState: Record<number, TeamEditState> = {};
 
@@ -677,8 +690,9 @@ function UserAutocompleteInput({
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const blurTimeoutRef = useRef<number | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const selectedValueRef = useRef<string | null>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visibleResults = filterAutocompleteUsers(results, excludedUserIds);
 
   useEffect(() => {
@@ -752,12 +766,48 @@ function UserAutocompleteInput({
   }, [value]);
 
   useEffect(() => {
-    return () => {
-      if (blurTimeoutRef.current !== null) {
-        window.clearTimeout(blurTimeoutRef.current);
+    if (!isOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        closeDropdown();
       }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
     };
-  }, []);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    if (visibleResults.length === 0) {
+      if (activeIndex !== -1) {
+        setActiveIndex(-1);
+      }
+      return;
+    }
+
+    if (activeIndex < 0 || activeIndex >= visibleResults.length) {
+      setActiveIndex(0);
+    }
+  }, [activeIndex, isOpen, visibleResults]);
+
+  useEffect(() => {
+    if (!isOpen || activeIndex < 0) {
+      return;
+    }
+
+    itemRefs.current[activeIndex]?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [activeIndex, isOpen, visibleResults]);
 
   function closeDropdown() {
     setIsOpen(false);
@@ -772,7 +822,10 @@ function UserAutocompleteInput({
   }
 
   return (
-    <div className="relative">
+    <div
+      ref={rootRef}
+      className={cn("relative", isOpen ? "z-[70]" : "z-0")}
+    >
       <Input
         value={value}
         disabled={disabled}
@@ -785,11 +838,6 @@ function UserAutocompleteInput({
           if (value.trim()) {
             setIsOpen(true);
           }
-        }}
-        onBlur={() => {
-          blurTimeoutRef.current = window.setTimeout(() => {
-            closeDropdown();
-          }, 120);
         }}
         onKeyDown={(event) => {
           const highlightedUser =
@@ -856,7 +904,7 @@ function UserAutocompleteInput({
       {loading ? <p className="mt-2 text-xs text-muted">검색 중...</p> : null}
 
       {isOpen && value.trim() ? (
-        <div className="absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-[20px] border border-line bg-surface shadow-[0_18px_60px_-40px_rgba(31,42,40,0.7)]">
+        <div className="absolute left-0 right-0 z-[80] mt-2 overflow-hidden rounded-[20px] border border-line bg-white shadow-[0_18px_60px_-40px_rgba(31,42,40,0.7)]">
           <div className="border-b border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
             아이디 검색 결과
           </div>
@@ -868,22 +916,41 @@ function UserAutocompleteInput({
                 <button
                   key={`${user.id}:${user.userId}`}
                   type="button"
+                  ref={(node) => {
+                    itemRefs.current[index] = node;
+                  }}
+                  aria-selected={index === activeIndex}
                   className={cn(
-                    "flex w-full items-start justify-between gap-3 px-3 py-2 text-left transition-colors",
+                    "mx-1 flex w-[calc(100%-0.5rem)] items-start justify-between gap-3 rounded-2xl border px-3 py-2 text-left transition-colors",
                     index === activeIndex
-                      ? "bg-surface-strong"
-                      : "hover:bg-surface-strong",
+                      ? "border-accent-soft bg-accent-soft/60 shadow-sm"
+                      : "border-transparent hover:bg-surface-strong",
                   )}
+                  onMouseMove={() => {
+                    if (activeIndex !== index) {
+                      setActiveIndex(index);
+                    }
+                  }}
                   onMouseDown={(event) => {
                     event.preventDefault();
                     selectUser(user);
                   }}
                 >
                   <div>
-                    <p className="text-sm font-semibold text-foreground">
+                    <p
+                      className={cn(
+                        "text-sm font-semibold",
+                        index === activeIndex ? "text-accent-ink" : "text-foreground",
+                      )}
+                    >
                       {user.userId}
                     </p>
                   </div>
+                  {index === activeIndex ? (
+                    <span className="rounded-full bg-white/90 px-2 py-1 text-[11px] font-semibold text-accent-ink">
+                      현재
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -952,10 +1019,12 @@ function TeamPickerManager({
   pendingAction: string | null;
   excludedUserIds?: readonly number[];
   onChangeLookup: (teamId: number, patch: Partial<TeamPickerLookupState>) => void;
-  onAssignPicker: (teamId: number) => Promise<void>;
+  onAssignPicker: (
+    teamId: number,
+    user: DraftUserSearchResult,
+    previousLookup: TeamPickerLookupState,
+  ) => Promise<void>;
 }) {
-  const isAssignPending = pendingAction === `picker-assign:${draftTeam.id}`;
-
   return (
     <article className="rounded-[24px] border border-line bg-surface-strong px-4 py-4 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -982,34 +1051,15 @@ function TeamPickerManager({
               });
             }}
             onSelect={(user) => {
+              const previousLookup = { ...lookupState };
               onChangeLookup(draftTeam.id, {
                 query: user.userId,
                 pickerUserId: String(user.id),
                 selectedUser: user,
               });
+              void onAssignPicker(draftTeam.id, user, previousLookup);
             }}
           />
-
-          {lookupState.selectedUser ? (
-            <div className="rounded-[18px] bg-surface-muted px-3 py-3 text-sm text-muted">
-              <p className="font-semibold text-foreground">
-                선택한 아이디: {lookupState.selectedUser.userId}
-              </p>
-            </div>
-          ) : null}
-
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-            <Button
-              variant="accent"
-              className="whitespace-nowrap"
-              disabled={pendingAction !== null || !lookupState.pickerUserId.trim()}
-              onClick={() => {
-                void onAssignPicker(draftTeam.id);
-              }}
-            >
-              {isAssignPending ? "적용 중" : "적용"}
-            </Button>
-          </div>
         </div>
 
         {lookupState.selectedUser ? (
@@ -1167,12 +1217,14 @@ function TeamPickerManagerClean({
   pendingAction: string | null;
   excludedUserIds?: readonly number[];
   onChangeLookup: (teamId: number, patch: Partial<TeamPickerLookupState>) => void;
-  onAssignPicker: (teamId: number) => Promise<void>;
+  onAssignPicker: (
+    teamId: number,
+    user: DraftUserSearchResult,
+    previousLookup: TeamPickerLookupState,
+  ) => Promise<void>;
 }) {
-  const isAssignPending = pendingAction === `picker-assign:${draftTeam.id}`;
-
   return (
-    <article className="rounded-[24px] border border-line bg-surface-strong px-4 py-4 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
+    <article className="relative overflow-visible rounded-[24px] border border-line bg-surface-strong px-4 py-4 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-base font-semibold text-foreground">{draftTeam.teamName}</p>
@@ -1194,34 +1246,15 @@ function TeamPickerManagerClean({
               });
             }}
             onSelect={(user) => {
+              const previousLookup = { ...lookupState };
               onChangeLookup(draftTeam.id, {
                 query: user.userId,
                 pickerUserId: String(user.id),
                 selectedUser: user,
               });
+              void onAssignPicker(draftTeam.id, user, previousLookup);
             }}
           />
-
-          {lookupState.selectedUser ? (
-            <div className="rounded-[18px] bg-surface-muted px-3 py-3 text-sm text-muted">
-              <p className="font-semibold text-foreground">
-                선택한 아이디: {lookupState.selectedUser.userId}
-              </p>
-            </div>
-          ) : null}
-
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-            <Button
-              variant="accent"
-              className="whitespace-nowrap"
-              disabled={pendingAction !== null || !lookupState.pickerUserId.trim()}
-              onClick={() => {
-                void onAssignPicker(draftTeam.id);
-              }}
-            >
-              {isAssignPending ? "적용 중" : "적용"}
-            </Button>
-          </div>
         </div>
 
         {lookupState.selectedUser ? (
@@ -1246,24 +1279,23 @@ function TeamPickerManagerClean({
 function CandidateComposerClean({
   blockedUserIds = [],
   candidateForm,
+  disabled = false,
   pendingAction,
   setCandidateForm,
   onCreate,
 }: {
   blockedUserIds?: readonly number[];
   candidateForm: CandidateFormState;
+  disabled?: boolean;
   pendingAction: string | null;
   setCandidateForm: Dispatch<SetStateAction<CandidateFormState>>;
-  onCreate: () => Promise<void>;
+  onCreate: (user: DraftUserSearchResult) => Promise<void>;
 }) {
-  const isBlockedSelection =
-    candidateForm.selectedUser !== null &&
-    blockedUserIds.includes(candidateForm.selectedUser.id);
-
   return (
     <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
       <div className="grid gap-3">
         <UserAutocompleteInput
+          disabled={disabled || pendingAction !== null}
           value={candidateForm.query}
           excludedUserIds={blockedUserIds}
           placeholder="아이디 검색"
@@ -1286,22 +1318,9 @@ function CandidateComposerClean({
               status: "WAITING",
               selectedUser: user,
             }));
+            void onCreate(user);
           }}
         />
-
-        <Button
-          variant="accent"
-          disabled={
-            pendingAction !== null ||
-            !candidateForm.selectedUser ||
-            isBlockedSelection
-          }
-          onClick={() => {
-            void onCreate();
-          }}
-        >
-          {pendingAction === "candidate-create" ? "등록 중" : "드래프트 인원 등록"}
-        </Button>
       </div>
     </div>
   );
@@ -1309,12 +1328,14 @@ function CandidateComposerClean({
 
 function CandidateRowClean({
   candidate,
+  disabled = false,
   raceLabel,
   userId,
   pendingAction,
   onDelete,
 }: {
   candidate: DraftCandidate;
+  disabled?: boolean;
   raceLabel: string;
   userId: string;
   pendingAction: string | null;
@@ -1332,7 +1353,7 @@ function CandidateRowClean({
         size="sm"
         variant="danger"
         className="h-8 rounded-full px-3 text-xs"
-        disabled={pendingAction !== null}
+        disabled={disabled || pendingAction !== null}
         onClick={() => {
           void onDelete();
         }}
@@ -1344,10 +1365,12 @@ function CandidateRowClean({
 }
 
 function CandidateTierSection({
+  disabled = false,
   group,
   pendingAction,
   onDelete,
 }: {
+  disabled?: boolean;
   group: CandidateTierGroup;
   pendingAction: string | null;
   onDelete: (candidateUserId: number) => Promise<void>;
@@ -1370,6 +1393,7 @@ function CandidateTierSection({
           <CandidateRowClean
             key={item.candidate.candidateUserId}
             candidate={item.candidate}
+            disabled={disabled}
             raceLabel={item.raceLabel}
             userId={item.userId}
             pendingAction={pendingAction}
@@ -1414,6 +1438,7 @@ export function DraftAdminConsole({
   const [candidateForm, setCandidateForm] =
     useState<CandidateFormState>(EMPTY_CANDIDATE_FORM);
   const [teamEdits, setTeamEdits] = useState<Record<number, TeamEditState>>({});
+  const [isPickerSetupReady, setIsPickerSetupReady] = useState(false);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -1442,7 +1467,11 @@ export function DraftAdminConsole({
       ...registeredCandidateUserIds,
     ]),
   );
-  const pickerTeamCount = sortedTeams.filter((team) => team.pickerUserId).length;
+  const pickerTeamCount = sortedTeams.filter(
+    (team) => teamLookups[team.id]?.selectedUser !== null,
+  ).length;
+  const allTeamPickersAssigned =
+    sortedTeams.length > 0 && pickerTeamCount === sortedTeams.length;
   const waitingCandidateCount = sortedCandidates.filter(
     (candidate) => candidate.status === "WAITING",
   ).length;
@@ -1555,6 +1584,15 @@ export function DraftAdminConsole({
     };
   }, [candidateLookupKey, selectedSessionId]);
 
+  useEffect(() => {
+    const nextReady = selectedSessionDetail !== null && allTeamPickersAssigned;
+    setIsPickerSetupReady(nextReady);
+
+    if (!nextReady) {
+      setCandidateForm(EMPTY_CANDIDATE_FORM);
+    }
+  }, [allTeamPickersAssigned, selectedSessionDetail]);
+
   function notifyChange() {
     onDataChanged?.();
   }
@@ -1601,7 +1639,7 @@ export function DraftAdminConsole({
         teamCount: String(detail.teamCount),
         pickTimeSeconds: String(detail.pickTimeSeconds),
       });
-      setTeamLookups(createInitialTeamLookups(detail));
+      setTeamLookups((current) => createNextTeamLookups(detail, current));
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setTeamEdits(createInitialTeamEdits(detail));
     });
@@ -1977,7 +2015,11 @@ export function DraftAdminConsole({
     }
   }
 
-  async function handleAssignPicker(teamId: number) {
+  async function handleAssignPicker(
+    teamId: number,
+    selectedUser: DraftUserSearchResult,
+    previousLookup: TeamPickerLookupState,
+  ) {
     if (selectedSessionId === null) {
       return;
     }
@@ -2003,7 +2045,7 @@ export function DraftAdminConsole({
     setNotice(null);
 
     try {
-      const pickerUserId = parsePositiveInt(lookup.pickerUserId, "pickerUserId");
+      const pickerUserId = selectedUser.id;
 
       if (team.pickerUserId === pickerUserId) {
         handleActionInfo("픽커 지정", "이미 이 유저가 현재 팀의 픽커다.", {
@@ -2028,11 +2070,17 @@ export function DraftAdminConsole({
 
       await assignDraftPicker(teamId, pickerUserId);
       await refreshSelectedSession(selectedSessionId);
+      updateLookup(teamId, {
+        query: selectedUser.userId,
+        pickerUserId: String(selectedUser.id),
+        selectedUser,
+      });
       setNotice({
         tone: "success",
         text: "픽커를 지정했다.",
       });
     } catch (error) {
+      updateLookup(teamId, previousLookup);
       handleActionError("픽커 지정", error, {
         pickerUserId: requestedPickerUserId,
         sessionId: selectedSessionId,
@@ -2043,20 +2091,20 @@ export function DraftAdminConsole({
     }
   }
 
-  async function handleCreateCandidate() {
+  async function handleCreateCandidate(selectedUser: DraftUserSearchResult) {
     if (selectedSessionId === null) {
       return;
     }
 
-    if (!candidateForm.selectedUser) {
+    if (!isPickerSetupReady) {
       setNotice({
         tone: "error",
-        text: "아이디 검색에서 유저를 먼저 선택해 달라.",
+        text: "팀별 픽커 지정이 모두 끝나야 드래프트 인원을 등록할 수 있다.",
       });
       return;
     }
 
-    if (blockedCandidateUserIds.includes(candidateForm.selectedUser.id)) {
+    if (blockedCandidateUserIds.includes(selectedUser.id)) {
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setNotice({
         tone: "error",
@@ -2071,9 +2119,9 @@ export function DraftAdminConsole({
     try {
       const payload = {
         draftSessionId: selectedSessionId,
-        candidateUserId: candidateForm.selectedUser.id,
-        candidateName: candidateForm.selectedUser.userId,
-        race: normalizeRace(candidateForm.selectedUser.race) ?? "TERRAN",
+        candidateUserId: selectedUser.id,
+        candidateName: selectedUser.userId,
+        race: normalizeRace(selectedUser.race) ?? "TERRAN",
         status: "WAITING",
       };
 
@@ -2086,7 +2134,7 @@ export function DraftAdminConsole({
       });
     } catch (error) {
       handleActionError("드래프트 인원 등록", error, {
-        form: candidateForm,
+        selectedUser,
         sessionId: selectedSessionId,
       });
     } finally {
@@ -2096,6 +2144,14 @@ export function DraftAdminConsole({
 
   async function handleDeleteCandidate(candidateUserId: number) {
     if (selectedSessionId === null) {
+      return;
+    }
+
+    if (!isPickerSetupReady) {
+      setNotice({
+        tone: "error",
+        text: "팀별 픽커 지정이 모두 끝나야 드래프트 인원을 수정할 수 있다.",
+      });
       return;
     }
 
@@ -2121,6 +2177,14 @@ export function DraftAdminConsole({
 
   async function handleGenerateOrders(mode: OrderGenerationMode) {
     if (selectedSessionId === null) {
+      return;
+    }
+
+    if (!isPickerSetupReady) {
+      setNotice({
+        tone: "error",
+        text: "팀별 픽커 지정이 모두 끝나야 드래프트 방식을 정할 수 있다.",
+      });
       return;
     }
 
@@ -2235,7 +2299,7 @@ export function DraftAdminConsole({
 
   return (
     <div className="space-y-4">
-      <SurfaceCard className="p-6">
+      <SurfaceCard className="relative z-20 overflow-visible p-6">
         {notice ? (
           <div
             className={cn(
@@ -2537,19 +2601,14 @@ export function DraftAdminConsole({
         )}
       </SurfaceCard>
 
-      <SurfaceCard className="p-6">
+      <SurfaceCard className="relative z-20 overflow-visible p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-foreground">팀별 픽커 지정</p>
           </div>
-          {selectedSessionDetail ? (
-            <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
-              픽커 지정 팀 {pickerTeamCount}개
-            </div>
-          ) : null}
         </div>
 
-        <div className="mt-5">
+        <div className="relative z-10 mt-5 overflow-visible">
           {!selectedSessionDetail ? (
             <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
               드래프트를 먼저 선택해 달라.
@@ -2559,7 +2618,7 @@ export function DraftAdminConsole({
               픽커를 지정하려면 먼저 팀이 있어야 한다.
             </div>
           ) : (
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="relative z-10 grid gap-4 overflow-visible xl:grid-cols-2">
               {sortedTeams.map((team) => (
                 <TeamPickerManagerClean
                   key={team.id}
@@ -2581,8 +2640,13 @@ export function DraftAdminConsole({
         </div>
       </SurfaceCard>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <SurfaceCard className="p-6">
+      <div className="relative z-0 grid gap-4 xl:grid-cols-2">
+        <SurfaceCard
+          className={cn(
+            "p-6",
+            selectedSessionDetail && !isPickerSetupReady ? "opacity-50" : undefined,
+          )}
+        >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-foreground">
@@ -2600,9 +2664,15 @@ export function DraftAdminConsole({
             </div>
           ) : (
             <>
+              {!isPickerSetupReady ? (
+                <div className="mt-5 rounded-[20px] border border-dashed border-line bg-surface-muted px-4 py-4 text-sm font-medium text-muted">
+                  팀별 픽커 지정부터 해주세요.
+                </div>
+              ) : null}
               <CandidateComposerClean
                 blockedUserIds={blockedCandidateUserIds}
                 candidateForm={candidateForm}
+                disabled={!isPickerSetupReady}
                 pendingAction={pendingAction}
                 setCandidateForm={setCandidateForm}
                 onCreate={handleCreateCandidate}
@@ -2616,6 +2686,7 @@ export function DraftAdminConsole({
                   candidateTierGroups.map((group) => (
                     <CandidateTierSection
                       key={group.tierLabel}
+                      disabled={!isPickerSetupReady}
                       group={group}
                       pendingAction={pendingAction}
                       onDelete={handleDeleteCandidate}
@@ -2627,7 +2698,12 @@ export function DraftAdminConsole({
           )}
         </SurfaceCard>
 
-        <SurfaceCard className="p-6">
+        <SurfaceCard
+          className={cn(
+            "p-6",
+            selectedSessionDetail && !isPickerSetupReady ? "opacity-50" : undefined,
+          )}
+        >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-foreground">드래프트 방식</p>
@@ -2644,6 +2720,11 @@ export function DraftAdminConsole({
             </div>
           ) : (
             <>
+              {!isPickerSetupReady ? (
+                <div className="mt-5 rounded-[20px] border border-dashed border-line bg-surface-muted px-4 py-4 text-sm font-medium text-muted">
+                  팀별 픽커 지정부터 해주세요.
+                </div>
+              ) : null}
               <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
                 <div className="grid gap-3">
                   <div className="grid gap-3 md:grid-cols-2">
@@ -2680,7 +2761,11 @@ export function DraftAdminConsole({
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant={selectedOrderGenerationMode === "basic" ? "accent" : "outline"}
-                      disabled={pendingAction !== null || orderGenerationTargetCount === 0}
+                      disabled={
+                        pendingAction !== null ||
+                        orderGenerationTargetCount === 0 ||
+                        !isPickerSetupReady
+                      }
                       onClick={() => {
                         void handleGenerateOrders("basic");
                       }}
@@ -2693,7 +2778,11 @@ export function DraftAdminConsole({
                     </Button>
                     <Button
                       variant={selectedOrderGenerationMode === "snake" ? "accent" : "outline"}
-                      disabled={pendingAction !== null || orderGenerationTargetCount === 0}
+                      disabled={
+                        pendingAction !== null ||
+                        orderGenerationTargetCount === 0 ||
+                        !isPickerSetupReady
+                      }
                       onClick={() => {
                         void handleGenerateOrders("snake");
                       }}

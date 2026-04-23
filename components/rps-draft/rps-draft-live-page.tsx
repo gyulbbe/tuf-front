@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import {
   getRpsDraftSnapshot,
   pickRpsDraftCandidate,
-  searchRpsDraftUsers,
   startRpsDraftSession,
   submitRpsDraftChoice,
   type RpsChoice,
@@ -26,8 +25,8 @@ import {
 } from "@/lib/rps-draft/routes";
 import {
   formatRpsDraftUserId,
+  getCachedRpsDraftUserIdMap,
   mergeRpsDraftUserIdMap,
-  resolveRpsDraftUserId,
 } from "@/lib/rps-draft/user-id-display";
 import {
   formatChoice,
@@ -141,24 +140,52 @@ function describePickHelp(options: {
   return "선수 선택 순서를 확인하는 중입니다.";
 }
 
-function describeRpsHelp(options: {
-  canSubmitRps: boolean;
-  myTeamId: number | null;
-  status: string | null | undefined;
-}) {
-  if (options.status !== "RPS_PENDING") {
-    return "다음 라운드가 시작되면 여기서 가위바위보를 냅니다.";
+function RpsHandIcon({ choice }: { choice: RpsChoice }) {
+  const commonProps = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    strokeWidth: 1.8,
+  };
+
+  if (choice === "SCISSORS") {
+    return (
+      <svg viewBox="0 0 48 48" className="h-7 w-7" aria-hidden="true">
+        <circle cx="13" cy="33" r="4.5" {...commonProps} />
+        <circle cx="23" cy="34" r="4.5" {...commonProps} />
+        <path d="M16 30 31 16" {...commonProps} />
+        <path d="M26 30 37 15" {...commonProps} />
+        <path d="M22 31 31 38" {...commonProps} />
+        <path d="M29 26 37 37" {...commonProps} />
+      </svg>
+    );
   }
 
-  if (options.canSubmitRps) {
-    return "가위, 바위, 보 중 하나를 골라 제출하세요.";
+  if (choice === "ROCK") {
+    return (
+      <svg viewBox="0 0 48 48" className="h-7 w-7" aria-hidden="true">
+        <path d="M15 21c0-2 1.6-3.5 3.5-3.5S22 19 22 21v1.5" {...commonProps} />
+        <path d="M21 20.5c0-2 1.6-3.5 3.5-3.5S28 18.5 28 20.5v2" {...commonProps} />
+        <path d="M27 21c0-2 1.6-3.5 3.5-3.5S34 19 34 21v4" {...commonProps} />
+        <path
+          d="M14 26c0-3.3 2.7-6 6-6h8c4.4 0 8 3.6 8 8v4.5c0 4.7-3.8 8.5-8.5 8.5H23c-5 0-9-4-9-9z"
+          {...commonProps}
+        />
+      </svg>
+    );
   }
 
-  if (options.myTeamId !== null) {
-    return "상대 팀 제출을 기다리는 중입니다.";
-  }
-
-  return "두 팀장이 가위바위보를 내는 중입니다.";
+  return (
+    <svg viewBox="0 0 48 48" className="h-7 w-7" aria-hidden="true">
+      <path d="M16 14v14" {...commonProps} />
+      <path d="M22 11v17" {...commonProps} />
+      <path d="M28 10v18" {...commonProps} />
+      <path d="M34 14v14" {...commonProps} />
+      <path d="M14 28c0 6.1 4.9 11 11 11h2c4.9 0 9-4 9-9V18" {...commonProps} />
+      <path d="M14 22c0-2 1.6-3.5 3.5-3.5S21 20 21 22v6" {...commonProps} />
+    </svg>
+  );
 }
 
 function TeamPanel({
@@ -199,10 +226,6 @@ function TeamPanel({
         ) : null}
       </div>
 
-      <p className="mt-3 text-sm text-muted">
-        팀장 {formatRpsDraftUserId(team.pickerUserId, resolvedUserIds)}
-      </p>
-
       <div className="mt-5 space-y-3">
         {roster.length === 0 ? (
           <div className="rounded-[22px] border border-dashed border-line px-4 py-5 text-sm text-muted">
@@ -234,7 +257,9 @@ function TeamPanel({
 export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
   const { isAuthenticated, status, user } = useAuth();
   const [liveState, setLiveState] = useState(INITIAL_LIVE_STATE);
-  const [resolvedUserIds, setResolvedUserIds] = useState<Record<number, string>>({});
+  const [resolvedUserIds, setResolvedUserIds] = useState<Record<number, string>>(
+    () => getCachedRpsDraftUserIdMap(),
+  );
   const [loading, setLoading] = useState(true);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -268,109 +293,16 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
   );
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function hydrateResolvedUserIds() {
-      const knownUserIds: Record<number, string> = {};
-
-      if (user?.username && typeof user.userPk === "number") {
-        knownUserIds[user.userPk] = user.username;
-      }
-
-      if (Object.keys(knownUserIds).length > 0) {
-        setResolvedUserIds((current) =>
-          mergeRpsDraftUserIdMap(current, knownUserIds),
-        );
-      }
-
-      const snapshot = liveState.snapshot;
-
-      if (!snapshot) {
-        return;
-      }
-
-      const unresolvedTargets = new Map<number, string>();
-
-      const addUnresolvedTarget = (
-        userPk: number | null | undefined,
-        fallbackText: string | null | undefined,
-      ) => {
-        if (typeof userPk !== "number" || !fallbackText?.trim()) {
-          return;
-        }
-
-        if (knownUserIds[userPk] || resolvedUserIds[userPk]) {
-          return;
-        }
-
-        unresolvedTargets.set(userPk, fallbackText);
-      };
-
-      for (const team of snapshot.teams) {
-        addUnresolvedTarget(team.pickerUserId, team.pickerName);
-
-        for (const item of team.roster) {
-          addUnresolvedTarget(item.candidateUserId, item.candidateName);
-          addUnresolvedTarget(item.pickedByUserId, item.pickedByUserName);
-        }
-      }
-
-      for (const candidate of snapshot.availableCandidates) {
-        addUnresolvedTarget(candidate.candidateUserId, candidate.candidateName);
-      }
-
-      for (const candidate of snapshot.pickedCandidates) {
-        addUnresolvedTarget(candidate.candidateUserId, candidate.candidateName);
-      }
-
-      for (const pick of snapshot.recentPicks) {
-        addUnresolvedTarget(pick.candidateUserId, pick.candidateName);
-        addUnresolvedTarget(pick.pickedByUserId, pick.pickedByUserName);
-      }
-
-      if (unresolvedTargets.size === 0) {
-        return;
-      }
-
-      const resolvedEntries = await Promise.all(
-        Array.from(unresolvedTargets.entries()).map(async ([userPk, keyword]) => {
-          try {
-            const users = await searchRpsDraftUsers(keyword, 8);
-            return [
-              userPk,
-              resolveRpsDraftUserId(userPk, keyword, users),
-            ] as const;
-          } catch {
-            return [userPk, null] as const;
-          }
-        }),
-      );
-
-      if (cancelled) {
-        return;
-      }
-
-      const nextResolvedUserIds: Record<number, string> = {};
-
-      for (const [userPk, resolvedUserId] of resolvedEntries) {
-        if (resolvedUserId) {
-          nextResolvedUserIds[userPk] = resolvedUserId;
-        }
-      }
-
-      if (Object.keys(nextResolvedUserIds).length > 0) {
-        setResolvedUserIds((current) =>
-          mergeRpsDraftUserIdMap(current, nextResolvedUserIds),
-        );
-      }
+    if (!user?.username || typeof user.userPk !== "number") {
+      return;
     }
 
-    void hydrateResolvedUserIds();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [liveState.snapshot, resolvedUserIds, user?.userPk, user?.username]);
+    setResolvedUserIds((current) =>
+      mergeRpsDraftUserIdMap(current, {
+        [user.userPk]: user.username,
+      }),
+    );
+  }, [user?.userPk, user?.username]);
 
   const refreshSnapshot = useCallback(
     async (options?: { background?: boolean; keepMessage?: boolean }) => {
@@ -728,19 +660,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
       ) : snapshot ? (
         <>
           <SurfaceCard className="p-6 sm:p-8">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">
-                  이번 가위바위보
-                </h2>
-                <p className="mt-3 text-sm leading-7 text-muted">
-                  {describeRpsHelp({
-                    canSubmitRps,
-                    myTeamId,
-                    status: snapshot.session.status,
-                  })}
-                </p>
-              </div>
+            <div className="flex justify-end">
               {choicesRevealed ? (
                 <ValueBadge>{formatRoundResult(snapshot.rps.result)}</ValueBadge>
               ) : null}
@@ -789,13 +709,19 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                     key={choice.value}
                     variant={canSubmitRps ? "accent" : "outline"}
                     disabled={pendingAction !== null || !canSubmitRps}
+                    className="h-14 w-14 rounded-2xl p-0"
+                    title={choice.label}
+                    aria-label={choice.label}
                     onClick={() => {
                       void handleSubmitRps(choice.value);
                     }}
                   >
-                    {pendingAction === actionKey
-                      ? `${choice.label} 내는 중...`
-                      : choice.label}
+                    <span className="sr-only">
+                      {pendingAction === actionKey
+                        ? `${choice.label} 내는 중...`
+                        : choice.label}
+                    </span>
+                    <RpsHandIcon choice={choice.value} />
                   </Button>
                 );
               })}

@@ -1,51 +1,98 @@
-import type { RpsDraftUserSearchResult } from "@/lib/api/rps-draft";
+const USER_ID_CACHE_KEY = "rps-draft:user-id-map";
 
-export function resolveRpsDraftUserId(
-  targetUserPk: number,
-  fallbackText: string | null | undefined,
-  users: RpsDraftUserSearchResult[],
-) {
-  const exactPkMatch = users.find((user) => user.id === targetUserPk);
-
-  if (exactPkMatch) {
-    return exactPkMatch.userId;
+function readCachedUserIdMap() {
+  if (typeof window === "undefined") {
+    return {} as Record<number, string>;
   }
 
-  const normalizedFallbackText = fallbackText?.trim().toLowerCase();
+  try {
+    const raw = window.sessionStorage.getItem(USER_ID_CACHE_KEY);
 
-  if (!normalizedFallbackText) {
-    return null;
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const next: Record<number, string> = {};
+
+    for (const [userPk, userId] of Object.entries(parsed)) {
+      if (typeof userId !== "string" || !userId.trim()) {
+        continue;
+      }
+
+      next[Number(userPk)] = userId;
+    }
+
+    return next;
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedUserIdMap(map: Record<number, string>) {
+  if (typeof window === "undefined") {
+    return;
   }
 
-  const exactTextMatch = users.find((user) => {
-    const normalizedUserId = user.userId.trim().toLowerCase();
-    const normalizedDisplayName = user.name?.trim().toLowerCase();
+  try {
+    window.sessionStorage.setItem(USER_ID_CACHE_KEY, JSON.stringify(map));
+  } catch {
+    // noop
+  }
+}
 
-    return (
-      normalizedUserId === normalizedFallbackText ||
-      normalizedDisplayName === normalizedFallbackText
-    );
-  });
+export function getCachedRpsDraftUserIdMap() {
+  return readCachedUserIdMap();
+}
 
-  return exactTextMatch?.userId ?? null;
+export function rememberRpsDraftUserIds(incoming: Record<number, string>) {
+  const current = readCachedUserIdMap();
+  let hasChanges = false;
+  const next = { ...current };
+
+  for (const [userPk, userId] of Object.entries(incoming)) {
+    const numericUserPk = Number(userPk);
+
+    if (!userId?.trim() || next[numericUserPk] === userId) {
+      continue;
+    }
+
+    next[numericUserPk] = userId;
+    hasChanges = true;
+  }
+
+  if (hasChanges) {
+    writeCachedUserIdMap(next);
+  }
+
+  return hasChanges ? next : current;
 }
 
 export function mergeRpsDraftUserIdMap(
   current: Record<number, string>,
   incoming: Record<number, string>,
 ) {
+  const cached = readCachedUserIdMap();
   let hasChanges = false;
-  const next = { ...current };
+  const next = { ...cached, ...current };
+
+  if (Object.keys(cached).some((key) => !(Number(key) in current))) {
+    hasChanges = true;
+  }
 
   for (const [userPk, resolvedUserId] of Object.entries(incoming)) {
     const numericUserPk = Number(userPk);
 
-    if (!resolvedUserId || current[numericUserPk] === resolvedUserId) {
+    if (!resolvedUserId || next[numericUserPk] === resolvedUserId) {
       continue;
     }
 
     next[numericUserPk] = resolvedUserId;
     hasChanges = true;
+  }
+
+  if (hasChanges) {
+    writeCachedUserIdMap(next);
   }
 
   return hasChanges ? next : current;
@@ -60,5 +107,5 @@ export function formatRpsDraftUserId(
     return fallback;
   }
 
-  return resolvedUserIds[userPk] ?? `user_pk:${userPk}`;
+  return resolvedUserIds[userPk] ?? "아이디 확인 필요";
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { DraftAdminConsole } from "@/components/proleague/draft-admin-console";
@@ -12,9 +13,7 @@ import {
   createDefaultDraftTeams,
   createDraftSession,
   listDraftSessions,
-  searchDraftUsers,
   type DraftSessionSummary,
-  type DraftUserSearchResult,
 } from "@/lib/api/draft";
 import { buildLoginHref } from "@/lib/auth/auth-navigation";
 import { canManageOwnedResource } from "@/lib/auth/roles";
@@ -47,57 +46,6 @@ function createEmptyForm(title = ""): CreateFormState {
     teamCount: "",
     pickTimeSeconds: "",
   };
-}
-
-function resolveOwnerUserId(
-  ownerUserId: number,
-  ownerName: string | null | undefined,
-  users: DraftUserSearchResult[],
-) {
-  const exactPkMatch = users.find((user) => user.id === ownerUserId);
-
-  if (exactPkMatch) {
-    return exactPkMatch.userId;
-  }
-
-  const normalizedOwnerName = ownerName?.trim().toLowerCase();
-
-  if (!normalizedOwnerName) {
-    return null;
-  }
-
-  const exactTextMatch = users.find((user) => {
-    const normalizedUserId = user.userId.trim().toLowerCase();
-    const normalizedDisplayName = user.name?.trim().toLowerCase();
-
-    return (
-      normalizedUserId === normalizedOwnerName ||
-      normalizedDisplayName === normalizedOwnerName
-    );
-  });
-
-  return exactTextMatch?.userId ?? null;
-}
-
-function mergeOwnerUserIdMap(
-  current: Record<number, string>,
-  incoming: Record<number, string>,
-) {
-  let hasChanges = false;
-  const next = { ...current };
-
-  for (const [ownerUserId, resolvedUserId] of Object.entries(incoming)) {
-    const numericOwnerUserId = Number(ownerUserId);
-
-    if (!resolvedUserId || current[numericOwnerUserId] === resolvedUserId) {
-      continue;
-    }
-
-    next[numericOwnerUserId] = resolvedUserId;
-    hasChanges = true;
-  }
-
-  return hasChanges ? next : current;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -207,13 +155,14 @@ function describeActivity(session: DraftSessionSummary) {
 }
 
 export function ProleagueDraftListPage() {
+  const router = useRouter();
   const { isAuthenticated, status, user } = useAuth();
   const [sessions, setSessions] = useState<DraftSessionSummary[]>([]);
-  const [ownerUserIds, setOwnerUserIds] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
+  const [creationFlowSessionId, setCreationFlowSessionId] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<CreateFormState>(() =>
@@ -255,80 +204,6 @@ export function ProleagueDraftListPage() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function hydrateOwnerUserIds() {
-      const knownOwnerUserIds: Record<number, string> = {};
-
-      if (user?.username && typeof user.userPk === "number") {
-        knownOwnerUserIds[user.userPk] = user.username;
-      }
-
-      if (Object.keys(knownOwnerUserIds).length > 0) {
-        setOwnerUserIds((current) => mergeOwnerUserIdMap(current, knownOwnerUserIds));
-      }
-
-      const unresolvedSessions = sessions.filter((session) => {
-        if (!session.ownerName?.trim()) {
-          return false;
-        }
-
-        if (knownOwnerUserIds[session.ownerUserId]) {
-          return false;
-        }
-
-        return !ownerUserIds[session.ownerUserId];
-      });
-
-      const uniqueSessions = Array.from(
-        new Map(
-          unresolvedSessions.map((session) => [session.ownerUserId, session]),
-        ).values(),
-      );
-
-      if (uniqueSessions.length === 0) {
-        return;
-      }
-
-      const resolvedEntries = await Promise.all(
-        uniqueSessions.map(async (session) => {
-          try {
-            const users = await searchDraftUsers(session.ownerName!, 8);
-            return [
-              session.ownerUserId,
-              resolveOwnerUserId(session.ownerUserId, session.ownerName, users),
-            ] as const;
-          } catch {
-            return [session.ownerUserId, null] as const;
-          }
-        }),
-      );
-
-      if (cancelled) {
-        return;
-      }
-
-      const nextOwnerUserIds: Record<number, string> = {};
-
-      for (const [ownerUserId, resolvedUserId] of resolvedEntries) {
-        if (resolvedUserId) {
-          nextOwnerUserIds[ownerUserId] = resolvedUserId;
-        }
-      }
-
-      if (Object.keys(nextOwnerUserIds).length > 0) {
-        setOwnerUserIds((current) => mergeOwnerUserIdMap(current, nextOwnerUserIds));
-      }
-    }
-
-    void hydrateOwnerUserIds();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [ownerUserIds, sessions, user?.userPk, user?.username]);
-
   async function handleCreateSession() {
     const title = form.title.trim();
     const teamCount = Number(form.teamCount.trim());
@@ -369,6 +244,7 @@ export function ProleagueDraftListPage() {
         );
       }
 
+      setCreationFlowSessionId(createdSession.id);
       setEditingSessionId(createdSession.id);
       try {
         const nextSessions = await listDraftSessions();
@@ -389,6 +265,7 @@ export function ProleagueDraftListPage() {
 
   function handleOpenCreateDialog() {
     setCreateError(null);
+    setCreationFlowSessionId(null);
     setEditingSessionId(null);
     setForm(createEmptyForm(buildDefaultDraftTitle(user?.username)));
     setIsCreateOpen(true);
@@ -396,6 +273,7 @@ export function ProleagueDraftListPage() {
 
   function handleOpenEditDialog(sessionId: number) {
     setCreateError(null);
+    setCreationFlowSessionId(null);
     setEditingSessionId(sessionId);
     setIsCreateOpen(true);
   }
@@ -406,6 +284,7 @@ export function ProleagueDraftListPage() {
     }
 
     setIsCreateOpen(false);
+    setCreationFlowSessionId(null);
     setEditingSessionId(null);
   }
 
@@ -455,7 +334,7 @@ export function ProleagueDraftListPage() {
               const ownerLabel =
                 session.ownerUserId === user?.userPk && user?.username
                   ? user.username
-                  : ownerUserIds[session.ownerUserId] ?? `user_pk:${session.ownerUserId}`;
+                  : "아이디 확인 필요";
               const settingsClassName = canManage
                 ? primaryLinkClassName
                 : secondaryLinkClassName;
@@ -533,6 +412,7 @@ export function ProleagueDraftListPage() {
         {editingSessionId ? (
           <DraftAdminConsole
             sessionId={editingSessionId}
+            creationFlow={creationFlowSessionId === editingSessionId}
             onDataChanged={() => {
               void listDraftSessions()
                 .then((nextSessions) => {
@@ -543,6 +423,7 @@ export function ProleagueDraftListPage() {
                 });
             }}
             onSessionDeleted={() => {
+              setCreationFlowSessionId(null);
               setEditingSessionId(null);
               setIsCreateOpen(false);
               void listDraftSessions()
@@ -552,6 +433,13 @@ export function ProleagueDraftListPage() {
                 .catch(() => {
                   // noop
                 });
+            }}
+            onSessionReady={(sessionId) => {
+              window.alert("드래프트를 생성했습니다.");
+              setCreationFlowSessionId(null);
+              setEditingSessionId(null);
+              setIsCreateOpen(false);
+              router.push(proleagueDraftLivePath(sessionId));
             }}
           />
         ) : (

@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import {
   createRpsDraftSession,
   listRpsDraftSessions,
-  searchRpsDraftUsers,
   type RpsDraftSessionSummary,
   type RpsDraftUserSearchResult,
 } from "@/lib/api/rps-draft";
@@ -22,6 +21,7 @@ import {
   rpsDraftListPath,
   rpsDraftLivePath,
 } from "@/lib/rps-draft/routes";
+import { rememberRpsDraftUserIds } from "@/lib/rps-draft/user-id-display";
 import {
   formatDateTime,
   formatRelativePickNo,
@@ -115,57 +115,6 @@ function formatSelectedUser(user: RpsDraftUserSearchResult) {
   return user.userId;
 }
 
-function resolveOwnerUserId(
-  ownerUserId: number,
-  ownerName: string | null | undefined,
-  users: RpsDraftUserSearchResult[],
-) {
-  const exactPkMatch = users.find((user) => user.id === ownerUserId);
-
-  if (exactPkMatch) {
-    return exactPkMatch.userId;
-  }
-
-  const normalizedOwnerName = ownerName?.trim().toLowerCase();
-
-  if (!normalizedOwnerName) {
-    return null;
-  }
-
-  const exactTextMatch = users.find((user) => {
-    const normalizedUserId = user.userId.trim().toLowerCase();
-    const normalizedDisplayName = user.name?.trim().toLowerCase();
-
-    return (
-      normalizedUserId === normalizedOwnerName ||
-      normalizedDisplayName === normalizedOwnerName
-    );
-  });
-
-  return exactTextMatch?.userId ?? null;
-}
-
-function mergeOwnerUserIdMap(
-  current: Record<number, string>,
-  incoming: Record<number, string>,
-) {
-  let hasChanges = false;
-  const next = { ...current };
-
-  for (const [ownerUserId, resolvedUserId] of Object.entries(incoming)) {
-    const numericOwnerUserId = Number(ownerUserId);
-
-    if (!resolvedUserId || current[numericOwnerUserId] === resolvedUserId) {
-      continue;
-    }
-
-    next[numericOwnerUserId] = resolvedUserId;
-    hasChanges = true;
-  }
-
-  return hasChanges ? next : current;
-}
-
 function hasUser(user: RpsDraftUserSearchResult[], userId: number) {
   return user.some((entry) => entry.id === userId);
 }
@@ -200,7 +149,6 @@ export function RpsDraftListPage() {
   const router = useRouter();
   const { isAuthenticated, status, user } = useAuth();
   const [sessions, setSessions] = useState<RpsDraftSessionSummary[]>([]);
-  const [ownerUserIds, setOwnerUserIds] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -245,80 +193,6 @@ export function RpsDraftListPage() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function hydrateOwnerUserIds() {
-      const knownOwnerUserIds: Record<number, string> = {};
-
-      if (user?.username && typeof user.userPk === "number") {
-        knownOwnerUserIds[user.userPk] = user.username;
-      }
-
-      if (Object.keys(knownOwnerUserIds).length > 0) {
-        setOwnerUserIds((current) => mergeOwnerUserIdMap(current, knownOwnerUserIds));
-      }
-
-      const unresolvedSessions = sessions.filter((session) => {
-        if (!session.ownerName?.trim()) {
-          return false;
-        }
-
-        if (knownOwnerUserIds[session.ownerUserId]) {
-          return false;
-        }
-
-        return !ownerUserIds[session.ownerUserId];
-      });
-
-      const uniqueSessions = Array.from(
-        new Map(
-          unresolvedSessions.map((session) => [session.ownerUserId, session]),
-        ).values(),
-      );
-
-      if (uniqueSessions.length === 0) {
-        return;
-      }
-
-      const resolvedEntries = await Promise.all(
-        uniqueSessions.map(async (session) => {
-          try {
-            const users = await searchRpsDraftUsers(session.ownerName!, 8);
-            return [
-              session.ownerUserId,
-              resolveOwnerUserId(session.ownerUserId, session.ownerName, users),
-            ] as const;
-          } catch {
-            return [session.ownerUserId, null] as const;
-          }
-        }),
-      );
-
-      if (cancelled) {
-        return;
-      }
-
-      const nextOwnerUserIds: Record<number, string> = {};
-
-      for (const [ownerUserId, resolvedUserId] of resolvedEntries) {
-        if (resolvedUserId) {
-          nextOwnerUserIds[ownerUserId] = resolvedUserId;
-        }
-      }
-
-      if (Object.keys(nextOwnerUserIds).length > 0) {
-        setOwnerUserIds((current) => mergeOwnerUserIdMap(current, nextOwnerUserIds));
-      }
-    }
-
-    void hydrateOwnerUserIds();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [ownerUserIds, sessions, user?.userPk, user?.username]);
-
   async function handleCreateSession() {
     const validationMessage = validateCreateForm(form);
 
@@ -331,6 +205,16 @@ export function RpsDraftListPage() {
     setCreateError(null);
 
     try {
+      const knownUserIds = {
+        [form.team1Picker!.id]: form.team1Picker!.userId,
+        [form.team2Picker!.id]: form.team2Picker!.userId,
+        ...Object.fromEntries(
+          form.candidates.map((candidate) => [candidate.id, candidate.userId]),
+        ),
+      };
+
+      rememberRpsDraftUserIds(knownUserIds);
+
       const createdSession = await createRpsDraftSession({
         title: form.title.trim(),
         team1PickerUserId: form.team1Picker!.id,
@@ -470,7 +354,7 @@ export function RpsDraftListPage() {
               const ownerLabel =
                 session.ownerUserId === user?.userPk && user?.username
                   ? user.username
-                  : ownerUserIds[session.ownerUserId] ?? `user_pk:${session.ownerUserId}`;
+                  : "아이디 확인 필요";
               const liveClassName = canManage
                 ? primaryLinkClassName
                 : secondaryLinkClassName;

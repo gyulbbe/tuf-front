@@ -97,8 +97,10 @@ type TeamEditState = {
 };
 
 type DraftAdminConsoleProps = {
+  creationFlow?: boolean;
   onDataChanged?: () => void;
   onSessionDeleted?: (sessionId: number) => void;
+  onSessionReady?: (sessionId: number) => void | Promise<void>;
   sessionId?: number | null;
 };
 
@@ -975,32 +977,32 @@ function TeamRow({
   onSave: () => Promise<void>;
 }) {
   return (
-    <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="rounded-[22px] border border-line bg-surface-strong px-3 py-3">
+      <div className="flex flex-wrap items-start gap-3">
         <p className="text-sm font-semibold text-foreground">
           {draftTeam.teamName}
         </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            disabled={pendingAction !== null}
-            onClick={() => {
-              void onSave();
-            }}
-          >
-            {pendingAction === `team-save:${draftTeam.id}` ? "수정 중" : "팀 이름 수정"}
-          </Button>
-        </div>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3 flex items-center gap-2">
         <Input
+          className="py-2.5"
           value={editState.teamName}
           onChange={(event) => {
             onChange({ teamName: event.target.value });
           }}
           placeholder="팀 이름"
         />
+        <Button
+          size="sm"
+          className="h-10 shrink-0 rounded-full px-3 text-xs"
+          disabled={pendingAction !== null}
+          onClick={() => {
+            void onSave();
+          }}
+        >
+          {pendingAction === `team-save:${draftTeam.id}` ? "수정 중" : "수정"}
+        </Button>
       </div>
     </div>
   );
@@ -1224,14 +1226,14 @@ function TeamPickerManagerClean({
   ) => Promise<void>;
 }) {
   return (
-    <article className="relative overflow-visible rounded-[24px] border border-line bg-surface-strong px-4 py-4 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
+    <article className="relative overflow-visible rounded-[22px] border border-line bg-surface-strong px-3 py-3 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-base font-semibold text-foreground">{draftTeam.teamName}</p>
+          <p className="text-sm font-semibold text-foreground">{draftTeam.teamName}</p>
         </div>
       </div>
 
-      <div className="mt-4 rounded-[20px] border border-line bg-surface px-3 py-3">
+      <div className="mt-3 rounded-[18px] border border-line bg-surface px-2.5 py-2.5">
         <div className="grid gap-3">
           <UserAutocompleteInput
             disabled={pendingAction !== null}
@@ -1258,9 +1260,9 @@ function TeamPickerManagerClean({
         </div>
 
         {lookupState.selectedUser ? (
-          <div className="mt-3 rounded-[18px] bg-surface-muted px-3 py-3">
+          <div className="mt-2.5 rounded-[16px] bg-surface-muted px-3 py-2.5">
             <p className="text-sm font-semibold text-foreground">선택한 유저</p>
-            <p className="mt-1 text-sm text-muted">
+            <p className="mt-1 text-xs text-muted">
               {lookupState.selectedUser.userId}
               {lookupState.selectedUser.tier
                 ? ` · ${lookupState.selectedUser.tier}`
@@ -1417,8 +1419,10 @@ function OrderRowCompact({ order }: { order: DraftOrder }) {
 }
 
 export function DraftAdminConsole({
+  creationFlow = false,
   onDataChanged,
   onSessionDeleted,
+  onSessionReady,
   sessionId,
 }: DraftAdminConsoleProps) {
   const { user } = useAuth();
@@ -1439,6 +1443,8 @@ export function DraftAdminConsole({
     useState<CandidateFormState>(EMPTY_CANDIDATE_FORM);
   const [teamEdits, setTeamEdits] = useState<Record<number, TeamEditState>>({});
   const [isPickerSetupReady, setIsPickerSetupReady] = useState(false);
+  const [stagedOrderGenerationMode, setStagedOrderGenerationMode] =
+    useState<OrderGenerationMode | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -1491,6 +1497,17 @@ export function DraftAdminConsole({
     ),
   );
   const selectedOrderGenerationMode = detectOrderGenerationMode(sortedOrders, sortedTeams);
+  const effectiveOrderGenerationMode = creationFlow
+    ? stagedOrderGenerationMode
+    : selectedOrderGenerationMode;
+  const stagedOrderPlan =
+    stagedOrderGenerationMode && selectedSessionDetail
+      ? buildGeneratedOrderPlan(
+          sortedTeams,
+          orderGenerationTargetCount,
+          stagedOrderGenerationMode,
+        )
+      : [];
   const candidateTierGroups = buildCandidateTierGroups(
     sortedCandidates,
     candidateDirectory,
@@ -1590,8 +1607,18 @@ export function DraftAdminConsole({
 
     if (!nextReady) {
       setCandidateForm(EMPTY_CANDIDATE_FORM);
+      setStagedOrderGenerationMode(null);
     }
   }, [allTeamPickersAssigned, selectedSessionDetail]);
+
+  useEffect(() => {
+    if (!creationFlow) {
+      setStagedOrderGenerationMode(null);
+      return;
+    }
+
+    setStagedOrderGenerationMode(null);
+  }, [creationFlow, selectedSessionId]);
 
   function notifyChange() {
     onDataChanged?.();
@@ -2175,9 +2202,9 @@ export function DraftAdminConsole({
     }
   }
 
-  async function handleGenerateOrders(mode: OrderGenerationMode) {
+  function validateOrderGeneration(mode: OrderGenerationMode) {
     if (selectedSessionId === null) {
-      return;
+      return { ok: false as const };
     }
 
     if (!isPickerSetupReady) {
@@ -2185,11 +2212,8 @@ export function DraftAdminConsole({
         tone: "error",
         text: "팀별 픽커 지정이 모두 끝나야 드래프트 방식을 정할 수 있다.",
       });
-      return;
+      return { ok: false as const };
     }
-
-    setPendingAction(`order-generate:${mode}`);
-    setNotice(null);
 
     try {
       if (!selectedSessionDetail || sortedTeams.length === 0) {
@@ -2205,19 +2229,57 @@ export function DraftAdminConsole({
           "이미 픽 기록이 있어서 자동 생성 전에 드래프트 이력 탭에서 기록을 먼저 정리해야 한다.",
         );
       }
-
-      const plan = buildGeneratedOrderPlan(
-        sortedTeams,
-        orderGenerationTargetCount,
+      return {
+        ok: true as const,
+        plan: buildGeneratedOrderPlan(sortedTeams, orderGenerationTargetCount, mode),
+      };
+    } catch (error) {
+      handleActionError(`${formatOrderGenerationMode(mode)} 순서 준비`, error, {
+        candidateCount: orderGenerationTargetCount,
         mode,
-      );
+        sessionId: selectedSessionId,
+      });
+      return { ok: false as const };
+    }
+  }
+
+  async function handleGenerateOrders(mode: OrderGenerationMode) {
+    if (creationFlow) {
+      const result = validateOrderGeneration(mode);
+
+      if (!result.ok) {
+        return;
+      }
+
+      setStagedOrderGenerationMode(mode);
+      setNotice({
+        tone: "neutral",
+        text: `${formatOrderGenerationMode(mode)} 방식 미리보기를 준비했다.`,
+      });
+      return;
+    }
+
+    if (selectedSessionId === null) {
+      return;
+    }
+
+    const result = validateOrderGeneration(mode);
+
+    if (!result.ok) {
+      return;
+    }
+
+    setPendingAction(`order-generate:${mode}`);
+    setNotice(null);
+
+    try {
       const existingOrders = [...sortedOrders].sort((left, right) => right.pickNo - left.pickNo);
 
       for (const order of existingOrders) {
         await deleteDraftOrder(selectedSessionId, order.pickNo);
       }
 
-      for (const order of plan) {
+      for (const order of result.plan) {
         await createDraftOrder({
           draftSessionId: selectedSessionId,
           roundNo: order.roundNo,
@@ -2229,13 +2291,71 @@ export function DraftAdminConsole({
       await refreshSelectedSession(selectedSessionId);
       setNotice({
         tone: "success",
-        text: `${formatOrderGenerationMode(mode)} 방식으로 순서 ${plan.length}개를 다시 만들었다.`,
+        text: `${formatOrderGenerationMode(mode)} 방식으로 순서 ${result.plan.length}개를 다시 만들었다.`,
       });
     } catch (error) {
       await refreshSelectedSession(selectedSessionId).catch(() => undefined);
       handleActionError(`${formatOrderGenerationMode(mode)} 순서 자동 생성`, error, {
         candidateCount: orderGenerationTargetCount,
         mode,
+        sessionId: selectedSessionId,
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleFinalizeSessionCreation() {
+    if (!creationFlow || selectedSessionId === null) {
+      return;
+    }
+
+    if (!stagedOrderGenerationMode) {
+      setNotice({
+        tone: "error",
+        text: "드래프트 방식을 먼저 선택해 주세요.",
+      });
+      return;
+    }
+
+    const result = validateOrderGeneration(stagedOrderGenerationMode);
+
+    if (!result.ok) {
+      return;
+    }
+
+    setPendingAction("session-ready");
+    setNotice(null);
+
+    try {
+      const existingOrders = [...sortedOrders].sort((left, right) => right.pickNo - left.pickNo);
+
+      for (const order of existingOrders) {
+        await deleteDraftOrder(selectedSessionId, order.pickNo);
+      }
+
+      for (const order of result.plan) {
+        await createDraftOrder({
+          draftSessionId: selectedSessionId,
+          roundNo: order.roundNo,
+          pickNo: order.pickNo,
+          draftTeamId: order.draftTeamId,
+        });
+      }
+
+      await refreshSelectedSession(selectedSessionId);
+      if (onSessionReady) {
+        await onSessionReady(selectedSessionId);
+      } else {
+        setNotice({
+          tone: "success",
+          text: "드래프트를 생성했다.",
+        });
+      }
+    } catch (error) {
+      await refreshSelectedSession(selectedSessionId).catch(() => undefined);
+      handleActionError("드래프트 생성 마무리", error, {
+        mode: stagedOrderGenerationMode,
         sessionId: selectedSessionId,
       });
     } finally {
@@ -2299,58 +2419,6 @@ export function DraftAdminConsole({
 
   return (
     <div className="space-y-4">
-      <SurfaceCard className="relative z-20 overflow-visible p-6">
-        {notice ? (
-          <div
-            className={cn(
-              "rounded-[24px] px-4 py-4 text-sm",
-              getNoticeClassName(notice.tone),
-            )}
-          >
-            {notice.text}
-          </div>
-        ) : null}
-
-        <div className={cn("grid gap-3 md:grid-cols-2 xl:grid-cols-6", notice ? "mt-5" : "")}>
-          <SetupStatCard
-            label="팀"
-            value={selectedSessionDetail ? String(sortedTeams.length) : "0"}
-            description="기본 팀 이름 수정"
-            ready={sortedTeams.length > 0}
-          />
-          <SetupStatCard
-            label="픽커 팀"
-            value={String(pickerTeamCount)}
-            description="팀별 현재 픽커 수"
-            ready={pickerTeamCount > 0}
-          />
-          <SetupStatCard
-            label="드래프트 인원"
-            value={String(sortedCandidates.length)}
-            description="등록 후 삭제만 지원"
-            ready={sortedCandidates.length > 0}
-          />
-          <SetupStatCard
-            label="WAITING"
-            value={String(waitingCandidateCount)}
-            description="현재 남아 있는 드래프트 인원"
-            ready={waitingCandidateCount > 0}
-          />
-          <SetupStatCard
-            label="순서"
-            value={String(sortedOrders.length)}
-            description="등록 후 삭제만 지원"
-            ready={sortedOrders.length > 0}
-          />
-          <SetupStatCard
-            label="픽 기록"
-            value={String(sortedPicks.length)}
-            description="삭제 후 드래프트 인원 / 순서 보정 가능"
-            ready={sortedPicks.length > 0}
-          />
-        </div>
-      </SurfaceCard>
-
       <div className={cn("grid gap-4", isSessionScoped ? undefined : "xl:grid-cols-2")}>
         {!isSessionScoped ? (
           <SurfaceCard className="p-6">
@@ -2551,94 +2619,86 @@ export function DraftAdminConsole({
         </SurfaceCard>
       </div>
 
-      <SurfaceCard className="p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              팀 이름 수정
-            </p>
-            <p className="mt-2 text-sm leading-7 text-muted">
-              드래프트를 만들 때 팀 수만큼 기본 팀을 먼저 만든다. 여기서는 팀 이름만 정리하면 된다.
-            </p>
-          </div>
-          {selectedSessionDetail ? (
-            <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
-              드래프트 팀 수 {sortedTeams.length} / 목표 {selectedSessionDetail.teamCount}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <SurfaceCard className="p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">팀 이름 수정</p>
             </div>
-          ) : null}
-        </div>
-
-        {!selectedSessionDetail ? (
-          <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-            먼저 드래프트를 선택해 달라.
           </div>
-        ) : (
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {sortedTeams.length === 0 ? (
-              <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted md:col-span-2 xl:col-span-3">
-                아직 준비된 팀이 없다.
-              </div>
-            ) : (
-              sortedTeams.map((team) => (
-                <TeamRow
-                  key={team.id}
-                  draftTeam={team}
-                  editState={
-                    teamEdits[team.id] ?? {
-                      teamName: team.teamName,
-                      displayOrder: String(team.displayOrder),
-                    }
-                  }
-                  pendingAction={pendingAction}
-                  onChange={(patch) => {
-                    updateTeamEdit(team.id, patch);
-                  }}
-                  onSave={() => handleSaveTeam(team.id)}
-                />
-              ))
-            )}
-          </div>
-        )}
-      </SurfaceCard>
 
-      <SurfaceCard className="relative z-20 overflow-visible p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-foreground">팀별 픽커 지정</p>
-          </div>
-        </div>
-
-        <div className="relative z-10 mt-5 overflow-visible">
           {!selectedSessionDetail ? (
-            <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-              드래프트를 먼저 선택해 달라.
-            </div>
-          ) : sortedTeams.length === 0 ? (
-            <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-              픽커를 지정하려면 먼저 팀이 있어야 한다.
+            <div className="mt-4 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+              먼저 드래프트를 선택해 달라.
             </div>
           ) : (
-            <div className="relative z-10 grid gap-4 overflow-visible xl:grid-cols-2">
-              {sortedTeams.map((team) => (
-                <TeamPickerManagerClean
-                  key={team.id}
-                  draftTeam={team}
-                  lookupState={teamLookups[team.id] ?? createEmptyTeamLookupState()}
-                  pendingAction={pendingAction}
-                  excludedUserIds={buildBlockedPickerUserIds(
-                    team.id,
-                    sortedTeams,
-                    sortedCandidates,
-                    sortedPicks,
-                  )}
-                  onChangeLookup={updateLookup}
-                  onAssignPicker={handleAssignPicker}
-                />
-              ))}
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {sortedTeams.length === 0 ? (
+                <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted md:col-span-2">
+                  아직 준비된 팀이 없다.
+                </div>
+              ) : (
+                sortedTeams.map((team) => (
+                  <TeamRow
+                    key={team.id}
+                    draftTeam={team}
+                    editState={
+                      teamEdits[team.id] ?? {
+                        teamName: team.teamName,
+                        displayOrder: String(team.displayOrder),
+                      }
+                    }
+                    pendingAction={pendingAction}
+                    onChange={(patch) => {
+                      updateTeamEdit(team.id, patch);
+                    }}
+                    onSave={() => handleSaveTeam(team.id)}
+                  />
+                ))
+              )}
             </div>
           )}
-        </div>
-      </SurfaceCard>
+        </SurfaceCard>
+
+        <SurfaceCard className="relative z-20 overflow-visible p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">팀별 픽커 지정</p>
+            </div>
+          </div>
+
+          <div className="relative z-10 mt-4 overflow-visible">
+            {!selectedSessionDetail ? (
+              <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+                드래프트를 먼저 선택해 달라.
+              </div>
+            ) : sortedTeams.length === 0 ? (
+              <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+                픽커를 지정하려면 먼저 팀이 있어야 한다.
+              </div>
+            ) : (
+              <div className="relative z-10 grid gap-3 overflow-visible md:grid-cols-2">
+                {sortedTeams.map((team) => (
+                  <TeamPickerManagerClean
+                    key={team.id}
+                    draftTeam={team}
+                    lookupState={teamLookups[team.id] ?? createEmptyTeamLookupState()}
+                    pendingAction={pendingAction}
+                    excludedUserIds={buildBlockedPickerUserIds(
+                      team.id,
+                      sortedTeams,
+                      sortedCandidates,
+                      sortedPicks,
+                    )}
+                    onChangeLookup={updateLookup}
+                    onAssignPicker={handleAssignPicker}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </SurfaceCard>
+      </div>
 
       <div className="relative z-0 grid gap-4 xl:grid-cols-2">
         <SurfaceCard
@@ -2731,28 +2791,28 @@ export function DraftAdminConsole({
                     <div
                       className={cn(
                         "rounded-[20px] border px-4 py-4 text-sm text-muted",
-                        selectedOrderGenerationMode === "basic"
+                        effectiveOrderGenerationMode === "basic"
                           ? "border-accent-soft bg-white"
                           : "border-line bg-surface",
                       )}
                     >
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
                         기본 미리보기
-                        {selectedOrderGenerationMode === "basic" ? " · 선택됨" : ""}
+                        {effectiveOrderGenerationMode === "basic" ? " · 선택됨" : ""}
                       </p>
                       <p className="mt-2 leading-7 text-foreground">{basicOrderPreview}</p>
                     </div>
                     <div
                       className={cn(
                         "rounded-[20px] border px-4 py-4 text-sm text-muted",
-                        selectedOrderGenerationMode === "snake"
+                        effectiveOrderGenerationMode === "snake"
                           ? "border-accent-soft bg-white"
                           : "border-line bg-surface",
                       )}
                     >
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
                         스네이크 미리보기
-                        {selectedOrderGenerationMode === "snake" ? " · 선택됨" : ""}
+                        {effectiveOrderGenerationMode === "snake" ? " · 선택됨" : ""}
                       </p>
                       <p className="mt-2 leading-7 text-foreground">{snakeOrderPreview}</p>
                     </div>
@@ -2760,7 +2820,7 @@ export function DraftAdminConsole({
 
                   <div className="flex flex-wrap gap-2">
                     <Button
-                      variant={selectedOrderGenerationMode === "basic" ? "accent" : "outline"}
+                      variant={effectiveOrderGenerationMode === "basic" ? "accent" : "outline"}
                       disabled={
                         pendingAction !== null ||
                         orderGenerationTargetCount === 0 ||
@@ -2772,12 +2832,14 @@ export function DraftAdminConsole({
                     >
                       {pendingAction === "order-generate:basic"
                         ? "생성 중"
-                        : selectedOrderGenerationMode === "basic"
+                        : effectiveOrderGenerationMode === "basic"
                           ? "기본 방식 선택됨"
-                          : "기본 방식 생성"}
+                          : creationFlow
+                            ? "기본 방식 선택"
+                            : "기본 방식 생성"}
                     </Button>
                     <Button
-                      variant={selectedOrderGenerationMode === "snake" ? "accent" : "outline"}
+                      variant={effectiveOrderGenerationMode === "snake" ? "accent" : "outline"}
                       disabled={
                         pendingAction !== null ||
                         orderGenerationTargetCount === 0 ||
@@ -2789,28 +2851,63 @@ export function DraftAdminConsole({
                     >
                       {pendingAction === "order-generate:snake"
                         ? "생성 중"
-                        : selectedOrderGenerationMode === "snake"
+                        : effectiveOrderGenerationMode === "snake"
                           ? "스네이크 방식 선택됨"
-                          : "스네이크 방식 생성"}
+                          : creationFlow
+                            ? "스네이크 방식 선택"
+                            : "스네이크 방식 생성"}
                     </Button>
                   </div>
                 </div>
               </div>
 
               <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {sortedOrders.length === 0 ? (
+                {(creationFlow ? stagedOrderPlan.length === 0 : sortedOrders.length === 0) ? (
                   <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted sm:col-span-2 xl:col-span-3">
-                    아직 등록한 드래프트 순서가 없다.
+                    {creationFlow
+                      ? "드래프트 방식을 고르면 순서 미리보기가 나온다."
+                      : "아직 등록한 드래프트 순서가 없다."}
                   </div>
+                ) : creationFlow ? (
+                  stagedOrderPlan.map((order) => (
+                    <OrderRowCompact
+                      key={`${order.pickNo}:${order.draftTeamId}`}
+                      order={{
+                        draftSessionId: selectedSessionId ?? 0,
+                        draftTeamId: order.draftTeamId,
+                        draftTeamName: order.teamName,
+                        pickNo: order.pickNo,
+                        roundNo: order.roundNo,
+                      }}
+                    />
+                  ))
                 ) : (
                   sortedOrders.map((order) => (
-                    <OrderRowCompact
-                      key={order.pickNo}
-                      order={order}
-                    />
+                    <OrderRowCompact key={order.pickNo} order={order} />
                   ))
                 )}
               </div>
+
+              {creationFlow ? (
+                <Button
+                  variant="accent"
+                  fullWidth
+                  className="mt-5"
+                  disabled={
+                    pendingAction !== null ||
+                    !isPickerSetupReady ||
+                    orderGenerationTargetCount === 0 ||
+                    stagedOrderGenerationMode === null
+                  }
+                  onClick={() => {
+                    void handleFinalizeSessionCreation();
+                  }}
+                >
+                  {pendingAction === "session-ready"
+                    ? "생성 중..."
+                    : "드래프트 생성"}
+                </Button>
+              ) : null}
             </>
           )}
         </SurfaceCard>

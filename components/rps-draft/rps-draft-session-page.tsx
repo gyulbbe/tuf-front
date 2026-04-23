@@ -12,7 +12,6 @@ import {
   getRpsDraftSession,
   listRpsDraftCandidates,
   registerRpsDraftCandidate,
-  searchRpsDraftUsers,
   startRpsDraftSession,
   type RpsDraftCandidate,
   type RpsDraftSessionDetail,
@@ -28,8 +27,8 @@ import {
 } from "@/lib/rps-draft/routes";
 import {
   formatRpsDraftUserId,
+  getCachedRpsDraftUserIdMap,
   mergeRpsDraftUserIdMap,
-  resolveRpsDraftUserId,
 } from "@/lib/rps-draft/user-id-display";
 import {
   formatRace,
@@ -105,7 +104,9 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
   const { isAuthenticated, status, user } = useAuth();
   const [session, setSession] = useState<RpsDraftSessionDetail | null>(null);
   const [candidates, setCandidates] = useState<RpsDraftCandidate[]>([]);
-  const [resolvedUserIds, setResolvedUserIds] = useState<Record<number, string>>({});
+  const [resolvedUserIds, setResolvedUserIds] = useState<Record<number, string>>(
+    () => getCachedRpsDraftUserIdMap(),
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -156,95 +157,16 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
   }, [sessionId]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function hydrateResolvedUserIds() {
-      const knownUserIds: Record<number, string> = {};
-
-      if (user?.username && typeof user.userPk === "number") {
-        knownUserIds[user.userPk] = user.username;
-      }
-
-      if (Object.keys(knownUserIds).length > 0) {
-        setResolvedUserIds((current) =>
-          mergeRpsDraftUserIdMap(current, knownUserIds),
-        );
-      }
-
-      if (!session) {
-        return;
-      }
-
-      const unresolvedTargets = new Map<number, string>();
-
-      const addUnresolvedTarget = (
-        userPk: number | null | undefined,
-        fallbackText: string | null | undefined,
-      ) => {
-        if (typeof userPk !== "number" || !fallbackText?.trim()) {
-          return;
-        }
-
-        if (knownUserIds[userPk] || resolvedUserIds[userPk]) {
-          return;
-        }
-
-        unresolvedTargets.set(userPk, fallbackText);
-      };
-
-      addUnresolvedTarget(session.ownerUserId, session.ownerName);
-
-      for (const team of session.teams) {
-        addUnresolvedTarget(team.pickerUserId, team.pickerName);
-      }
-
-      for (const candidate of candidates) {
-        addUnresolvedTarget(candidate.candidateUserId, candidate.candidateName);
-      }
-
-      if (unresolvedTargets.size === 0) {
-        return;
-      }
-
-      const resolvedEntries = await Promise.all(
-        Array.from(unresolvedTargets.entries()).map(async ([userPk, keyword]) => {
-          try {
-            const users = await searchRpsDraftUsers(keyword, 8);
-            return [
-              userPk,
-              resolveRpsDraftUserId(userPk, keyword, users),
-            ] as const;
-          } catch {
-            return [userPk, null] as const;
-          }
-        }),
-      );
-
-      if (cancelled) {
-        return;
-      }
-
-      const nextResolvedUserIds: Record<number, string> = {};
-
-      for (const [userPk, resolvedUserId] of resolvedEntries) {
-        if (resolvedUserId) {
-          nextResolvedUserIds[userPk] = resolvedUserId;
-        }
-      }
-
-      if (Object.keys(nextResolvedUserIds).length > 0) {
-        setResolvedUserIds((current) =>
-          mergeRpsDraftUserIdMap(current, nextResolvedUserIds),
-        );
-      }
+    if (!user?.username || typeof user.userPk !== "number") {
+      return;
     }
 
-    void hydrateResolvedUserIds();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [candidates, resolvedUserIds, session, user?.userPk, user?.username]);
+    setResolvedUserIds((current) =>
+      mergeRpsDraftUserIdMap(current, {
+        [user.userPk]: user.username,
+      }),
+    );
+  }, [user?.userPk, user?.username]);
 
   async function refreshPage(message?: string | null) {
     const [nextSession, nextCandidates] = await Promise.all([

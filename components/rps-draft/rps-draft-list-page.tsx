@@ -406,6 +406,8 @@ export function RpsDraftListPage() {
     form.team2Picker?.id,
     ...candidateIds,
   ].filter((value): value is number => typeof value === "number");
+  const createSurfaceClassName =
+    "bg-surface-strong shadow-none backdrop-blur-none";
 
   return (
     <>
@@ -504,7 +506,7 @@ export function RpsDraftListPage() {
         closeOnEscape={false}
         title="드래프트 생성"
         description="제목, 팀장 2명, 후보 목록을 여기서 모두 정합니다. 생성이 끝나면 바로 세션 상세로 이동합니다."
-        panelClassName="max-w-6xl"
+        panelClassName="max-w-6xl bg-white backdrop-blur-none"
       >
         <form
           className="grid gap-5 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]"
@@ -528,7 +530,7 @@ export function RpsDraftListPage() {
             </div>
 
             <div className="grid gap-4">
-              <SurfaceCard className="p-5">
+              <SurfaceCard className={`p-5 ${createSurfaceClassName}`}>
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">1팀 팀장</h3>
                 </div>
@@ -561,7 +563,7 @@ export function RpsDraftListPage() {
                 ) : null}
               </SurfaceCard>
 
-              <SurfaceCard className="p-5">
+              <SurfaceCard className={`p-5 ${createSurfaceClassName}`}>
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">2팀 팀장</h3>
                 </div>
@@ -596,7 +598,7 @@ export function RpsDraftListPage() {
             </div>
           </div>
 
-          <SurfaceCard className="p-5">
+          <SurfaceCard className={`p-5 ${createSurfaceClassName}`}>
             <div>
               <div>
                 <h3 className="text-lg font-semibold text-foreground">팀원 선택</h3>
@@ -614,7 +616,7 @@ export function RpsDraftListPage() {
                 disabledUserMessage="팀장이거나 이미 후보 목록에 들어간 유저입니다."
               />
 
-              <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
+              <div className="rounded-[22px] border border-line bg-white px-4 py-4">
                 <div>
                   <div>
                     <p className="text-sm font-semibold text-foreground">선택한 팀원</p>

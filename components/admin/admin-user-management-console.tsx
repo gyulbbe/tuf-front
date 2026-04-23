@@ -111,7 +111,7 @@ function chooseSelectedUserId(
 
 function validateCreateForm(form: CreateFormState) {
   if (!form.userId.trim()) {
-    return "userId를 입력해 주세요.";
+    return "아이디를 입력해 주세요.";
   }
 
   if (!form.password.trim()) {
@@ -135,7 +135,7 @@ function validateCreateForm(form: CreateFormState) {
 
 function validateEditForm(form: EditFormState) {
   if (!form.userId.trim()) {
-    return "userId를 입력해 주세요.";
+    return "아이디를 입력해 주세요.";
   }
 
   if (!form.name.trim()) {
@@ -371,7 +371,7 @@ export function AdminUserManagementConsole() {
               사용자 관리
             </h1>
             <p className="mt-4 text-base leading-8 text-muted">
-              userId 기준으로 사용자 목록을 찾고, 등록과 수정, 비활성화와 재활성화를
+              아이디 기준으로 사용자 목록을 찾고, 등록과 수정, 비활성화와 재활성화를
               같은 화면에서 처리한다.
             </p>
           </div>
@@ -410,7 +410,7 @@ export function AdminUserManagementConsole() {
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-foreground">
-                    userId 검색
+                    아이디 검색
                   </span>
                   <Input
                     value={searchForm.keyword}
@@ -420,7 +420,7 @@ export function AdminUserManagementConsole() {
                         keyword: event.target.value,
                       }));
                     }}
-                    placeholder="userId 입력"
+                    placeholder="아이디 검색"
                   />
                 </label>
 
@@ -469,7 +469,7 @@ export function AdminUserManagementConsole() {
               <div>
                 <p className="text-sm font-semibold text-foreground">사용자 목록</p>
                 <p className="mt-1 text-sm text-muted">
-                  userId 검색과 상태 필터 결과를 보여준다.
+                  아이디 검색과 상태 필터 결과를 보여준다.
                 </p>
               </div>
               <Button
@@ -563,7 +563,7 @@ export function AdminUserManagementConsole() {
             <div className="mt-5 space-y-4">
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-foreground">
-                  userId
+                  아이디
                 </span>
                 <Input
                   value={createForm.userId}
@@ -573,7 +573,7 @@ export function AdminUserManagementConsole() {
                       userId: event.target.value,
                     }));
                   }}
-                  placeholder="userId 입력"
+                  placeholder="아이디 입력"
                 />
               </label>
 
@@ -692,7 +692,7 @@ export function AdminUserManagementConsole() {
               <div className="mt-5 space-y-4">
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-foreground">
-                    userId
+                    아이디
                   </span>
                   <Input
                     value={editForm.userId}
@@ -702,7 +702,7 @@ export function AdminUserManagementConsole() {
                         userId: event.target.value,
                       }));
                     }}
-                    placeholder="userId 입력"
+                    placeholder="아이디 입력"
                   />
                 </label>
 

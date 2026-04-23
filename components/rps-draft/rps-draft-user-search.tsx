@@ -40,7 +40,7 @@ export function RpsDraftUserSearch({
   emptyMessage = "검색 결과가 없습니다.",
   label,
   onSelect,
-  placeholder = "아이디나 이름으로 검색",
+  placeholder = "아이디 검색",
   selectedUser,
 }: RpsDraftUserSearchProps) {
   const [keyword, setKeyword] = useState("");
@@ -88,7 +88,7 @@ export function RpsDraftUserSearch({
   }
 
   return (
-    <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
+    <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
       <div className="flex flex-col gap-3">
         <div>
           <p className="text-sm font-semibold text-foreground">{label}</p>

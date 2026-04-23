@@ -852,7 +852,7 @@ function UserAutocompleteInput({
       {isOpen && value.trim() ? (
         <div className="absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-[20px] border border-line bg-surface shadow-[0_18px_60px_-40px_rgba(31,42,40,0.7)]">
           <div className="border-b border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-            matching user_id
+            아이디 검색 결과
           </div>
           {visibleResults.length === 0 ? (
             <div className="px-3 py-3 text-xs text-muted">일치하는 아이디가 없다.</div>
@@ -986,10 +986,10 @@ function TeamPickerManager({
 
       <div className="mt-5 rounded-[24px] border border-line bg-surface px-4 py-4">
         <p className="text-sm font-semibold text-foreground">
-          userId 자동완성으로 픽커 지정
+          아이디 검색으로 픽커 지정
         </p>
         <p className="mt-2 text-sm leading-7 text-muted">
-          user_id 일부만 입력해도 검색 결과가 내려온다. 결과를 고르면 pickerUserId가
+          아이디 일부만 입력해도 검색 결과가 내려온다. 결과를 고르면 pickerUserId가
           자동으로 채워지고, 필요하면 직접 수정할 수도 있다.
         </p>
 
@@ -997,7 +997,7 @@ function TeamPickerManager({
           <UserAutocompleteInput
             disabled={pendingAction !== null}
             value={lookupState.query}
-            placeholder="picker user_id 입력 후 검색"
+            placeholder="아이디 검색"
             onValueChange={(value) => {
               onChangeLookup(draftTeam.id, {
                 query: value,
@@ -1018,7 +1018,7 @@ function TeamPickerManager({
             {lookupState.selectedUser ? (
               <>
                 <p className="font-semibold text-foreground">
-                  선택한 user_id: {lookupState.selectedUser.userId}
+                  선택한 아이디: {lookupState.selectedUser.userId}
                 </p>
                 <p className="mt-1">이 유저를 현재 팀의 픽커로 지정한다.</p>
               </>
@@ -1093,7 +1093,7 @@ function TeamPickerManager({
               선택됨: {lookupState.selectedUser.userId}
             </p>
             <p className="hidden">
-              각 팀에 픽커를 1명 지정할 수 있다. user_id 자동완성으로 바로 찾고 지정한다.
+              각 팀에 픽커를 1명 지정할 수 있다. 아이디 검색으로 바로 찾고 지정한다.
             </p>
             <p className="mt-1 text-sm text-muted">
               {lookupState.selectedUser.userId}
@@ -1105,7 +1105,7 @@ function TeamPickerManager({
                 : ""}
             </p>
             <p className="mt-2 text-xs leading-6 text-muted">
-              검색한 user_id 기준으로 pickerUserId {lookupState.selectedUser.id}가
+              검색한 아이디 기준으로 pickerUserId {lookupState.selectedUser.id}가
               자동 선택됐다.
             </p>
           </div>
@@ -1264,10 +1264,10 @@ function TeamPickerManagerClean({
 
       <div className="mt-5 rounded-[24px] border border-line bg-surface px-4 py-4">
         <p className="text-sm font-semibold text-foreground">
-          user_id 자동완성으로 픽커 지정
+          아이디 검색으로 픽커 지정
         </p>
         <p className="mt-2 text-sm leading-7 text-muted">
-          user_id 일부만 입력해도 검색 결과가 내려온다. 결과를 고르면 선택값이
+          아이디 일부만 입력해도 검색 결과가 내려온다. 결과를 고르면 선택값이
           자동으로 채워지고, 필요하면 직접 입력할 수도 있다.
         </p>
 
@@ -1275,7 +1275,7 @@ function TeamPickerManagerClean({
           <UserAutocompleteInput
             disabled={pendingAction !== null}
             value={lookupState.query}
-            placeholder="picker user_id 입력 후 검색"
+            placeholder="아이디 검색"
             onValueChange={(value) => {
               onChangeLookup(draftTeam.id, {
                 query: value,
@@ -1296,7 +1296,7 @@ function TeamPickerManagerClean({
             {lookupState.selectedUser ? (
               <>
                 <p className="font-semibold text-foreground">
-                  선택한 user_id: {lookupState.selectedUser.userId}
+                  선택한 아이디: {lookupState.selectedUser.userId}
                 </p>
                 <p className="mt-1">이 유저를 현재 팀의 픽커로 지정한다.</p>
               </>
@@ -1374,7 +1374,7 @@ function TeamPickerManagerClean({
                 : ""}
             </p>
             <p className="mt-2 text-xs leading-6 text-muted">
-              검색한 user_id 기준으로 이 유저가 자동 선택됐다.
+              검색한 아이디 기준으로 이 유저가 자동 선택됐다.
             </p>
           </div>
         ) : null}
@@ -2737,7 +2737,7 @@ export function DraftAdminConsole({
           <div>
             <p className="text-sm font-semibold text-foreground">팀별 픽커 지정</p>
             <p className="mt-2 text-sm leading-7 text-muted">
-              운영진 목록 없이 팀마다 픽커 1명만 관리한다. 자동완성으로 `user_id`를 찾아
+              운영진 목록 없이 팀마다 픽커 1명만 관리한다. 아이디 검색으로
               바로 지정할 수 있다.
             </p>
           </div>

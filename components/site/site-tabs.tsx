@@ -207,6 +207,10 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
   const visibleTabs = filterVisibleTabs(tabs, canSeeAdminTab);
 
   useEffect(() => {
+    setOpenMenuKey(null);
+  }, [pathname]);
+
+  useEffect(() => {
     if (!openMenuKey) {
       return;
     }
@@ -275,12 +279,12 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
             key={menuKey}
             className="relative flex flex-col"
             onMouseEnter={() => {
-              if (tab.href) {
+              if (hasItems) {
                 setOpenMenuKey(menuKey);
               }
             }}
             onMouseLeave={() => {
-              if (tab.href) {
+              if (hasItems) {
                 setOpenMenuKey((current) => (current === menuKey ? null : current));
               }
             }}

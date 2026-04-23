@@ -11,8 +11,18 @@ export const metadata: Metadata = {
 const adminTools = [
   {
     href: "/admin/draft",
-    title: "드래프트 관리",
-    description: "프로리그 드래프트와 팀배/컨텐츠 드래프트 등록, 수정, 운영을 관리합니다.",
+    title: "드래프트 진행 관리",
+    description: "프로리그 드래프트와 팀배/컨텐츠 드래프트를 생성하고 운영합니다.",
+  },
+  {
+    href: "/admin/draft/history",
+    title: "드래프트 종료 이력",
+    description: "종료된 드래프트 기록과 픽 이력을 관리자 화면에서 확인합니다.",
+  },
+  {
+    href: "/admin/users",
+    title: "사용자 관리",
+    description: "사용자 목록 조회, 등록, 수정, 비활성화와 재활성화를 처리합니다.",
   },
 ];
 
@@ -45,10 +55,10 @@ export default async function AdminPage() {
         관리자 작업 공간
       </h1>
       <p className="mt-4 max-w-2xl text-base leading-8 text-muted">
-        필요한 관리 화면만 남겨서 드래프트 운영 동선을 단순화했다.
+        드래프트 운영과 사용자 관리를 관리자 전용 화면에서 처리한다.
       </p>
 
-      <div className="mt-8 grid gap-4 md:max-w-xl">
+      <div className="mt-8 grid gap-4 md:grid-cols-2 xl:max-w-4xl">
         {adminTools.map((tool) => (
           <Link
             key={tool.href}

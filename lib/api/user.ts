@@ -24,6 +24,33 @@ export type UserDetail = {
   lose: number;
 };
 
+export type AdminUserStatus = "ACTIVE" | "INACTIVE";
+export type AdminUserListStatus = AdminUserStatus | "ALL";
+
+export type AdminUserRecord = {
+  id: number;
+  userId: string;
+  name: string | null;
+  race: string | null;
+  tier: string | null;
+  status: AdminUserStatus;
+};
+
+export type AdminUserCreateRequest = {
+  userId: string;
+  password: string;
+  name: string;
+  race: string;
+  tier: string;
+};
+
+export type AdminUserUpdateRequest = {
+  userId: string;
+  name: string;
+  race: string;
+  tier: string;
+};
+
 function readErrorMessage(data: unknown, fallback: string) {
   if (!data || typeof data !== "object") {
     return fallback;
@@ -50,6 +77,51 @@ function readResponseStatus(data: unknown, fallback: number) {
   const status = (data as { status?: unknown }).status;
 
   return typeof status === "number" ? status : fallback;
+}
+
+async function unwrapEnvelopeResponse<T>(
+  request: Promise<{
+    status: number;
+    data: ApiEnvelope<T> | ErrorResponseBody;
+  }>,
+  fallback: string,
+) {
+  const response = await request;
+  const responseStatus = readResponseStatus(response.data, response.status);
+  const message = readErrorMessage(response.data, fallback);
+
+  if (response.status < 200 || response.status >= 300 || responseStatus >= 400) {
+    throw new Error(message);
+  }
+
+  const body = response.data as ApiEnvelope<T>;
+
+  if (body.data === null || body.data === undefined) {
+    throw new Error(message);
+  }
+
+  return body.data;
+}
+
+function normalizeAdminUserStatus(value: unknown): AdminUserStatus {
+  return value === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+}
+
+function normalizeAdminUserRecord(
+  value: Partial<AdminUserRecord>,
+): AdminUserRecord {
+  if (typeof value.id !== "number" || typeof value.userId !== "string") {
+    throw new Error("사용자 정보를 불러오지 못했습니다.");
+  }
+
+  return {
+    id: value.id,
+    userId: value.userId.trim(),
+    name: typeof value.name === "string" ? value.name : null,
+    race: typeof value.race === "string" ? value.race : null,
+    tier: typeof value.tier === "string" ? value.tier : null,
+    status: normalizeAdminUserStatus(value.status),
+  };
 }
 
 export async function getUserDetail(userId: string): Promise<UserDetail> {
@@ -104,4 +176,78 @@ export async function updateUserPassword(userPk: number, newPassword: string) {
   if (response.status < 200 || response.status >= 300 || responseStatus >= 400) {
     throw new Error(message);
   }
+}
+
+export async function listAdminUsers(options?: {
+  keyword?: string;
+  status?: AdminUserListStatus;
+}) {
+  const users = await unwrapEnvelopeResponse(
+    apiClient.get<ApiEnvelope<AdminUserRecord[]> | ErrorResponseBody>(
+      "/user/admin/list",
+      {
+        params: {
+          keyword: options?.keyword?.trim() ?? "",
+          status: options?.status ?? "ALL",
+        },
+        validateStatus: () => true,
+      },
+    ),
+    "사용자 목록을 불러오지 못했습니다.",
+  );
+
+  return Array.isArray(users)
+    ? users.map((user) => normalizeAdminUserRecord(user))
+    : [];
+}
+
+export async function createAdminUser(payload: AdminUserCreateRequest) {
+  const user = await unwrapEnvelopeResponse(
+    apiClient.post<ApiEnvelope<AdminUserRecord> | ErrorResponseBody>(
+      "/user/admin",
+      payload,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "사용자를 등록하지 못했습니다.",
+  );
+
+  return normalizeAdminUserRecord(user);
+}
+
+export async function updateAdminUser(
+  userId: number,
+  payload: AdminUserUpdateRequest,
+) {
+  const user = await unwrapEnvelopeResponse(
+    apiClient.put<ApiEnvelope<AdminUserRecord> | ErrorResponseBody>(
+      `/user/admin/${userId}`,
+      payload,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "사용자 정보를 수정하지 못했습니다.",
+  );
+
+  return normalizeAdminUserRecord(user);
+}
+
+export async function updateAdminUserStatus(
+  userId: number,
+  status: AdminUserStatus,
+) {
+  const user = await unwrapEnvelopeResponse(
+    apiClient.patch<ApiEnvelope<AdminUserRecord> | ErrorResponseBody>(
+      `/user/admin/${userId}/status`,
+      { status },
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "사용자 상태를 변경하지 못했습니다.",
+  );
+
+  return normalizeAdminUserRecord(user);
 }

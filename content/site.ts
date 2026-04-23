@@ -65,6 +65,18 @@ export const siteTabs: SiteTab[] = [
         description: "드래프트 등록과 운영을 관리합니다.",
         requiresAdmin: true,
       },
+      {
+        label: "드래프트 이력",
+        href: "/admin/draft/history",
+        description: "종료된 드래프트 기록을 확인합니다.",
+        requiresAdmin: true,
+      },
+      {
+        label: "사용자 관리",
+        href: "/admin/users",
+        description: "사용자 조회, 등록, 수정, 상태 변경을 관리합니다.",
+        requiresAdmin: true,
+      },
     ],
   },
   {

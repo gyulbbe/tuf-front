@@ -8,6 +8,20 @@ type ErrorResponseBody = {
   error?: string;
 };
 
+function isInactiveAccountMessage(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    normalized.includes("비활성") ||
+    normalized.includes("inactive") ||
+    normalized.includes("disabled")
+  );
+}
+
 function readAuthorizationHeader(
   headers: AxiosResponseHeaders | RawAxiosResponseHeaders,
 ) {
@@ -30,13 +44,21 @@ function readErrorMessage(data: unknown, fallback: string) {
   }
 
   const body = data as ErrorResponseBody;
+  const message =
+    typeof body.message === "string" && body.message.trim() ? body.message : null;
+  const error =
+    typeof body.error === "string" && body.error.trim() ? body.error : null;
 
-  if (typeof body.message === "string" && body.message.trim()) {
-    return body.message;
+  if (isInactiveAccountMessage(error) || isInactiveAccountMessage(message ?? undefined)) {
+    return "비활성화된 계정입니다.";
   }
 
-  if (typeof body.error === "string" && body.error.trim()) {
-    return body.error;
+  if (message) {
+    return message;
+  }
+
+  if (error) {
+    return error;
   }
 
   return fallback;

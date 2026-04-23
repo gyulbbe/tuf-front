@@ -283,7 +283,11 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                 <ValueBadge>{formatRelativePickNo(session.currentPickNo)}</ValueBadge>
               ) : null}
               {session ? (
-                <ValueBadge>방장 {session.ownerName || "이름 없음"}</ValueBadge>
+                <ValueBadge>
+                  방장 {session.ownerUserId === user?.userPk && user?.username
+                    ? user.username
+                    : `user_pk:${session.ownerUserId}`}
+                </ValueBadge>
               ) : null}
             </div>
             <h1 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
@@ -428,7 +432,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
             {needsFallbackSetup && canManageReady ? (
               <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
                 <RpsDraftUserSearch
-                  label="후보 검색"
+                  label="팀원 검색"
                   description="기존 세션 보정을 위해 누락된 후보를 추가합니다."
                   selectedUser={candidateUser}
                   onSelect={(nextUser) => {
@@ -443,7 +447,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                   <div className="space-y-3">
                     {candidateUser ? (
                       <div className="rounded-2xl bg-surface-muted px-4 py-3 text-sm text-foreground">
-                        선택한 후보: {candidateUser.name || candidateUser.userId}
+                        선택한 팀원: {candidateUser.userId}
                       </div>
                     ) : (
                       <p className="text-xs leading-6 text-muted">

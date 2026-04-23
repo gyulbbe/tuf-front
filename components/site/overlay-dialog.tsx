@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 
 type OverlayDialogProps = {
   children: React.ReactNode;
+  closeOnBackdropClick?: boolean;
+  closeOnEscape?: boolean;
   description?: string;
   onClose: () => void;
   open: boolean;
@@ -16,6 +18,8 @@ type OverlayDialogProps = {
 
 export function OverlayDialog({
   children,
+  closeOnBackdropClick = true,
+  closeOnEscape = true,
   description,
   onClose,
   open,
@@ -32,7 +36,7 @@ export function OverlayDialog({
     document.body.style.overflow = "hidden";
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
+      if (closeOnEscape && event.key === "Escape") {
         onClose();
       }
     }
@@ -43,7 +47,7 @@ export function OverlayDialog({
       document.body.style.overflow = originalOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose, open]);
+  }, [closeOnEscape, onClose, open]);
 
   if (!open || typeof document === "undefined") {
     return null;
@@ -52,7 +56,11 @@ export function OverlayDialog({
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/28 px-3 py-3 backdrop-blur-[2px] sm:px-6 sm:py-6"
-      onClick={onClose}
+      onClick={() => {
+        if (closeOnBackdropClick) {
+          onClose();
+        }
+      }}
     >
       <div
         role="dialog"

@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { DraftAdminConsole } from "@/components/proleague/draft-admin-console";
 import { OverlayDialog } from "@/components/site/overlay-dialog";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/input";
 import {
   createDraftSession,
   listDraftSessions,
+  searchDraftUsers,
   type DraftSessionSummary,
+  type DraftUserSearchResult,
 } from "@/lib/api/draft";
 import { buildLoginHref } from "@/lib/auth/auth-navigation";
 import { canManageOwnedResource } from "@/lib/auth/roles";
@@ -28,6 +30,55 @@ type CreateFormState = {
   title: string;
 };
 
+function padNumber(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function buildDefaultDraftTitle(username?: string | null) {
+  const now = new Date();
+  const userId = username?.trim() || "guest";
+
+  return `${now.getFullYear()}${padNumber(now.getMonth() + 1)}${padNumber(now.getDate())}${padNumber(now.getHours())}${padNumber(now.getMinutes())}_${userId}`;
+}
+
+function createEmptyForm(title = ""): CreateFormState {
+  return {
+    title,
+    teamCount: "6",
+    pickTimeSeconds: "30",
+  };
+}
+
+function resolveOwnerUserId(
+  ownerUserId: number,
+  ownerName: string | null | undefined,
+  users: DraftUserSearchResult[],
+) {
+  const exactPkMatch = users.find((user) => user.id === ownerUserId);
+
+  if (exactPkMatch) {
+    return exactPkMatch.userId;
+  }
+
+  const normalizedOwnerName = ownerName?.trim().toLowerCase();
+
+  if (!normalizedOwnerName) {
+    return null;
+  }
+
+  const exactTextMatch = users.find((user) => {
+    const normalizedUserId = user.userId.trim().toLowerCase();
+    const normalizedDisplayName = user.name?.trim().toLowerCase();
+
+    return (
+      normalizedUserId === normalizedOwnerName ||
+      normalizedDisplayName === normalizedOwnerName
+    );
+  });
+
+  return exactTextMatch?.userId ?? null;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   READY: "준비",
   LIVE: "진행 중",
@@ -40,12 +91,6 @@ const secondaryLinkClassName =
 
 const primaryLinkClassName =
   "inline-flex items-center justify-center rounded-full bg-accent px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-ink";
-
-const EMPTY_CREATE_FORM: CreateFormState = {
-  title: "",
-  teamCount: "6",
-  pickTimeSeconds: "30",
-};
 
 function toTimestamp(value: string | null | undefined) {
   if (!value) {
@@ -141,15 +186,18 @@ function describeActivity(session: DraftSessionSummary) {
 }
 
 export function ProleagueDraftListPage() {
-  const router = useRouter();
   const { isAuthenticated, status, user } = useAuth();
   const [sessions, setSessions] = useState<DraftSessionSummary[]>([]);
+  const [ownerUserIds, setOwnerUserIds] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState<CreateFormState>(EMPTY_CREATE_FORM);
+  const [form, setForm] = useState<CreateFormState>(() =>
+    createEmptyForm(buildDefaultDraftTitle(user?.username)),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -186,6 +234,86 @@ export function ProleagueDraftListPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateOwnerUserIds() {
+      const knownOwnerUserIds: Record<number, string> = {};
+
+      if (user?.username && typeof user.userPk === "number") {
+        knownOwnerUserIds[user.userPk] = user.username;
+      }
+
+      if (Object.keys(knownOwnerUserIds).length > 0) {
+        setOwnerUserIds((current) => ({
+          ...current,
+          ...knownOwnerUserIds,
+        }));
+      }
+
+      const unresolvedSessions = sessions.filter((session) => {
+        if (!session.ownerName?.trim()) {
+          return false;
+        }
+
+        if (knownOwnerUserIds[session.ownerUserId]) {
+          return false;
+        }
+
+        return !ownerUserIds[session.ownerUserId];
+      });
+
+      const uniqueSessions = Array.from(
+        new Map(
+          unresolvedSessions.map((session) => [session.ownerUserId, session]),
+        ).values(),
+      );
+
+      if (uniqueSessions.length === 0) {
+        return;
+      }
+
+      const resolvedEntries = await Promise.all(
+        uniqueSessions.map(async (session) => {
+          try {
+            const users = await searchDraftUsers(session.ownerName!, 8);
+            return [
+              session.ownerUserId,
+              resolveOwnerUserId(session.ownerUserId, session.ownerName, users),
+            ] as const;
+          } catch {
+            return [session.ownerUserId, null] as const;
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const nextOwnerUserIds: Record<number, string> = {};
+
+      for (const [ownerUserId, resolvedUserId] of resolvedEntries) {
+        if (resolvedUserId) {
+          nextOwnerUserIds[ownerUserId] = resolvedUserId;
+        }
+      }
+
+      if (Object.keys(nextOwnerUserIds).length > 0) {
+        setOwnerUserIds((current) => ({
+          ...current,
+          ...nextOwnerUserIds,
+        }));
+      }
+    }
+
+    void hydrateOwnerUserIds();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerUserIds, sessions, user?.userPk, user?.username]);
+
   async function handleCreateSession() {
     const title = form.title.trim();
     const teamCount = Number(form.teamCount.trim());
@@ -216,8 +344,13 @@ export function ProleagueDraftListPage() {
         pickTimeSeconds,
       });
 
-      setIsCreateOpen(false);
-      router.push(proleagueDraftSessionPath(createdSession.id));
+      setEditingSessionId(createdSession.id);
+      try {
+        const nextSessions = await listDraftSessions();
+        setSessions(nextSessions);
+      } catch {
+        // noop
+      }
     } catch (createSessionError) {
       setCreateError(
         createSessionError instanceof Error
@@ -227,6 +360,22 @@ export function ProleagueDraftListPage() {
     } finally {
       setCreating(false);
     }
+  }
+
+  function handleOpenCreateDialog() {
+    setCreateError(null);
+    setEditingSessionId(null);
+    setForm(createEmptyForm(buildDefaultDraftTitle(user?.username)));
+    setIsCreateOpen(true);
+  }
+
+  function handleCloseCreateDialog() {
+    if (creating) {
+      return;
+    }
+
+    setIsCreateOpen(false);
+    setEditingSessionId(null);
   }
 
   const activeSessions = filterActiveSessions(sessions);
@@ -249,13 +398,7 @@ export function ProleagueDraftListPage() {
             </p>
           </div>
 
-          <Button
-            variant="accent"
-            onClick={() => {
-              setCreateError(null);
-              setIsCreateOpen(true);
-            }}
-          >
+          <Button variant="accent" onClick={handleOpenCreateDialog}>
             드래프트 생성
           </Button>
         </div>
@@ -303,7 +446,7 @@ export function ProleagueDraftListPage() {
                           {formatStatus(session.status)}
                         </span>
                         <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-foreground">
-                          방장 {session.ownerName || "이름 없음"}
+                          방장 {ownerUserIds[session.ownerUserId] ?? `user_pk:${session.ownerUserId}`}
                         </span>
                         <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-foreground">
                           팀 {session.teamCount}
@@ -345,78 +488,105 @@ export function ProleagueDraftListPage() {
 
       <OverlayDialog
         open={isCreateOpen}
-        onClose={() => {
-          if (creating) {
-            return;
-          }
-
-          setIsCreateOpen(false);
-        }}
-        title="드래프트 생성"
-        description="세션을 만들면 곧바로 공개 설정 화면으로 이동합니다."
+        onClose={handleCloseCreateDialog}
+        closeOnBackdropClick={false}
+        closeOnEscape={false}
+        title={editingSessionId ? "프로리그 드래프트 설정" : "드래프트 생성"}
+        description={
+          editingSessionId
+            ? undefined
+            : "세션을 만들고 같은 팝업 안에서 바로 설정을 이어갑니다."
+        }
+        panelClassName="max-w-7xl"
       >
-        <form
-          className="space-y-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleCreateSession();
-          }}
-        >
-          <Input
-            value={form.title}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, title: event.target.value }))
-            }
-            placeholder="드래프트 이름"
-            disabled={creating}
+        {editingSessionId ? (
+          <DraftAdminConsole
+            sessionId={editingSessionId}
+            onDataChanged={() => {
+              void listDraftSessions()
+                .then((nextSessions) => {
+                  setSessions(nextSessions);
+                })
+                .catch(() => {
+                  // noop
+                });
+            }}
+            onSessionDeleted={() => {
+              setEditingSessionId(null);
+              setIsCreateOpen(false);
+              void listDraftSessions()
+                .then((nextSessions) => {
+                  setSessions(nextSessions);
+                })
+                .catch(() => {
+                  // noop
+                });
+            }}
           />
-          <div className="grid gap-3 sm:grid-cols-2">
+        ) : (
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreateSession();
+            }}
+          >
             <Input
-              type="number"
-              min={2}
-              value={form.teamCount}
+              value={form.title}
               onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  teamCount: event.target.value,
-                }))
+                setForm((current) => ({ ...current, title: event.target.value }))
               }
-              placeholder="팀 수"
+              placeholder="드래프트 이름"
               disabled={creating}
             />
-            <Input
-              type="number"
-              min={1}
-              value={form.pickTimeSeconds}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  pickTimeSeconds: event.target.value,
-                }))
-              }
-              placeholder="픽 제한 시간(초)"
-              disabled={creating}
-            />
-          </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                type="number"
+                min={2}
+                value={form.teamCount}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    teamCount: event.target.value,
+                  }))
+                }
+                placeholder="팀 수"
+                disabled={creating}
+              />
+              <Input
+                type="number"
+                min={1}
+                value={form.pickTimeSeconds}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    pickTimeSeconds: event.target.value,
+                  }))
+                }
+                placeholder="픽 제한 시간(초)"
+                disabled={creating}
+              />
+            </div>
 
-          {createError ? (
-            <p className="text-sm text-danger-ink">{createError}</p>
-          ) : null}
+            {createError ? (
+              <p className="text-sm text-danger-ink">{createError}</p>
+            ) : null}
 
-          {isAuthenticated ? (
-            <Button type="submit" variant="accent" fullWidth disabled={creating}>
-              {creating ? "생성하는 중..." : "생성하고 설정하기"}
-            </Button>
-          ) : status === "loading" ? (
-            <Button variant="outline" fullWidth disabled>
-              로그인 확인 중...
-            </Button>
-          ) : (
-            <Link href={loginHref} className={primaryLinkClassName}>
-              로그인하고 생성하기
-            </Link>
-          )}
-        </form>
+            {isAuthenticated ? (
+              <Button type="submit" variant="accent" fullWidth disabled={creating}>
+                {creating ? "생성하는 중..." : "생성하고 설정 계속하기"}
+              </Button>
+            ) : status === "loading" ? (
+              <Button variant="outline" fullWidth disabled>
+                로그인 확인 중...
+              </Button>
+            ) : (
+              <Link href={loginHref} className={primaryLinkClassName}>
+                로그인하고 생성하기
+              </Link>
+            )}
+          </form>
+        )}
       </OverlayDialog>
     </>
   );

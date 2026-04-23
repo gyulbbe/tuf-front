@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import {
   createRpsDraftSession,
   listRpsDraftSessions,
+  searchRpsDraftUsers,
   type RpsDraftSessionSummary,
   type RpsDraftUserSearchResult,
 } from "@/lib/api/rps-draft";
@@ -42,9 +43,20 @@ type RpsDraftCreateFormState = {
   candidates: RpsDraftUserSearchResult[];
 };
 
-function createEmptyForm(): RpsDraftCreateFormState {
+function padNumber(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function buildDefaultDraftTitle(username?: string | null) {
+  const now = new Date();
+  const userId = username?.trim() || "guest";
+
+  return `${now.getFullYear()}${padNumber(now.getMonth() + 1)}${padNumber(now.getDate())}${padNumber(now.getHours())}${padNumber(now.getMinutes())}_${userId}`;
+}
+
+function createEmptyForm(title = ""): RpsDraftCreateFormState {
   return {
-    title: "",
+    title,
     team1Picker: null,
     team2Picker: null,
     candidates: [],
@@ -101,26 +113,37 @@ function describeProgress(session: RpsDraftSessionSummary) {
 }
 
 function formatSelectedUser(user: RpsDraftUserSearchResult) {
-  return `${user.name || user.userId} (@${user.userId})`;
+  return user.userId;
 }
 
-function SelectedUserChip({
-  label,
-  user,
-}: {
-  label: string;
-  user: RpsDraftUserSearchResult | null;
-}) {
-  return (
-    <div className="rounded-2xl border border-line bg-surface-strong px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-        {label}
-      </p>
-      <p className="mt-2 text-sm font-semibold text-foreground">
-        {user ? formatSelectedUser(user) : "아직 선택 안 됨"}
-      </p>
-    </div>
-  );
+function resolveOwnerUserId(
+  ownerUserId: number,
+  ownerName: string | null | undefined,
+  users: RpsDraftUserSearchResult[],
+) {
+  const exactPkMatch = users.find((user) => user.id === ownerUserId);
+
+  if (exactPkMatch) {
+    return exactPkMatch.userId;
+  }
+
+  const normalizedOwnerName = ownerName?.trim().toLowerCase();
+
+  if (!normalizedOwnerName) {
+    return null;
+  }
+
+  const exactTextMatch = users.find((user) => {
+    const normalizedUserId = user.userId.trim().toLowerCase();
+    const normalizedDisplayName = user.name?.trim().toLowerCase();
+
+    return (
+      normalizedUserId === normalizedOwnerName ||
+      normalizedDisplayName === normalizedOwnerName
+    );
+  });
+
+  return exactTextMatch?.userId ?? null;
 }
 
 function hasUser(user: RpsDraftUserSearchResult[], userId: number) {
@@ -157,12 +180,15 @@ export function RpsDraftListPage() {
   const router = useRouter();
   const { isAuthenticated, status, user } = useAuth();
   const [sessions, setSessions] = useState<RpsDraftSessionSummary[]>([]);
+  const [ownerUserIds, setOwnerUserIds] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [form, setForm] = useState<RpsDraftCreateFormState>(() => createEmptyForm());
+  const [form, setForm] = useState<RpsDraftCreateFormState>(() =>
+    createEmptyForm(buildDefaultDraftTitle(user?.username)),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -198,6 +224,86 @@ export function RpsDraftListPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateOwnerUserIds() {
+      const knownOwnerUserIds: Record<number, string> = {};
+
+      if (user?.username && typeof user.userPk === "number") {
+        knownOwnerUserIds[user.userPk] = user.username;
+      }
+
+      if (Object.keys(knownOwnerUserIds).length > 0) {
+        setOwnerUserIds((current) => ({
+          ...current,
+          ...knownOwnerUserIds,
+        }));
+      }
+
+      const unresolvedSessions = sessions.filter((session) => {
+        if (!session.ownerName?.trim()) {
+          return false;
+        }
+
+        if (knownOwnerUserIds[session.ownerUserId]) {
+          return false;
+        }
+
+        return !ownerUserIds[session.ownerUserId];
+      });
+
+      const uniqueSessions = Array.from(
+        new Map(
+          unresolvedSessions.map((session) => [session.ownerUserId, session]),
+        ).values(),
+      );
+
+      if (uniqueSessions.length === 0) {
+        return;
+      }
+
+      const resolvedEntries = await Promise.all(
+        uniqueSessions.map(async (session) => {
+          try {
+            const users = await searchRpsDraftUsers(session.ownerName!, 8);
+            return [
+              session.ownerUserId,
+              resolveOwnerUserId(session.ownerUserId, session.ownerName, users),
+            ] as const;
+          } catch {
+            return [session.ownerUserId, null] as const;
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const nextOwnerUserIds: Record<number, string> = {};
+
+      for (const [ownerUserId, resolvedUserId] of resolvedEntries) {
+        if (resolvedUserId) {
+          nextOwnerUserIds[ownerUserId] = resolvedUserId;
+        }
+      }
+
+      if (Object.keys(nextOwnerUserIds).length > 0) {
+        setOwnerUserIds((current) => ({
+          ...current,
+          ...nextOwnerUserIds,
+        }));
+      }
+    }
+
+    void hydrateOwnerUserIds();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerUserIds, sessions, user?.userPk, user?.username]);
 
   async function handleCreateSession() {
     const validationMessage = validateCreateForm(form);
@@ -270,6 +376,20 @@ export function RpsDraftListPage() {
     }));
   }
 
+  function handleOpenCreateDialog() {
+    setCreateError(null);
+    setForm(createEmptyForm(buildDefaultDraftTitle(user?.username)));
+    setIsCreateOpen(true);
+  }
+
+  function handleCloseCreateDialog() {
+    if (creating) {
+      return;
+    }
+
+    setIsCreateOpen(false);
+  }
+
   const activeSessions = filterActiveSessions(sessions);
   const loginHref = buildLoginHref({ redirectTo: rpsDraftListPath() });
   const candidateIds = form.candidates.map((candidate) => candidate.id);
@@ -304,13 +424,7 @@ export function RpsDraftListPage() {
             </p>
           </div>
 
-          <Button
-            variant="accent"
-            onClick={() => {
-              setCreateError(null);
-              setIsCreateOpen(true);
-            }}
-          >
+          <Button variant="accent" onClick={handleOpenCreateDialog}>
             드래프트 생성
           </Button>
         </div>
@@ -352,7 +466,7 @@ export function RpsDraftListPage() {
                         <StatusBadge status={session.status} />
                         <ValueBadge>{formatRelativePickNo(session.currentPickNo)}</ValueBadge>
                         <ValueBadge>
-                          방장 {session.ownerName || "이름 없음"}
+                          방장 {ownerUserIds[session.ownerUserId] ?? `user_pk:${session.ownerUserId}`}
                         </ValueBadge>
                       </div>
                       <h2 className="mt-3 text-xl font-semibold text-foreground">
@@ -385,13 +499,9 @@ export function RpsDraftListPage() {
 
       <OverlayDialog
         open={isCreateOpen}
-        onClose={() => {
-          if (creating) {
-            return;
-          }
-
-          setIsCreateOpen(false);
-        }}
+        onClose={handleCloseCreateDialog}
+        closeOnBackdropClick={false}
+        closeOnEscape={false}
         title="드래프트 생성"
         description="제목, 팀장 2명, 후보 목록을 여기서 모두 정합니다. 생성이 끝나면 바로 세션 상세로 이동합니다."
         panelClassName="max-w-6xl"
@@ -417,24 +527,15 @@ export function RpsDraftListPage() {
               />
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <SelectedUserChip label="1팀 팀장" user={form.team1Picker} />
-              <SelectedUserChip label="2팀 팀장" user={form.team2Picker} />
-            </div>
-
             <div className="grid gap-4">
               <SurfaceCard className="p-5">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">1팀 팀장</h3>
-                  <p className="mt-2 text-sm leading-7 text-muted">
-                    후보와 겹치지 않게 선택합니다.
-                  </p>
                 </div>
 
                 <div className="mt-4">
                   <RpsDraftUserSearch
                     label="팀장 검색"
-                    description="검색 결과를 눌러 1팀 팀장으로 지정합니다."
                     selectedUser={form.team1Picker}
                     onSelect={(nextUser) => {
                       handleSelectTeam("team1Picker", nextUser);
@@ -463,15 +564,11 @@ export function RpsDraftListPage() {
               <SurfaceCard className="p-5">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">2팀 팀장</h3>
-                  <p className="mt-2 text-sm leading-7 text-muted">
-                    후보와 겹치지 않게 선택합니다.
-                  </p>
                 </div>
 
                 <div className="mt-4">
                   <RpsDraftUserSearch
                     label="팀장 검색"
-                    description="검색 결과를 눌러 2팀 팀장으로 지정합니다."
                     selectedUser={form.team2Picker}
                     onSelect={(nextUser) => {
                       handleSelectTeam("team2Picker", nextUser);
@@ -500,21 +597,15 @@ export function RpsDraftListPage() {
           </div>
 
           <SurfaceCard className="p-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
               <div>
-                <h3 className="text-lg font-semibold text-foreground">후보 목록 선택</h3>
-                <p className="mt-2 text-sm leading-7 text-muted">
-                  팀장과 겹치지 않는 유저만 추가할 수 있습니다. 검색 결과를 누르면
-                  후보 목록에 바로 들어갑니다.
-                </p>
+                <h3 className="text-lg font-semibold text-foreground">팀원 선택</h3>
               </div>
-              <ValueBadge>선택 후보 {form.candidates.length}명</ValueBadge>
             </div>
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
               <RpsDraftUserSearch
-                label="후보 검색"
-                description="클릭하면 오른쪽 후보 목록에 바로 추가됩니다."
+                label="팀원 검색"
                 onSelect={(nextUser) => {
                   handleAddCandidate(nextUser);
                 }}
@@ -524,19 +615,15 @@ export function RpsDraftListPage() {
               />
 
               <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
+                <div>
                   <div>
-                    <p className="text-sm font-semibold text-foreground">선택한 후보</p>
-                    <p className="mt-1 text-xs leading-6 text-muted">
-                      중복 없이 생성 전에 확정합니다.
-                    </p>
+                    <p className="text-sm font-semibold text-foreground">선택한 팀원</p>
                   </div>
-                  <ValueBadge>{form.candidates.length}명</ValueBadge>
                 </div>
 
                 {form.candidates.length === 0 ? (
                   <div className="mt-4 rounded-2xl border border-dashed border-line px-4 py-8 text-sm text-muted">
-                    아직 선택한 후보가 없습니다.
+                    아직 선택한 팀원이 없습니다.
                   </div>
                 ) : (
                   <div className="mt-4 grid max-h-80 gap-3 overflow-y-auto pr-1">
@@ -548,7 +635,7 @@ export function RpsDraftListPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <ValueBadge>{index + 1}번 후보</ValueBadge>
+                              <ValueBadge>{index + 1}번 팀원</ValueBadge>
                               <span className="text-sm font-semibold text-foreground">
                                 {formatSelectedUser(candidate)}
                               </span>

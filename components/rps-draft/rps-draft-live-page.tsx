@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,6 @@ import {
 import {
   formatRpsDraftResolvedUserId,
   getCachedRpsDraftUserIdMap,
-  mergeRpsDraftUserIdMap,
 } from "@/lib/rps-draft/user-id-display";
 import {
   formatChoice,
@@ -297,9 +296,9 @@ function TeamPanel({
 }
 
 export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
-  const { isAuthenticated, status, user } = useAuth();
+  const { isAuthenticated, status } = useAuth();
   const [liveState, setLiveState] = useState(INITIAL_LIVE_STATE);
-  const [resolvedUserIds, setResolvedUserIds] = useState<Record<number, string>>(
+  const [resolvedUserIds] = useState<Record<number, string>>(
     () => getCachedRpsDraftUserIdMap(),
   );
   const [loading, setLoading] = useState(true);
@@ -308,6 +307,9 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<LiveNotice | null>(null);
+  const backgroundRefreshInFlightRef = useRef(false);
+  const lastBackgroundRefreshAtRef = useRef(0);
+  const skippedInitialConnectedRefreshRef = useRef(false);
 
   const applySnapshot = useCallback(
     (
@@ -334,20 +336,22 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
     [],
   );
 
-  useEffect(() => {
-    if (!user?.username || typeof user.userPk !== "number") {
-      return;
-    }
-
-    setResolvedUserIds((current) =>
-      mergeRpsDraftUserIdMap(current, {
-        [user.userPk]: user.username,
-      }),
-    );
-  }, [user?.userPk, user?.username]);
-
   const refreshSnapshot = useCallback(
     async (options?: { background?: boolean; keepMessage?: boolean }) => {
+      if (options?.background) {
+        const now = Date.now();
+
+        if (
+          backgroundRefreshInFlightRef.current ||
+          now - lastBackgroundRefreshAtRef.current < 1000
+        ) {
+          return;
+        }
+
+        backgroundRefreshInFlightRef.current = true;
+        lastBackgroundRefreshAtRef.current = now;
+      }
+
       if (!options?.background) {
         setLoading(true);
       }
@@ -371,6 +375,10 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
           );
         }
       } finally {
+        if (options?.background) {
+          backgroundRefreshInFlightRef.current = false;
+        }
+
         if (!options?.background) {
           setLoading(false);
         }
@@ -381,6 +389,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
 
   useEffect(() => {
     let cancelled = false;
+    skippedInitialConnectedRefreshRef.current = false;
 
     async function loadInitialSnapshot() {
       try {
@@ -436,15 +445,14 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
           });
         }
 
-        if (status === "authenticated") {
-          void refreshSnapshot({
-            background: true,
-            keepMessage: true,
-          });
-        }
       },
       onStateChange: (nextState) => {
         if (nextState === "connected" && status === "authenticated") {
+          if (!skippedInitialConnectedRefreshRef.current) {
+            skippedInitialConnectedRefreshRef.current = true;
+            return;
+          }
+
           void refreshSnapshot({
             background: true,
             keepMessage: true,

@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import {
   assignRpsDraftPicker,
   getRpsDraftSession,
-  listRpsDraftCandidates,
   registerRpsDraftCandidate,
   startRpsDraftSession,
   type RpsDraftCandidate,
@@ -28,7 +27,6 @@ import {
 import {
   formatRpsDraftResolvedUserId,
   getCachedRpsDraftUserIdMap,
-  mergeRpsDraftUserIdMap,
 } from "@/lib/rps-draft/user-id-display";
 import {
   formatRace,
@@ -130,7 +128,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
   const { isAuthenticated, status, user } = useAuth();
   const [session, setSession] = useState<RpsDraftSessionDetail | null>(null);
   const [candidates, setCandidates] = useState<RpsDraftCandidate[]>([]);
-  const [resolvedUserIds, setResolvedUserIds] = useState<Record<number, string>>(
+  const [resolvedUserIds] = useState<Record<number, string>>(
     () => getCachedRpsDraftUserIdMap(),
   );
   const [loading, setLoading] = useState(true);
@@ -151,14 +149,11 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
       setError(null);
 
       try {
-        const [nextSession, nextCandidates] = await Promise.all([
-          getRpsDraftSession(sessionId),
-          listRpsDraftCandidates(sessionId),
-        ]);
+        const nextSession = await getRpsDraftSession(sessionId);
 
         if (!cancelled) {
           setSession(nextSession);
-          setCandidates(nextCandidates);
+          setCandidates(nextSession.candidates);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -182,29 +177,6 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
     };
   }, [sessionId]);
 
-  useEffect(() => {
-    if (!user?.username || typeof user.userPk !== "number") {
-      return;
-    }
-
-    setResolvedUserIds((current) =>
-      mergeRpsDraftUserIdMap(current, {
-        [user.userPk]: user.username,
-      }),
-    );
-  }, [user?.userPk, user?.username]);
-
-  async function refreshPage(message?: string | null) {
-    const [nextSession, nextCandidates] = await Promise.all([
-      getRpsDraftSession(sessionId),
-      listRpsDraftCandidates(sessionId),
-    ]);
-
-    setSession(nextSession);
-    setCandidates(nextCandidates);
-    setActionMessage(message ?? null);
-  }
-
   async function handleAssignPicker(teamId: number) {
     const selectedPicker = selectedPickers[teamId];
 
@@ -217,11 +189,13 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
     setActionMessage(null);
 
     try {
-      await assignRpsDraftPicker(sessionId, teamId, {
+      const nextSession = await assignRpsDraftPicker(sessionId, teamId, {
         pickerUserId: selectedPicker.id,
       });
       setSelectedPickers((current) => ({ ...current, [teamId]: null }));
-      await refreshPage("팀장을 지정했습니다.");
+      setSession(nextSession);
+      setCandidates(nextSession.candidates);
+      setActionMessage("팀장을 지정했습니다.");
     } catch (assignError) {
       setActionMessage(
         assignError instanceof Error
@@ -243,9 +217,11 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
     setActionMessage(null);
 
     try {
-      await registerRpsDraftCandidate(sessionId, candidateUser.id);
+      const nextSession = await registerRpsDraftCandidate(sessionId, candidateUser.id);
       setCandidateUser(null);
-      await refreshPage("후보를 추가했습니다.");
+      setSession(nextSession);
+      setCandidates(nextSession.candidates);
+      setActionMessage("후보를 추가했습니다.");
     } catch (registerError) {
       setActionMessage(
         registerError instanceof Error

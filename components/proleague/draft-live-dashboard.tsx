@@ -115,6 +115,13 @@ function formatCandidateId(value: string | null | undefined) {
   return value?.trim() || "-";
 }
 
+function formatCandidateLoginId(candidate: {
+  candidateName?: string | null;
+  candidateUserLoginId?: string | null;
+}) {
+  return formatCandidateId(candidate.candidateUserLoginId ?? candidate.candidateName);
+}
+
 function formatCandidateTier(value: string | null | undefined) {
   return value?.trim() || "-";
 }
@@ -125,7 +132,7 @@ function formatCandidateRace(value: string | null | undefined) {
 
 function buildCandidateDisplay(candidate: DraftCandidate) {
   return [
-    formatCandidateId(candidate.candidateName),
+    formatCandidateLoginId(candidate),
     formatCandidateTier(candidate.tier),
     formatCandidateRace(candidate.race),
   ].join(" ");
@@ -582,7 +589,7 @@ function TeamCard({
             >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-foreground">
-                  {player.candidateName}
+                  {formatCandidateLoginId(player)}
                 </p>
                 <span className="text-xs font-semibold text-muted">
                   #{player.pickNo}
@@ -641,7 +648,7 @@ function CandidateCard({
             아이디
           </p>
           <p className="mt-1 truncate text-base font-semibold text-foreground">
-            {candidate.candidateName}
+            {formatCandidateLoginId(candidate)}
           </p>
         </div>
         <Button
@@ -714,7 +721,9 @@ function CompactTeamCard({
           draftTeam.roster.map((player) => {
             const candidate = candidateLookup[player.candidateUserId];
             const candidateName = formatCandidateId(
-              candidate?.candidateName ?? player.candidateName,
+              candidate?.candidateName ??
+                player.candidateUserLoginId ??
+                player.candidateName,
             );
             const tier = formatCandidateTier(candidate?.tier ?? player.tier);
             const race = formatCandidateRace(candidate?.race ?? player.race);
@@ -968,7 +977,7 @@ export function DraftLiveDashboard({
     };
     const nextPreview: LocalDraftPreviewState = {
       candidateUserId: candidate.candidateUserId,
-      candidateName: candidate.candidateName,
+      candidateName: formatCandidateLoginId(candidate),
       race: candidate.race,
       cursorPosition: toViewportNormalizedPosition(event.clientX, event.clientY),
       cardPosition: toViewportCardPosition(
@@ -1371,39 +1380,6 @@ export function DraftLiveDashboard({
             );
           });
 
-          void getDraftSnapshot(sessionId)
-            .then((nextSnapshot) => {
-              if (disposed) {
-                return;
-              }
-
-              startTransition(() => {
-                setSnapshot(nextSnapshot);
-                setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
-                setSessions((currentSessions) =>
-                  mergeSessionSummary(currentSessions, nextSnapshot.session, adminMode),
-                );
-              });
-            })
-            .catch(async (error) => {
-              if (disposed) {
-                return;
-              }
-
-              if (isMissingSessionError(error)) {
-                await syncAfterSessionRemoval(sessionId).catch(() => undefined);
-                setNotice({
-                  tone: "neutral",
-                  text: "선택한 드래프트가 삭제되어 목록에서 제거했습니다.",
-                });
-                return;
-              }
-
-              setNotice({
-                tone: "error",
-                text: "이벤트 수신 후 최신 스냅샷을 다시 불러오지 못했다.",
-              });
-            });
         }
 
         if (event.message) {
@@ -1497,7 +1473,9 @@ export function DraftLiveDashboard({
       return true;
     }
 
-    return candidate.candidateName.toLowerCase().includes(keyword);
+    return (candidate.candidateUserLoginId ?? candidate.candidateName)
+      .toLowerCase()
+      .includes(keyword);
   }) ?? [];
 
   const teams = sortTeams(snapshot?.teams ?? []);
@@ -1533,20 +1511,20 @@ export function DraftLiveDashboard({
   const candidateSources = [
     ...(snapshot?.availableCandidates ?? []).map((candidate) => ({
       candidateUserId: candidate.candidateUserId,
-      candidateName: candidate.candidateName,
+      candidateName: formatCandidateLoginId(candidate),
       tier: candidate.tier ?? null,
       race: candidate.race ?? null,
     })),
     ...(snapshot?.pickedCandidates ?? []).map((candidate) => ({
       candidateUserId: candidate.candidateUserId,
-      candidateName: candidate.candidateName,
+      candidateName: formatCandidateLoginId(candidate),
       tier: candidate.tier ?? null,
       race: candidate.race ?? null,
     })),
     ...teams.flatMap((team) =>
       team.roster.map((player) => ({
         candidateUserId: player.candidateUserId,
-        candidateName: player.candidateName,
+        candidateName: formatCandidateLoginId(player),
         tier: player.tier ?? null,
         race: player.race ?? null,
       })),
@@ -1765,7 +1743,8 @@ export function DraftLiveDashboard({
                         candidate={{
                           ...candidate,
                           candidateName:
-                            displayInfo?.candidateName ?? candidate.candidateName,
+                            displayInfo?.candidateName ??
+                            formatCandidateLoginId(candidate),
                           tier: displayInfo?.tier ?? candidate.tier,
                           race: displayInfo?.race ?? candidate.race,
                         }}
@@ -1988,7 +1967,7 @@ export function DraftLiveDashboard({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-semibold text-foreground">
-                      {pick.candidateName}
+                      {formatCandidateLoginId(pick)}
                     </p>
                     <span className="text-xs font-semibold text-muted">
                       #{pick.pickNo}

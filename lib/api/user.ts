@@ -26,6 +26,11 @@ export type UserDetail = {
 
 export type AdminUserStatus = "ACTIVE" | "INACTIVE";
 export type AdminUserListStatus = AdminUserStatus | "ALL";
+export type AdminUserRole =
+  | "ROLE_USER"
+  | "ROLE_MANAGER"
+  | "ROLE_MASTER"
+  | "ROLE_ADMIN";
 
 export type AdminUserRecord = {
   id: number;
@@ -34,6 +39,7 @@ export type AdminUserRecord = {
   race: string | null;
   tier: string | null;
   status: AdminUserStatus;
+  userType: AdminUserRole;
 };
 
 export type AdminUserCreateRequest = {
@@ -49,6 +55,10 @@ export type AdminUserUpdateRequest = {
   name: string;
   race: string;
   tier: string;
+};
+
+export type AdminUserRoleUpdateRequest = {
+  role: AdminUserRole;
 };
 
 function readErrorMessage(data: unknown, fallback: string) {
@@ -107,6 +117,17 @@ function normalizeAdminUserStatus(value: unknown): AdminUserStatus {
   return value === "INACTIVE" ? "INACTIVE" : "ACTIVE";
 }
 
+function normalizeAdminUserRole(value: unknown): AdminUserRole {
+  switch (value) {
+    case "ROLE_MANAGER":
+    case "ROLE_MASTER":
+    case "ROLE_ADMIN":
+      return value;
+    default:
+      return "ROLE_USER";
+  }
+}
+
 function normalizeAdminUserRecord(
   value: Partial<AdminUserRecord>,
 ): AdminUserRecord {
@@ -121,6 +142,7 @@ function normalizeAdminUserRecord(
     race: typeof value.race === "string" ? value.race : null,
     tier: typeof value.tier === "string" ? value.tier : null,
     status: normalizeAdminUserStatus(value.status),
+    userType: normalizeAdminUserRole(value.userType),
   };
 }
 
@@ -247,6 +269,25 @@ export async function updateAdminUserStatus(
       },
     ),
     "사용자 상태를 변경하지 못했습니다.",
+  );
+
+  return normalizeAdminUserRecord(user);
+}
+
+export async function updateAdminUserRole(
+  userId: number,
+  role: AdminUserRole,
+) {
+  const payload: AdminUserRoleUpdateRequest = { role };
+  const user = await unwrapEnvelopeResponse(
+    apiClient.patch<ApiEnvelope<AdminUserRecord> | ErrorResponseBody>(
+      `/user/admin/${userId}/role`,
+      payload,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "사용자 권한을 변경하지 못했습니다.",
   );
 
   return normalizeAdminUserRecord(user);

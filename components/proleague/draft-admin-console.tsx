@@ -12,8 +12,6 @@ import {
 import {
   assignDraftPicker,
   createDraftCandidate,
-  createDefaultDraftTeams,
-  createDraftOrder,
   createDraftSession,
   deleteDraftCandidate,
   deleteDraftOrder,
@@ -22,6 +20,7 @@ import {
   getDraftSessionDetail,
   isDraftApiError,
   listDraftSessions,
+  replaceDraftOrders,
   searchDraftUsers,
   updateDraftSession,
   updateDraftTeam,
@@ -74,12 +73,6 @@ type CandidateFormState = {
   selectedUser: DraftUserSearchResult | null;
 };
 
-type CandidateDirectoryEntry = {
-  userId: string;
-  tier: string | null;
-  race: string | null;
-};
-
 type CandidateListItem = {
   candidate: DraftCandidate;
   raceLabel: string;
@@ -98,7 +91,8 @@ type TeamEditState = {
 
 type DraftAdminConsoleProps = {
   creationFlow?: boolean;
-  onDataChanged?: () => void;
+  initialDetail?: DraftSessionDetail | null;
+  onDataChanged?: (detail?: DraftSessionDetail) => void;
   onSessionDeleted?: (sessionId: number) => void;
   onSessionReady?: (sessionId: number) => void | Promise<void>;
   sessionId?: number | null;
@@ -345,19 +339,6 @@ function sortCandidates(candidates: DraftCandidate[]) {
   });
 }
 
-function findCandidateDirectoryMatch(
-  users: DraftUserSearchResult[],
-  candidate: DraftCandidate,
-) {
-  const normalizedName = candidate.candidateName.trim().toLowerCase();
-
-  return (
-    users.find((user) => user.id === candidate.candidateUserId) ??
-    users.find((user) => user.userId.trim().toLowerCase() === normalizedName) ??
-    null
-  );
-}
-
 function getTierLabel(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized ? normalized.toUpperCase() : "미정";
@@ -379,21 +360,16 @@ function compareTierLabel(left: string, right: string) {
   return left.localeCompare(right, "en");
 }
 
-function buildCandidateTierGroups(
-  candidates: DraftCandidate[],
-  candidateDirectory: Record<number, CandidateDirectoryEntry | null>,
-) {
+function buildCandidateTierGroups(candidates: DraftCandidate[]) {
   const items = candidates
     .map((candidate) => {
-      const directoryEntry = candidateDirectory[candidate.candidateUserId];
-      const normalizedRace = normalizeRace(directoryEntry?.race ?? candidate.race);
+      const normalizedRace = normalizeRace(candidate.race);
 
       return {
         candidate,
         raceLabel: normalizedRace ?? candidate.race?.trim() ?? "-",
-        tierLabel: getTierLabel(directoryEntry?.tier),
+        tierLabel: getTierLabel(candidate.tier),
         userId:
-          directoryEntry?.userId.trim() ||
           candidate.candidateName.trim() ||
           String(candidate.candidateUserId),
       };
@@ -1418,6 +1394,7 @@ function OrderRowCompact({ order }: { order: DraftOrder }) {
 
 export function DraftAdminConsole({
   creationFlow = false,
+  initialDetail = null,
   onDataChanged,
   onSessionDeleted,
   onSessionReady,
@@ -1447,17 +1424,11 @@ export function DraftAdminConsole({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<NoticeState | null>(null);
-  const [candidateDirectory, setCandidateDirectory] = useState<
-    Record<number, CandidateDirectoryEntry | null>
-  >({});
 
   const sortedTeams = selectedSessionDetail ? sortTeams(selectedSessionDetail.teams) : [];
   const sortedCandidates = selectedSessionDetail
     ? sortCandidates(selectedSessionDetail.candidates)
     : [];
-  const candidateLookupKey = sortedCandidates
-    .map((candidate) => `${candidate.candidateUserId}:${candidate.candidateName}`)
-    .join("|");
   const sortedOrders = selectedSessionDetail ? sortOrders(selectedSessionDetail.orders) : [];
   const sortedPicks = selectedSessionDetail ? sortPicks(selectedSessionDetail.picks) : [];
   const assignedPickerUserIds = getAssignedPickerUserIds(sortedTeams);
@@ -1506,10 +1477,7 @@ export function DraftAdminConsole({
           stagedOrderGenerationMode,
         )
       : [];
-  const candidateTierGroups = buildCandidateTierGroups(
-    sortedCandidates,
-    candidateDirectory,
-  );
+  const candidateTierGroups = buildCandidateTierGroups(sortedCandidates);
   const canManageSession = canManageOwnedResource({
     ownerUserId: selectedSessionDetail?.ownerUserId,
     role: user?.role,
@@ -1527,99 +1495,26 @@ export function DraftAdminConsole({
   }, [fixedSessionId]);
 
   useEffect(() => {
-    if (sortedCandidates.length === 0) {
-      let cleared = false;
-
-      Promise.resolve().then(() => {
-        if (!cleared) {
-          setCandidateDirectory({});
-        }
-      });
-
-      return () => {
-        cleared = true;
-      };
-    }
-
-    let cancelled = false;
-
-    async function hydrateCandidateDirectory() {
-      const entries = await Promise.all(
-        sortedCandidates.map(async (candidate) => {
-          const primaryKeyword = candidate.candidateName.trim();
-
-          try {
-            const primaryMatches = await searchDraftUsers(
-              primaryKeyword || String(candidate.candidateUserId),
-              8,
-            );
-            let matchedUser = findCandidateDirectoryMatch(primaryMatches, candidate);
-
-            if (!matchedUser && primaryKeyword) {
-              const fallbackMatches = await searchDraftUsers(
-                String(candidate.candidateUserId),
-                8,
-              );
-              matchedUser = findCandidateDirectoryMatch(fallbackMatches, candidate);
-            }
-
-            return [
-              candidate.candidateUserId,
-              matchedUser
-                ? {
-                    race: matchedUser.race,
-                    tier: matchedUser.tier,
-                    userId: matchedUser.userId,
-                  }
-                : null,
-            ] as const;
-          } catch {
-            return [candidate.candidateUserId, null] as const;
-          }
-        }),
-      );
-
-      if (cancelled) {
-        return;
-      }
-
-      const nextDirectory: Record<number, CandidateDirectoryEntry | null> = {};
-
-      for (const [candidateUserId, entry] of entries) {
-        nextDirectory[candidateUserId] = entry;
-      }
-
-      setCandidateDirectory(nextDirectory);
-    }
-
-    void hydrateCandidateDirectory();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [candidateLookupKey, selectedSessionId]);
-
-  useEffect(() => {
     const nextReady = selectedSessionDetail !== null && allTeamPickersAssigned;
-    setIsPickerSetupReady(nextReady);
 
-    if (!nextReady) {
-      setCandidateForm(EMPTY_CANDIDATE_FORM);
-      setStagedOrderGenerationMode(null);
-    }
+    startTransition(() => {
+      setIsPickerSetupReady(nextReady);
+
+      if (!nextReady) {
+        setCandidateForm(EMPTY_CANDIDATE_FORM);
+        setStagedOrderGenerationMode(null);
+      }
+    });
   }, [allTeamPickersAssigned, selectedSessionDetail]);
 
   useEffect(() => {
-    if (!creationFlow) {
+    startTransition(() => {
       setStagedOrderGenerationMode(null);
-      return;
-    }
-
-    setStagedOrderGenerationMode(null);
+    });
   }, [creationFlow, selectedSessionId]);
 
-  function notifyChange() {
-    onDataChanged?.();
+  function notifyChange(detail?: DraftSessionDetail) {
+    onDataChanged?.(detail);
   }
 
   function handleActionError(
@@ -1659,6 +1554,13 @@ export function DraftAdminConsole({
   function applyDetail(detail: DraftSessionDetail) {
     startTransition(() => {
       setSelectedSessionDetail(detail);
+      setSessions((currentSessions) =>
+        currentSessions.some((session) => session.id === detail.id)
+          ? currentSessions.map((session) =>
+              session.id === detail.id ? detail : session,
+            )
+          : currentSessions,
+      );
       setEditForm({
         title: detail.title,
         teamCount: String(detail.teamCount),
@@ -1680,7 +1582,7 @@ export function DraftAdminConsole({
         const detail = await getDraftSessionDetail(sessionId);
 
         applyDetail(detail);
-        notifyChange();
+        notifyChange(detail);
 
         return detail;
       } catch (error) {
@@ -1712,7 +1614,7 @@ export function DraftAdminConsole({
       const detail = await getDraftSessionDetail(sessionId);
 
       applyDetail(detail);
-      notifyChange();
+      notifyChange(detail);
 
       return detail;
     } catch (error) {
@@ -1755,7 +1657,9 @@ export function DraftAdminConsole({
 
   useEffect(() => {
     if (fixedSessionId !== null) {
-      setLoadingSessions(false);
+      startTransition(() => {
+        setLoadingSessions(false);
+      });
       return;
     }
 
@@ -1807,6 +1711,12 @@ export function DraftAdminConsole({
     let cancelled = false;
 
     async function loadDetail() {
+      if (initialDetail?.id === sessionId) {
+        applyDetail(initialDetail);
+        setLoadingDetail(false);
+        return;
+      }
+
       setLoadingDetail(true);
 
       try {
@@ -1855,7 +1765,7 @@ export function DraftAdminConsole({
     return () => {
       cancelled = true;
     };
-  }, [fixedSessionId, selectedSessionId]);
+  }, [fixedSessionId, initialDetail, selectedSessionId]);
 
   function updateLookup(teamId: number, patch: Partial<TeamPickerLookupState>) {
     setTeamLookups((current) => ({
@@ -1897,17 +1807,15 @@ export function DraftAdminConsole({
 
       const created = await createDraftSession(payload);
 
-      try {
-        await createDefaultDraftTeams(created.id, payload.teamCount);
-      } catch (teamError) {
-        throw new Error(
-          teamError instanceof Error
-            ? `드래프트는 생성됐지만 기본 팀 준비에 실패했다. ${teamError.message}`
-            : "드래프트는 생성됐지만 기본 팀 준비에 실패했다.",
-        );
-      }
-
-      await refreshSelectedSession(created.id);
+      startTransition(() => {
+        setSelectedSessionId(created.id);
+        setSessions((currentSessions) => [
+          created,
+          ...currentSessions.filter((session) => session.id !== created.id),
+        ]);
+      });
+      applyDetail(created);
+      notifyChange(created);
       setCreateForm(EMPTY_CREATE_FORM);
       setNotice({
         tone: "success",
@@ -1941,8 +1849,10 @@ export function DraftAdminConsole({
         throw new Error("드래프트 이름을 입력해야 한다.");
       }
 
-      await updateDraftSession(selectedSessionId, payload);
-      await refreshSelectedSession(selectedSessionId);
+      const detail = await updateDraftSession(selectedSessionId, payload);
+
+      applyDetail(detail);
+      notifyChange(detail);
       setNotice({
         tone: "success",
         text: "드래프트 정보를 저장했다.",
@@ -2023,8 +1933,10 @@ export function DraftAdminConsole({
         throw new Error("팀 이름을 입력해야 한다.");
       }
 
-      await updateDraftTeam(teamId, payload);
-      await refreshSelectedSession(selectedSessionId);
+      const detail = await updateDraftTeam(teamId, payload);
+
+      applyDetail(detail);
+      notifyChange(detail);
       setNotice({
         tone: "success",
         text: "팀 정보를 저장했다.",
@@ -2093,8 +2005,10 @@ export function DraftAdminConsole({
         throw new Error("이미 다른 팀에 지정된 픽커다.");
       }
 
-      await assignDraftPicker(teamId, pickerUserId);
-      await refreshSelectedSession(selectedSessionId);
+      const detail = await assignDraftPicker(teamId, pickerUserId);
+
+      applyDetail(detail);
+      notifyChange(detail);
       updateLookup(teamId, {
         query: selectedUser.userId,
         pickerUserId: String(selectedUser.id),
@@ -2150,8 +2064,10 @@ export function DraftAdminConsole({
         status: "WAITING",
       };
 
-      await createDraftCandidate(payload);
-      await refreshSelectedSession(selectedSessionId);
+      const detail = await createDraftCandidate(payload);
+
+      applyDetail(detail);
+      notifyChange(detail);
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setNotice({
         tone: "success",
@@ -2184,8 +2100,10 @@ export function DraftAdminConsole({
     setNotice(null);
 
     try {
-      await deleteDraftCandidate(selectedSessionId, candidateUserId);
-      await refreshSelectedSession(selectedSessionId);
+      const detail = await deleteDraftCandidate(selectedSessionId, candidateUserId);
+
+      applyDetail(detail);
+      notifyChange(detail);
       setNotice({
         tone: "success",
         text: "드래프트 인원을 삭제했다.",
@@ -2271,22 +2189,16 @@ export function DraftAdminConsole({
     setNotice(null);
 
     try {
-      const existingOrders = [...sortedOrders].sort((left, right) => right.pickNo - left.pickNo);
-
-      for (const order of existingOrders) {
-        await deleteDraftOrder(selectedSessionId, order.pickNo);
-      }
-
-      for (const order of result.plan) {
-        await createDraftOrder({
-          draftSessionId: selectedSessionId,
+      const detail = await replaceDraftOrders(selectedSessionId, {
+        orders: result.plan.map((order) => ({
           roundNo: order.roundNo,
           pickNo: order.pickNo,
           draftTeamId: order.draftTeamId,
-        });
-      }
+        })),
+      });
 
-      await refreshSelectedSession(selectedSessionId);
+      applyDetail(detail);
+      notifyChange(detail);
       setNotice({
         tone: "success",
         text: `${formatOrderGenerationMode(mode)} 방식으로 순서 ${result.plan.length}개를 다시 만들었다.`,
@@ -2326,22 +2238,16 @@ export function DraftAdminConsole({
     setNotice(null);
 
     try {
-      const existingOrders = [...sortedOrders].sort((left, right) => right.pickNo - left.pickNo);
-
-      for (const order of existingOrders) {
-        await deleteDraftOrder(selectedSessionId, order.pickNo);
-      }
-
-      for (const order of result.plan) {
-        await createDraftOrder({
-          draftSessionId: selectedSessionId,
+      const detail = await replaceDraftOrders(selectedSessionId, {
+        orders: result.plan.map((order) => ({
           roundNo: order.roundNo,
           pickNo: order.pickNo,
           draftTeamId: order.draftTeamId,
-        });
-      }
+        })),
+      });
 
-      await refreshSelectedSession(selectedSessionId);
+      applyDetail(detail);
+      notifyChange(detail);
       if (onSessionReady) {
         await onSessionReady(selectedSessionId);
       } else {
@@ -2370,8 +2276,10 @@ export function DraftAdminConsole({
     setNotice(null);
 
     try {
-      await deleteDraftOrder(selectedSessionId, pickNo);
-      await refreshSelectedSession(selectedSessionId);
+      const detail = await deleteDraftOrder(selectedSessionId, pickNo);
+
+      applyDetail(detail);
+      notifyChange(detail);
       setNotice({
         tone: "success",
         text: "순서를 삭제했다.",

@@ -8,10 +8,12 @@ import {
   createAdminUser,
   listAdminUsers,
   updateAdminUser,
+  updateAdminUserRole,
   updateAdminUserStatus,
   type AdminUserCreateRequest,
   type AdminUserListStatus,
   type AdminUserRecord,
+  type AdminUserRole,
   type AdminUserStatus,
   type AdminUserUpdateRequest,
 } from "@/lib/api/user";
@@ -57,6 +59,12 @@ const EDIT_FORM_DEFAULT: EditFormState = {
 };
 
 const RACE_OPTIONS = ["TERRAN", "ZERG", "PROTOSS", "RANDOM"] as const;
+const ROLE_OPTIONS: readonly AdminUserRole[] = [
+  "ROLE_USER",
+  "ROLE_MANAGER",
+  "ROLE_MASTER",
+  "ROLE_ADMIN",
+];
 
 function readErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -87,6 +95,32 @@ function getStatusLabel(status: AdminUserStatus) {
   return status === "INACTIVE" ? "비활성" : "활성";
 }
 
+function getRoleLabel(role: AdminUserRole | string | null | undefined) {
+  switch (role) {
+    case "ROLE_MANAGER":
+      return "매니저";
+    case "ROLE_MASTER":
+      return "마스터";
+    case "ROLE_ADMIN":
+      return "관리자";
+    default:
+      return "일반";
+  }
+}
+
+function getRoleBadgeClassName(role: AdminUserRole | string | null | undefined) {
+  switch (role) {
+    case "ROLE_MANAGER":
+      return "border border-accent/20 bg-accent-soft text-accent-ink";
+    case "ROLE_MASTER":
+      return "border border-success-ink/15 bg-success-soft text-success-ink";
+    case "ROLE_ADMIN":
+      return "border border-danger-ink/15 bg-danger-soft text-danger-ink";
+    default:
+      return "border border-line bg-surface-muted text-foreground";
+  }
+}
+
 function chooseSelectedUserId(
   users: AdminUserRecord[],
   preferredUserId: number | null,
@@ -107,6 +141,20 @@ function chooseSelectedUserId(
   }
 
   return users[0]?.id ?? null;
+}
+
+function userMatchesFilters(
+  user: AdminUserRecord,
+  filters: SearchFilterState,
+) {
+  const keyword = filters.keyword.trim().toLowerCase();
+  const matchesKeyword =
+    !keyword ||
+    user.userId.toLowerCase().includes(keyword) ||
+    (user.name ?? "").toLowerCase().includes(keyword);
+  const matchesStatus = filters.status === "ALL" || user.status === filters.status;
+
+  return matchesKeyword && matchesStatus;
 }
 
 function validateCreateForm(form: CreateFormState) {
@@ -161,6 +209,7 @@ export function AdminUserManagementConsole() {
     useState<SearchFilterState>(SEARCH_FILTER_DEFAULT);
   const [createForm, setCreateForm] = useState<CreateFormState>(CREATE_FORM_DEFAULT);
   const [editForm, setEditForm] = useState<EditFormState>(EDIT_FORM_DEFAULT);
+  const [roleForm, setRoleForm] = useState<AdminUserRole>("ROLE_USER");
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -218,16 +267,20 @@ export function AdminUserManagementConsole() {
   }, [appliedFilters, refreshKey]);
 
   useEffect(() => {
-    if (!selectedUser) {
-      setEditForm(EDIT_FORM_DEFAULT);
-      return;
-    }
+    startTransition(() => {
+      if (!selectedUser) {
+        setEditForm(EDIT_FORM_DEFAULT);
+        setRoleForm("ROLE_USER");
+        return;
+      }
 
-    setEditForm({
-      userId: selectedUser.userId,
-      name: selectedUser.name ?? "",
-      race: selectedUser.race ?? "TERRAN",
-      tier: selectedUser.tier ?? "",
+      setEditForm({
+        userId: selectedUser.userId,
+        name: selectedUser.name ?? "",
+        race: selectedUser.race ?? "TERRAN",
+        tier: selectedUser.tier ?? "",
+      });
+      setRoleForm(selectedUser.userType);
     });
   }, [selectedUser]);
 
@@ -235,6 +288,29 @@ export function AdminUserManagementConsole() {
     preferredSelectedUserIdRef.current =
       typeof nextSelectedUserId === "number" ? nextSelectedUserId : null;
     setRefreshKey((current) => current + 1);
+  }
+
+  function applyUserUpdate(updatedUser: AdminUserRecord) {
+    const matchesCurrentFilters = userMatchesFilters(updatedUser, appliedFilters);
+
+    setUsers((currentUsers) => {
+      if (!matchesCurrentFilters) {
+        return currentUsers.filter((user) => user.id !== updatedUser.id);
+      }
+
+      const hasExistingUser = currentUsers.some(
+        (user) => user.id === updatedUser.id,
+      );
+
+      if (!hasExistingUser) {
+        return [updatedUser, ...currentUsers];
+      }
+
+      return currentUsers.map((user) =>
+        user.id === updatedUser.id ? updatedUser : user,
+      );
+    });
+    setSelectedUserId(matchesCurrentFilters ? updatedUser.id : null);
   }
 
   async function handleCreateUser() {
@@ -267,7 +343,11 @@ export function AdminUserManagementConsole() {
         tone: "success",
         text: `사용자 ${createdUser.userId}를 등록했습니다.`,
       });
-      requestRefresh(createdUser.id);
+      setUsers((currentUsers) => [
+        createdUser,
+        ...currentUsers.filter((user) => user.id !== createdUser.id),
+      ]);
+      setSelectedUserId(createdUser.id);
     } catch (error) {
       setNotice({
         tone: "error",
@@ -312,7 +392,7 @@ export function AdminUserManagementConsole() {
         tone: "success",
         text: `사용자 ${updatedUser.userId} 정보를 수정했습니다.`,
       });
-      requestRefresh(updatedUser.id);
+      applyUserUpdate(updatedUser);
     } catch (error) {
       setNotice({
         tone: "error",
@@ -348,7 +428,45 @@ export function AdminUserManagementConsole() {
             ? `사용자 ${updatedUser.userId}를 재활성화했습니다.`
             : `사용자 ${updatedUser.userId}를 비활성화했습니다.`,
       });
-      requestRefresh(updatedUser.id);
+      applyUserUpdate(updatedUser);
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: readErrorMessage(error),
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleUpdateUserRole() {
+    if (!selectedUser) {
+      setNotice({
+        tone: "error",
+        text: "권한을 변경할 사용자를 먼저 선택해 주세요.",
+      });
+      return;
+    }
+
+    if (selectedUser.userType === roleForm) {
+      setNotice({
+        tone: "neutral",
+        text: "이미 선택한 권한으로 설정되어 있습니다.",
+      });
+      return;
+    }
+
+    setPendingAction("update-role");
+    setNotice(null);
+
+    try {
+      const updatedUser = await updateAdminUserRole(selectedUser.id, roleForm);
+
+      setNotice({
+        tone: "success",
+        text: `사용자 ${updatedUser.userId} 권한을 ${getRoleLabel(updatedUser.userType)}로 변경했습니다.`,
+      });
+      applyUserUpdate(updatedUser);
     } catch (error) {
       setNotice({
         tone: "error",
@@ -519,14 +637,24 @@ export function AdminUserManagementConsole() {
                           <p className="text-base font-semibold text-foreground">
                             {user.userId}
                           </p>
-                          <span
-                            className={cn(
-                              "rounded-full px-3 py-1 text-xs font-semibold",
-                              getStatusBadgeClassName(user.status),
-                            )}
-                          >
-                            {getStatusLabel(user.status)}
-                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            <span
+                              className={cn(
+                                "rounded-full px-3 py-1 text-xs font-semibold",
+                                getRoleBadgeClassName(user.userType),
+                              )}
+                            >
+                              {getRoleLabel(user.userType)}
+                            </span>
+                            <span
+                              className={cn(
+                                "rounded-full px-3 py-1 text-xs font-semibold",
+                                getStatusBadgeClassName(user.status),
+                              )}
+                            >
+                              {getStatusLabel(user.status)}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
@@ -538,6 +666,9 @@ export function AdminUserManagementConsole() {
                           </span>
                           <span className="rounded-full bg-surface-muted px-3 py-1">
                             티어 {user.tier || "-"}
+                          </span>
+                          <span className="rounded-full bg-surface-muted px-3 py-1">
+                            권한 {getRoleLabel(user.userType)}
                           </span>
                         </div>
                       </button>
@@ -673,14 +804,24 @@ export function AdminUserManagementConsole() {
                 </p>
               </div>
               {selectedUser ? (
-                <span
-                  className={cn(
-                    "rounded-full px-3 py-1 text-xs font-semibold",
-                    getStatusBadgeClassName(selectedUser.status),
-                  )}
-                >
-                  {getStatusLabel(selectedUser.status)}
-                </span>
+                <div className="flex flex-wrap gap-2">
+                  <span
+                    className={cn(
+                      "rounded-full px-3 py-1 text-xs font-semibold",
+                      getRoleBadgeClassName(selectedUser.userType),
+                    )}
+                  >
+                    {getRoleLabel(selectedUser.userType)}
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-3 py-1 text-xs font-semibold",
+                      getStatusBadgeClassName(selectedUser.status),
+                    )}
+                  >
+                    {getStatusLabel(selectedUser.status)}
+                  </span>
+                </div>
               ) : null}
             </div>
 
@@ -761,6 +902,47 @@ export function AdminUserManagementConsole() {
                     ))}
                   </select>
                 </label>
+
+                <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-foreground">
+                      권한
+                    </span>
+                    <select
+                      className={SELECT_CLASS_NAME}
+                      value={roleForm}
+                      onChange={(event) => {
+                        setRoleForm(event.target.value as AdminUserRole);
+                      }}
+                      disabled={pendingAction !== null}
+                    >
+                      {ROLE_OPTIONS.map((role) => (
+                        <option key={role} value={role}>
+                          {getRoleLabel(role)} ({role})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs leading-6 text-muted">
+                      현재 권한은 {getRoleLabel(selectedUser.userType)}입니다.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        pendingAction !== null || selectedUser.userType === roleForm
+                      }
+                      onClick={() => {
+                        void handleUpdateUserRole();
+                      }}
+                    >
+                      {pendingAction === "update-role" ? "권한 변경 중..." : "권한 변경"}
+                    </Button>
+                  </div>
+                </div>
 
                 <div className="grid gap-2 sm:grid-cols-2">
                   <Button

@@ -55,6 +55,7 @@ export type RpsDraftSessionDetail = {
   startedAt: string | null;
   endedAt: string | null;
   teams: RpsDraftTeam[];
+  candidates: RpsDraftCandidate[];
 };
 
 export type RpsDraftCandidate = {
@@ -194,10 +195,10 @@ export type RpsDraftPickRequest = {
 export type RpsDraftUserSearchResult = {
   id: number;
   userId: string;
-  name: string | null;
+  name?: string | null;
   tier: string | null;
   race: string | null;
-  photo: string | null;
+  photo?: string | null;
 };
 
 export type RpsDraftApiErrorInfo = {
@@ -239,6 +240,11 @@ function normalizeTeam(team: RpsDraftTeam | RpsDraftLiveTeam): RpsDraftLiveTeam 
     ...team,
     pickerUserId:
       typeof team.pickerUserId === "number" ? team.pickerUserId : null,
+    pickerUserLoginId:
+      typeof team.pickerUserLoginId === "string" &&
+      team.pickerUserLoginId.trim()
+        ? team.pickerUserLoginId
+        : null,
     pickerName:
       typeof team.pickerName === "string" && team.pickerName.trim()
         ? team.pickerName
@@ -256,6 +262,7 @@ function normalizeSessionDetail(
       typeof detail.ownerName === "string" && detail.ownerName.trim()
         ? detail.ownerName
         : null,
+    candidates: readArray<RpsDraftCandidate>(detail.candidates),
     teams: sortTeams(readArray<RpsDraftTeam>(detail.teams)).map((team) => ({
       ...normalizeTeam(team),
       roster: [],
@@ -550,8 +557,8 @@ export async function assignRpsDraftPicker(
   teamId: number,
   payload: RpsDraftPickerAssignRequest,
 ) {
-  return unwrapResponse(
-    apiClient.post<ApiEnvelope<RpsDraftPickerResponse>>(
+  const detail = await unwrapResponse(
+    apiClient.post<ApiEnvelope<RpsDraftSessionDetail>>(
       `/rps-drafts/sessions/${sessionId}/teams/${teamId}/picker`,
       payload,
       {
@@ -560,18 +567,8 @@ export async function assignRpsDraftPicker(
     ),
     "픽커를 지정하지 못했습니다.",
   );
-}
 
-export async function listRpsDraftCandidates(sessionId: number) {
-  return unwrapResponse(
-    apiClient.get<ApiEnvelope<RpsDraftCandidate[]>>(
-      `/rps-drafts/sessions/${sessionId}/candidates`,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "후보 목록을 불러오지 못했습니다.",
-  );
+  return normalizeSessionDetail(detail);
 }
 
 export async function registerRpsDraftCandidate(
@@ -580,8 +577,8 @@ export async function registerRpsDraftCandidate(
 ) {
   const payload: RpsDraftCandidateRequest = { candidateUserId };
 
-  return unwrapResponse(
-    apiClient.post<ApiEnvelope<RpsDraftCandidate>>(
+  const detail = await unwrapResponse(
+    apiClient.post<ApiEnvelope<RpsDraftSessionDetail>>(
       `/rps-drafts/sessions/${sessionId}/candidates`,
       payload,
       {
@@ -590,6 +587,8 @@ export async function registerRpsDraftCandidate(
     ),
     "후보를 등록하지 못했습니다.",
   );
+
+  return normalizeSessionDetail(detail);
 }
 
 export async function getRpsDraftSnapshot(sessionId: number) {
@@ -674,7 +673,7 @@ export async function finishRpsDraftSession(sessionId: number) {
 
 export async function searchRpsDraftUsers(keyword: string, limit = 8) {
   return unwrapResponse(
-    apiClient.get<ApiEnvelope<RpsDraftUserSearchResult[]>>("/user/search", {
+    apiClient.get<ApiEnvelope<RpsDraftUserSearchResult[]>>("/user/draft-search", {
       params: {
         keyword,
         limit,

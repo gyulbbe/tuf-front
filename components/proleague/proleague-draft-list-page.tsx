@@ -10,10 +10,10 @@ import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  createDefaultDraftTeams,
   createDraftSession,
   deleteDraftSession,
   listDraftSessions,
+  type DraftSessionDetail,
   type DraftSessionSummary,
 } from "@/lib/api/draft";
 import { buildLoginHref } from "@/lib/auth/auth-navigation";
@@ -164,6 +164,8 @@ export function ProleagueDraftListPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
   const [creationFlowSessionId, setCreationFlowSessionId] = useState<number | null>(null);
+  const [initialDraftDetail, setInitialDraftDetail] =
+    useState<DraftSessionDetail | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null);
@@ -236,24 +238,13 @@ export function ProleagueDraftListPage() {
         pickTimeSeconds,
       });
 
-      try {
-        await createDefaultDraftTeams(createdSession.id, teamCount);
-      } catch (teamError) {
-        throw new Error(
-          teamError instanceof Error
-            ? `드래프트는 생성됐지만 기본 팀 준비에 실패했다. ${teamError.message}`
-            : "드래프트는 생성됐지만 기본 팀 준비에 실패했다.",
-        );
-      }
-
       setCreationFlowSessionId(createdSession.id);
       setEditingSessionId(createdSession.id);
-      try {
-        const nextSessions = await listDraftSessions();
-        setSessions(nextSessions);
-      } catch {
-        // noop
-      }
+      setInitialDraftDetail(createdSession);
+      setSessions((currentSessions) => [
+        createdSession,
+        ...currentSessions.filter((session) => session.id !== createdSession.id),
+      ]);
     } catch (createSessionError) {
       setCreateError(
         createSessionError instanceof Error
@@ -269,6 +260,7 @@ export function ProleagueDraftListPage() {
     setCreateError(null);
     setCreationFlowSessionId(null);
     setEditingSessionId(null);
+    setInitialDraftDetail(null);
     setForm(createEmptyForm(buildDefaultDraftTitle(user?.username)));
     setIsCreateOpen(true);
   }
@@ -276,6 +268,7 @@ export function ProleagueDraftListPage() {
   function handleOpenEditDialog(sessionId: number) {
     setCreateError(null);
     setCreationFlowSessionId(null);
+    setInitialDraftDetail(null);
     setEditingSessionId(sessionId);
     setIsCreateOpen(true);
   }
@@ -288,6 +281,7 @@ export function ProleagueDraftListPage() {
     setIsCreateOpen(false);
     setCreationFlowSessionId(null);
     setEditingSessionId(null);
+    setInitialDraftDetail(null);
   }
 
   async function handleDeleteSession(sessionId: number, title: string) {
@@ -308,6 +302,7 @@ export function ProleagueDraftListPage() {
 
       if (editingSessionId === sessionId) {
         setEditingSessionId(null);
+        setInitialDraftDetail(null);
         setCreationFlowSessionId(null);
         setIsCreateOpen(false);
       }
@@ -457,32 +452,44 @@ export function ProleagueDraftListPage() {
         {editingSessionId ? (
           <DraftAdminConsole
             sessionId={editingSessionId}
+            initialDetail={
+              initialDraftDetail?.id === editingSessionId ? initialDraftDetail : null
+            }
             creationFlow={creationFlowSessionId === editingSessionId}
-            onDataChanged={() => {
-              void listDraftSessions()
-                .then((nextSessions) => {
-                  setSessions(nextSessions);
-                })
-                .catch(() => {
-                  // noop
+            onDataChanged={(detail) => {
+              if (detail) {
+                setSessions((currentSessions) => {
+                  const hasSession = currentSessions.some(
+                    (session) => session.id === detail.id,
+                  );
+
+                  if (!hasSession) {
+                    return [detail, ...currentSessions];
+                  }
+
+                  return currentSessions.map((session) =>
+                    session.id === detail.id ? detail : session,
+                  );
                 });
+                return;
+              }
+
+              // Deletion and successful mutations are handled by dedicated callbacks.
             }}
-            onSessionDeleted={() => {
+            onSessionDeleted={(deletedSessionId) => {
               setCreationFlowSessionId(null);
               setEditingSessionId(null);
+              setInitialDraftDetail(null);
               setIsCreateOpen(false);
-              void listDraftSessions()
-                .then((nextSessions) => {
-                  setSessions(nextSessions);
-                })
-                .catch(() => {
-                  // noop
-                });
+              setSessions((currentSessions) =>
+                currentSessions.filter((session) => session.id !== deletedSessionId),
+              );
             }}
             onSessionReady={(sessionId) => {
               window.alert("드래프트를 생성했습니다.");
               setCreationFlowSessionId(null);
               setEditingSessionId(null);
+              setInitialDraftDetail(null);
               setIsCreateOpen(false);
               router.push(proleagueDraftLivePath(sessionId));
             }}

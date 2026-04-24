@@ -9,7 +9,6 @@ import {
   useState,
 } from "react";
 import {
-  deleteDraftSession,
   extendDraftTurn,
   getDraftSnapshot,
   isDraftApiError,
@@ -46,6 +45,16 @@ type ConnectionState =
 type NoticeState = {
   tone: NoticeTone;
   text: string;
+};
+
+type CandidateDisplayInfo = {
+  candidateName: string;
+  tier: string | null;
+  race: string | null;
+};
+
+type CandidateDisplaySource = CandidateDisplayInfo & {
+  candidateUserId: number;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -102,14 +111,24 @@ function formatRoleBadge(role: string | null | undefined) {
   return role.replace(/^ROLE_/, "") || null;
 }
 
+function formatCandidateId(value: string | null | undefined) {
+  return value?.trim() || "-";
+}
+
+function formatCandidateTier(value: string | null | undefined) {
+  return value?.trim() || "-";
+}
+
+function formatCandidateRace(value: string | null | undefined) {
+  return value?.trim().toLowerCase() || "-";
+}
+
 function buildCandidateDisplay(candidate: DraftCandidate) {
   return [
-    candidate.candidateName,
-    candidate.race?.trim().toLowerCase(),
-    candidate.tier?.trim(),
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join(" ");
+    formatCandidateId(candidate.candidateName),
+    formatCandidateTier(candidate.tier),
+    formatCandidateRace(candidate.race),
+  ].join(" ");
 }
 
 function isMissingSessionError(error: unknown) {
@@ -119,15 +138,6 @@ function isMissingSessionError(error: unknown) {
 
   const status = error.info.responseStatus ?? error.info.httpStatus;
   return status === 404;
-}
-
-function buildSessionDeleteConfirmText(sessionTitle: string) {
-  return [
-    `"${sessionTitle}" 드래프트를 삭제할까?`,
-    "",
-    "팀, 드래프트 인원, 순서, 픽 기록이 함께 삭제된다.",
-    "삭제 후에는 되돌릴 수 없다.",
-  ].join("\n");
 }
 
 function toTimestamp(value: string | null | undefined) {
@@ -649,10 +659,16 @@ function CandidateCard({
 
       <div className="mt-4 flex flex-wrap gap-2">
         <div className="rounded-full bg-surface px-3 py-1.5 text-sm text-muted">
-          종족 <span className="font-semibold text-foreground">{candidate.race || "-"}</span>
+          티어{" "}
+          <span className="font-semibold text-foreground">
+            {formatCandidateTier(candidate.tier)}
+          </span>
         </div>
         <div className="rounded-full bg-surface px-3 py-1.5 text-sm text-muted">
-          티어 <span className="font-semibold text-foreground">-</span>
+          종족{" "}
+          <span className="font-semibold text-foreground">
+            {formatCandidateRace(candidate.race)}
+          </span>
         </div>
       </div>
     </article>
@@ -664,7 +680,7 @@ function CompactTeamCard({
   currentTeamId,
   draftTeam,
 }: {
-  candidateLookup: Record<number, DraftCandidate>;
+  candidateLookup: Record<number, CandidateDisplayInfo>;
   currentTeamId: number | null;
   draftTeam: DraftLiveTeam;
 }) {
@@ -697,8 +713,11 @@ function CompactTeamCard({
         ) : (
           draftTeam.roster.map((player) => {
             const candidate = candidateLookup[player.candidateUserId];
-            const tier = candidate?.tier?.trim() || "-";
-            const race = candidate?.race?.trim().toLowerCase() || "-";
+            const candidateName = formatCandidateId(
+              candidate?.candidateName ?? player.candidateName,
+            );
+            const tier = formatCandidateTier(candidate?.tier ?? player.tier);
+            const race = formatCandidateRace(candidate?.race ?? player.race);
 
             return (
               <div
@@ -706,7 +725,7 @@ function CompactTeamCard({
                 className="grid grid-cols-[minmax(0,1fr)_56px_56px] items-center gap-2 rounded-xl bg-surface-muted px-3 py-2 text-[11px]"
               >
                 <span className="truncate font-semibold text-foreground">
-                  {player.candidateUserId}
+                  {candidateName}
                 </span>
                 <span className="truncate text-muted">{tier}</span>
                 <span className="truncate text-muted">{race}</span>
@@ -1453,50 +1472,6 @@ export function DraftLiveDashboard({
     }
   }
 
-  async function handleDeleteSession() {
-    if (selectedSessionId === null) {
-      return;
-    }
-
-    const sessionId = selectedSessionId;
-    const sessionTitle =
-      snapshot?.session.title ??
-      sessions.find((session) => session.id === sessionId)?.title ??
-      `드래프트 ${sessionId}`;
-
-    if (!window.confirm(buildSessionDeleteConfirmText(sessionTitle))) {
-      return;
-    }
-
-    setPendingAction("session-delete");
-    setNotice(null);
-
-    try {
-      await deleteDraftSession(sessionId);
-      await syncAfterSessionRemoval(sessionId);
-      setNotice({
-        tone: "success",
-        text: "드래프트와 연결된 팀, 드래프트 인원, 순서, 픽 기록을 함께 삭제했습니다.",
-      });
-    } catch (error) {
-      if (isMissingSessionError(error)) {
-        await syncAfterSessionRemoval(sessionId).catch(() => undefined);
-        setNotice({
-          tone: "neutral",
-          text: "선택한 드래프트가 이미 삭제되어 목록에서 제거했습니다.",
-        });
-        return;
-      }
-
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
-      });
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
   async function handlePick(candidateUserId: number) {
     if (selectedSessionId === null) {
       return;
@@ -1555,11 +1530,47 @@ export function DraftLiveDashboard({
     typeof snapshot.session.currentPickNo === "number"
       ? `${selectedSessionId}:${snapshot.session.currentPickNo}`
       : null;
-  const candidateLookup = [
-    ...(snapshot?.availableCandidates ?? []),
-    ...(snapshot?.pickedCandidates ?? []),
-  ].reduce<Record<number, DraftCandidate>>((lookup, candidate) => {
-    lookup[candidate.candidateUserId] = candidate;
+  const candidateSources = [
+    ...(snapshot?.availableCandidates ?? []).map((candidate) => ({
+      candidateUserId: candidate.candidateUserId,
+      candidateName: candidate.candidateName,
+      tier: candidate.tier ?? null,
+      race: candidate.race ?? null,
+    })),
+    ...(snapshot?.pickedCandidates ?? []).map((candidate) => ({
+      candidateUserId: candidate.candidateUserId,
+      candidateName: candidate.candidateName,
+      tier: candidate.tier ?? null,
+      race: candidate.race ?? null,
+    })),
+    ...teams.flatMap((team) =>
+      team.roster.map((player) => ({
+        candidateUserId: player.candidateUserId,
+        candidateName: player.candidateName,
+        tier: player.tier ?? null,
+        race: player.race ?? null,
+      })),
+    ),
+  ].reduce<CandidateDisplaySource[]>((sources, source) => {
+    if (
+      sources.some(
+        (current) => current.candidateUserId === source.candidateUserId,
+      )
+    ) {
+      return sources;
+    }
+
+    sources.push(source);
+    return sources;
+  }, []);
+  const candidateLookup = candidateSources.reduce<
+    Record<number, CandidateDisplayInfo>
+  >((lookup, candidate) => {
+    lookup[candidate.candidateUserId] = {
+      candidateName: candidate.candidateName,
+      tier: candidate.tier,
+      race: candidate.race,
+    };
     return lookup;
   }, {});
   const remotePreviewEntries = currentPreviewKey
@@ -1743,20 +1754,30 @@ export function DraftLiveDashboard({
                       : "검색 조건에 맞는 드래프트 인원이 없다."}
                   </div>
                 ) : (
-                  filteredCandidates.map((candidate) => (
-                    <CompactCandidateCard
-                      key={candidate.candidateUserId}
-                      canPick={canPick}
-                      canPreviewDrag={canPreviewDrag}
-                      candidate={candidate}
-                      isDragging={
-                        localPreview?.candidateUserId === candidate.candidateUserId
-                      }
-                      pendingAction={pendingAction}
-                      onPick={handlePick}
-                      onPreviewPointerDown={handleCandidatePreviewPointerDown}
-                    />
-                  ))
+                  filteredCandidates.map((candidate) => {
+                    const displayInfo = candidateLookup[candidate.candidateUserId];
+
+                    return (
+                      <CompactCandidateCard
+                        key={candidate.candidateUserId}
+                        canPick={canPick}
+                        canPreviewDrag={canPreviewDrag}
+                        candidate={{
+                          ...candidate,
+                          candidateName:
+                            displayInfo?.candidateName ?? candidate.candidateName,
+                          tier: displayInfo?.tier ?? candidate.tier,
+                          race: displayInfo?.race ?? candidate.race,
+                        }}
+                        isDragging={
+                          localPreview?.candidateUserId === candidate.candidateUserId
+                        }
+                        pendingAction={pendingAction}
+                        onPick={handlePick}
+                        onPreviewPointerDown={handleCandidatePreviewPointerDown}
+                      />
+                    );
+                  })
                 )}
               </div>
             </section>
@@ -1790,28 +1811,6 @@ export function DraftLiveDashboard({
 
           {snapshot ? (
             <div className="mt-5 space-y-4">
-              {canControl ? (
-                <div className="rounded-[22px] border border-danger-ink/15 bg-danger-soft px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-danger-ink">드래프트 삭제</p>
-                      <p className="mt-1 text-sm leading-6 text-danger-ink/80">
-                        이 드래프트를 지우면 팀, 드래프트 인원, 순서, 픽 기록이 함께 삭제된다.
-                      </p>
-                    </div>
-                    <Button
-                      variant="danger"
-                      disabled={!canControl || isBusy}
-                      onClick={() => {
-                        void handleDeleteSession();
-                      }}
-                    >
-                      {pendingAction === "session-delete" ? "삭제 중" : "드래프트 삭제"}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button
                   variant="accent"

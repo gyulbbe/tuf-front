@@ -452,7 +452,7 @@ export function ProleagueDraftListPage() {
         closeOnBackdropClick={false}
         closeOnEscape={false}
         title={editingSessionId ? "프로리그 드래프트 설정" : "드래프트 생성"}
-        panelClassName="max-w-7xl"
+        panelClassName={editingSessionId ? "max-w-7xl" : "max-w-3xl"}
       >
         {editingSessionId ? (
           <DraftAdminConsole

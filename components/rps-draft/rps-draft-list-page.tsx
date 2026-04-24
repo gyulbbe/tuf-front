@@ -22,7 +22,10 @@ import {
   rpsDraftListPath,
   rpsDraftLivePath,
 } from "@/lib/rps-draft/routes";
-import { rememberRpsDraftUserIds } from "@/lib/rps-draft/user-id-display";
+import {
+  normalizeRpsDraftUserLoginId,
+  rememberRpsDraftUserIds,
+} from "@/lib/rps-draft/user-id-display";
 import {
   formatDateTime,
   formatRelativePickNo,
@@ -380,9 +383,10 @@ export function RpsDraftListPage() {
                 userPk: user?.userPk,
               });
               const ownerLabel =
-                session.ownerUserId === user?.userPk && user?.username
+                normalizeRpsDraftUserLoginId(session.ownerUserLoginId) ??
+                (session.ownerUserId === user?.userPk && user?.username
                   ? user.username
-                  : "아이디 확인 필요";
+                  : "아이디 확인 필요");
               const liveClassName = canManage
                 ? primaryLinkClassName
                 : secondaryLinkClassName;
@@ -541,6 +545,7 @@ export function RpsDraftListPage() {
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
               <RpsDraftUserSearch
+                clearOnSelect
                 label="팀원 검색"
                 onSelect={(nextUser) => {
                   handleAddCandidate(nextUser);

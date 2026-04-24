@@ -32,6 +32,8 @@ export type DraftLiveRosterItem = {
   roundNo: number;
   candidateUserId: number;
   candidateName: string;
+  tier?: string | null;
+  race?: string | null;
   pickedByUserId: number;
   pickedByUserName: string;
   pickedAt: string | null;

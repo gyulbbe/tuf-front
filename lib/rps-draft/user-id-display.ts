@@ -109,3 +109,24 @@ export function formatRpsDraftUserId(
 
   return resolvedUserIds[userPk] ?? "아이디 확인 필요";
 }
+
+export function normalizeRpsDraftUserLoginId(value: string | null | undefined) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function formatRpsDraftResolvedUserId({
+  fallback = "아이디 확인 필요",
+  resolvedUserIds,
+  userLoginId,
+  userPk,
+}: {
+  fallback?: string;
+  resolvedUserIds: Record<number, string>;
+  userLoginId?: string | null;
+  userPk: number | null | undefined;
+}) {
+  return (
+    normalizeRpsDraftUserLoginId(userLoginId) ??
+    formatRpsDraftUserId(userPk, resolvedUserIds, fallback)
+  );
+}

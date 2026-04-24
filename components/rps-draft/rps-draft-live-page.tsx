@@ -11,9 +11,12 @@ import {
   startRpsDraftSession,
   submitRpsDraftChoice,
   type RpsChoice,
+  type RpsDraftCandidate,
   type RpsDraftLivePermissions,
   type RpsDraftLiveSnapshot,
   type RpsDraftLiveTeam,
+  type RpsDraftPick,
+  type RpsDraftRosterItem,
 } from "@/lib/api/rps-draft";
 import { buildLoginHref } from "@/lib/auth/auth-navigation";
 import {
@@ -24,7 +27,7 @@ import {
   rpsDraftLivePath,
 } from "@/lib/rps-draft/routes";
 import {
-  formatRpsDraftUserId,
+  formatRpsDraftResolvedUserId,
   getCachedRpsDraftUserIdMap,
   mergeRpsDraftUserIdMap,
 } from "@/lib/rps-draft/user-id-display";
@@ -82,6 +85,45 @@ function sortTeams(teams: RpsDraftLiveTeam[]) {
 
 function sortRoster(team: RpsDraftLiveTeam) {
   return [...team.roster].sort((left, right) => left.pickNo - right.pickNo);
+}
+
+function formatCandidateUserId(
+  candidate: Pick<RpsDraftCandidate, "candidateUserId" | "candidateUserLoginId">,
+  resolvedUserIds: Record<number, string>,
+  fallback = "아이디 확인 필요",
+) {
+  return formatRpsDraftResolvedUserId({
+    fallback,
+    resolvedUserIds,
+    userLoginId: candidate.candidateUserLoginId,
+    userPk: candidate.candidateUserId,
+  });
+}
+
+function formatRosterUserId(
+  item: Pick<RpsDraftRosterItem, "candidateUserId" | "candidateUserLoginId">,
+  resolvedUserIds: Record<number, string>,
+  fallback = "아이디 확인 필요",
+) {
+  return formatRpsDraftResolvedUserId({
+    fallback,
+    resolvedUserIds,
+    userLoginId: item.candidateUserLoginId,
+    userPk: item.candidateUserId,
+  });
+}
+
+function formatPickUserId(
+  pick: Pick<RpsDraftPick, "candidateUserId" | "candidateUserLoginId">,
+  resolvedUserIds: Record<number, string>,
+  fallback = "아이디 확인 필요",
+) {
+  return formatRpsDraftResolvedUserId({
+    fallback,
+    resolvedUserIds,
+    userLoginId: pick.candidateUserLoginId,
+    userPk: pick.candidateUserId,
+  });
 }
 
 function findTeamById(teams: RpsDraftLiveTeam[], teamId: number | null | undefined) {
@@ -146,12 +188,12 @@ function RpsHandIcon({ choice }: { choice: RpsChoice }) {
     stroke: "currentColor",
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
-    strokeWidth: 1.8,
+    strokeWidth: 2.3,
   };
 
   if (choice === "SCISSORS") {
     return (
-      <svg viewBox="0 0 48 48" className="h-7 w-7" aria-hidden="true">
+      <svg viewBox="0 0 48 48" className="h-12 w-12 sm:h-14 sm:w-14" aria-hidden="true">
         <circle cx="13" cy="33" r="4.5" {...commonProps} />
         <circle cx="23" cy="34" r="4.5" {...commonProps} />
         <path d="M16 30 31 16" {...commonProps} />
@@ -164,7 +206,7 @@ function RpsHandIcon({ choice }: { choice: RpsChoice }) {
 
   if (choice === "ROCK") {
     return (
-      <svg viewBox="0 0 48 48" className="h-7 w-7" aria-hidden="true">
+      <svg viewBox="0 0 48 48" className="h-12 w-12 sm:h-14 sm:w-14" aria-hidden="true">
         <path d="M15 21c0-2 1.6-3.5 3.5-3.5S22 19 22 21v1.5" {...commonProps} />
         <path d="M21 20.5c0-2 1.6-3.5 3.5-3.5S28 18.5 28 20.5v2" {...commonProps} />
         <path d="M27 21c0-2 1.6-3.5 3.5-3.5S34 19 34 21v4" {...commonProps} />
@@ -177,7 +219,7 @@ function RpsHandIcon({ choice }: { choice: RpsChoice }) {
   }
 
   return (
-    <svg viewBox="0 0 48 48" className="h-7 w-7" aria-hidden="true">
+    <svg viewBox="0 0 48 48" className="h-12 w-12 sm:h-14 sm:w-14" aria-hidden="true">
       <path d="M16 14v14" {...commonProps} />
       <path d="M22 11v17" {...commonProps} />
       <path d="M28 10v18" {...commonProps} />
@@ -240,7 +282,7 @@ function TeamPanel({
               <div className="flex flex-wrap items-center gap-2">
                 <ValueBadge>{item.pickNo}픽</ValueBadge>
                 <span className="text-sm font-semibold text-foreground">
-                  {formatRpsDraftUserId(item.candidateUserId, resolvedUserIds)}
+                  {formatRosterUserId(item, resolvedUserIds)}
                 </span>
               </div>
               <p className="mt-2 text-xs leading-6 text-muted">
@@ -516,8 +558,8 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
       applySnapshot(nextSnapshot);
       setActionMessage(
         pickedCandidate
-          ? `${formatRpsDraftUserId(
-              pickedCandidate.candidateUserId,
+          ? `${formatCandidateUserId(
+              pickedCandidate,
               resolvedUserIds,
               "선수",
             )}을 선택했습니다.`
@@ -578,8 +620,8 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
             {latestPick ? (
               <p className="mt-3 text-sm text-muted">
                 최근 선택: {latestPick.pickNo}픽{" "}
-                {formatRpsDraftUserId(
-                  latestPick.candidateUserId,
+                {formatPickUserId(
+                  latestPick,
                   resolvedUserIds,
                   "선수",
                 )}{" "}
@@ -700,7 +742,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
               </div>
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-5 grid grid-cols-3 gap-3 sm:flex sm:flex-wrap">
               {RPS_CHOICES.map((choice) => {
                 const actionKey = `rps:${choice.value}`;
 
@@ -709,7 +751,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                     key={choice.value}
                     variant={canSubmitRps ? "accent" : "outline"}
                     disabled={pendingAction !== null || !canSubmitRps}
-                    className="h-14 w-14 rounded-2xl p-0"
+                    className="h-24 min-w-0 rounded-[24px] p-0 sm:h-28 sm:w-28"
                     title={choice.label}
                     aria-label={choice.label}
                     onClick={() => {
@@ -721,7 +763,12 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                         ? `${choice.label} 내는 중...`
                         : choice.label}
                     </span>
-                    <RpsHandIcon choice={choice.value} />
+                    <span className="flex flex-col items-center gap-1.5">
+                      <RpsHandIcon choice={choice.value} />
+                      <span className="text-sm font-semibold leading-none">
+                        {choice.label}
+                      </span>
+                    </span>
                   </Button>
                 );
               })}
@@ -765,8 +812,8 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-semibold text-foreground">
-                              {formatRpsDraftUserId(
-                                candidate.candidateUserId,
+                              {formatCandidateUserId(
+                                candidate,
                                 resolvedUserIds,
                                 "user",
                               )}

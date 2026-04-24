@@ -105,6 +105,7 @@ type DraftAdminConsoleProps = {
 };
 
 type UserAutocompleteInputProps = {
+  busy?: boolean;
   disabled?: boolean;
   excludedUserIds?: readonly number[];
   onSelect: (user: DraftUserSearchResult) => void;
@@ -681,6 +682,7 @@ function SetupStatCard({
 }
 
 function UserAutocompleteInput({
+  busy = false,
   disabled = false,
   excludedUserIds = [],
   onSelect,
@@ -692,10 +694,15 @@ function UserAutocompleteInput({
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const selectedValueRef = useRef<string | null>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visibleResults = filterAutocompleteUsers(results, excludedUserIds);
+  const displayedActiveIndex =
+    activeIndex >= 0 && activeIndex < visibleResults.length ? activeIndex : 0;
+  const highlightedUser =
+    visibleResults.length > 0 ? visibleResults[displayedActiveIndex] : null;
 
   useEffect(() => {
     const keyword = value.trim();
@@ -785,31 +792,14 @@ function UserAutocompleteInput({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || visibleResults.length === 0) {
       return;
     }
 
-    if (visibleResults.length === 0) {
-      if (activeIndex !== -1) {
-        setActiveIndex(-1);
-      }
-      return;
-    }
-
-    if (activeIndex < 0 || activeIndex >= visibleResults.length) {
-      setActiveIndex(0);
-    }
-  }, [activeIndex, isOpen, visibleResults]);
-
-  useEffect(() => {
-    if (!isOpen || activeIndex < 0) {
-      return;
-    }
-
-    itemRefs.current[activeIndex]?.scrollIntoView({
+    itemRefs.current[displayedActiveIndex]?.scrollIntoView({
       block: "nearest",
     });
-  }, [activeIndex, isOpen, visibleResults]);
+  }, [displayedActiveIndex, isOpen, visibleResults]);
 
   function closeDropdown() {
     setIsOpen(false);
@@ -821,6 +811,7 @@ function UserAutocompleteInput({
     onSelect(user);
     setResults([]);
     closeDropdown();
+    inputRef.current?.focus();
   }
 
   return (
@@ -829,10 +820,16 @@ function UserAutocompleteInput({
       className={cn("relative", isOpen ? "z-[70]" : "z-0")}
     >
       <Input
+        ref={inputRef}
         value={value}
         disabled={disabled}
+        readOnly={busy}
         placeholder={placeholder}
         onChange={(event) => {
+          if (busy) {
+            return;
+          }
+
           onValueChange(event.target.value);
           setIsOpen(true);
         }}
@@ -842,10 +839,9 @@ function UserAutocompleteInput({
           }
         }}
         onKeyDown={(event) => {
-          const highlightedUser =
-            activeIndex >= 0 && visibleResults[activeIndex]
-              ? visibleResults[activeIndex]
-              : visibleResults[0];
+          if (busy) {
+            return;
+          }
 
           if (!isOpen && event.key === "ArrowDown") {
             setIsOpen(true);
@@ -921,10 +917,9 @@ function UserAutocompleteInput({
                   ref={(node) => {
                     itemRefs.current[index] = node;
                   }}
-                  aria-selected={index === activeIndex}
                   className={cn(
                     "mx-1 flex w-[calc(100%-0.5rem)] items-start justify-between gap-3 rounded-2xl border px-3 py-2 text-left transition-colors",
-                    index === activeIndex
+                    index === displayedActiveIndex
                       ? "border-accent-soft bg-accent-soft/60 shadow-sm"
                       : "border-transparent hover:bg-surface-strong",
                   )}
@@ -942,13 +937,15 @@ function UserAutocompleteInput({
                     <p
                       className={cn(
                         "text-sm font-semibold",
-                        index === activeIndex ? "text-accent-ink" : "text-foreground",
+                        index === displayedActiveIndex
+                          ? "text-accent-ink"
+                          : "text-foreground",
                       )}
                     >
                       {user.userId}
                     </p>
                   </div>
-                  {index === activeIndex ? (
+                  {index === displayedActiveIndex ? (
                     <span className="rounded-full bg-white/90 px-2 py-1 text-[11px] font-semibold text-accent-ink">
                       현재
                     </span>
@@ -1041,7 +1038,7 @@ function TeamPickerManager({
       <div className="mt-4 rounded-[20px] border border-line bg-surface px-3 py-3">
         <div className="grid gap-3">
           <UserAutocompleteInput
-            disabled={pendingAction !== null}
+            busy={pendingAction !== null}
             value={lookupState.query}
             excludedUserIds={excludedUserIds}
             placeholder="아이디 검색"
@@ -1236,7 +1233,7 @@ function TeamPickerManagerClean({
       <div className="mt-3 rounded-[18px] border border-line bg-surface px-2.5 py-2.5">
         <div className="grid gap-3">
           <UserAutocompleteInput
-            disabled={pendingAction !== null}
+            busy={pendingAction !== null}
             value={lookupState.query}
             excludedUserIds={excludedUserIds}
             placeholder="아이디 검색"
@@ -1297,7 +1294,8 @@ function CandidateComposerClean({
     <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
       <div className="grid gap-3">
         <UserAutocompleteInput
-          disabled={disabled || pendingAction !== null}
+          busy={pendingAction !== null}
+          disabled={disabled}
           value={candidateForm.query}
           excludedUserIds={blockedUserIds}
           placeholder="아이디 검색"

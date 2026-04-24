@@ -22,6 +22,7 @@ export type RpsDraftSessionSummary = {
   id: number;
   title: string;
   ownerUserId: number;
+  ownerUserLoginId?: string | null;
   ownerName: string | null;
   status: RpsDraftStatus | string;
   currentPickNo: number | null;
@@ -37,6 +38,7 @@ export type RpsDraftTeam = {
   teamName: string;
   displayOrder: 1 | 2 | number;
   pickerUserId: number | null;
+  pickerUserLoginId?: string | null;
   pickerName: string | null;
 };
 
@@ -44,6 +46,7 @@ export type RpsDraftSessionDetail = {
   id: number;
   title: string;
   ownerUserId: number;
+  ownerUserLoginId?: string | null;
   ownerName: string | null;
   status: RpsDraftStatus | string;
   currentPickNo: number | null;
@@ -57,7 +60,9 @@ export type RpsDraftSessionDetail = {
 export type RpsDraftCandidate = {
   rpsDraftSessionId: number;
   candidateUserId: number;
+  candidateUserLoginId?: string | null;
   candidateName: string;
+  tier?: string | null;
   race: string | null;
   status: "WAITING" | "PICKED" | "EXCLUDED" | string;
   pickedRpsDraftTeamId: number | null;
@@ -68,8 +73,12 @@ export type RpsDraftCandidate = {
 export type RpsDraftRosterItem = {
   pickNo: number;
   candidateUserId: number;
+  candidateUserLoginId?: string | null;
   candidateName: string;
+  tier?: string | null;
+  race?: string | null;
   pickedByUserId: number;
+  pickedByUserLoginId?: string | null;
   pickedByUserName: string | null;
   pickedAt: string | null;
 };
@@ -84,8 +93,12 @@ export type RpsDraftPick = {
   rpsDraftTeamId: number;
   rpsDraftTeamName: string;
   candidateUserId: number;
+  candidateUserLoginId?: string | null;
   candidateName: string;
+  tier?: string | null;
+  race?: string | null;
   pickedByUserId: number;
+  pickedByUserLoginId?: string | null;
   pickedByUserName: string | null;
   pickedAt: string | null;
 };
@@ -161,12 +174,12 @@ export type RpsDraftPickerAssignRequest = {
 export type RpsDraftPickerResponse = {
   rpsDraftTeamId: number;
   pickerUserId: number | null;
+  pickerUserLoginId?: string | null;
   pickerName: string | null;
 };
 
 export type RpsDraftCandidateRequest = {
   candidateUserId: number;
-  candidateName?: string;
   race?: string;
 };
 
@@ -563,8 +576,10 @@ export async function listRpsDraftCandidates(sessionId: number) {
 
 export async function registerRpsDraftCandidate(
   sessionId: number,
-  payload: RpsDraftCandidateRequest,
+  candidateUserId: number,
 ) {
+  const payload: RpsDraftCandidateRequest = { candidateUserId };
+
   return unwrapResponse(
     apiClient.post<ApiEnvelope<RpsDraftCandidate>>(
       `/rps-drafts/sessions/${sessionId}/candidates`,

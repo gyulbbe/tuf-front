@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/rps-draft";
 
 type RpsDraftUserSearchProps = {
+  clearOnSelect?: boolean;
   description?: string;
   disabled?: boolean;
   disabledUserIds?: number[];
@@ -63,6 +64,7 @@ function findNextSelectableIndex(
 }
 
 export function RpsDraftUserSearch({
+  clearOnSelect = false,
   description,
   disabled = false,
   disabledUserIds = [],
@@ -80,6 +82,7 @@ export function RpsDraftUserSearch({
   const [lastSearchedKeyword, setLastSearchedKeyword] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -87,12 +90,16 @@ export function RpsDraftUserSearch({
     () => findFirstSelectableIndex(results, disabledUserIds),
     [disabledUserIds, results],
   );
+  const displayedActiveIndex =
+    activeIndex >= 0 &&
+    results[activeIndex] &&
+    !disabledUserIds.includes(results[activeIndex].id)
+      ? activeIndex
+      : firstSelectableIndex;
   const activeUser =
-    activeIndex >= 0 && results[activeIndex]
-      ? results[activeIndex]
-      : firstSelectableIndex >= 0
-        ? results[firstSelectableIndex]
-        : null;
+    displayedActiveIndex >= 0 && results[displayedActiveIndex]
+      ? results[displayedActiveIndex]
+      : null;
 
   useEffect(() => {
     if (!isOpen) {
@@ -112,33 +119,14 @@ export function RpsDraftUserSearch({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || results.length === 0) {
+    if (!isOpen || displayedActiveIndex < 0) {
       return;
     }
 
-    const currentUser = activeIndex >= 0 ? results[activeIndex] : null;
-    if (currentUser && !disabledUserIds.includes(currentUser.id)) {
-      return;
-    }
-
-    setActiveIndex(firstSelectableIndex);
-  }, [
-    activeIndex,
-    disabledUserIds,
-    firstSelectableIndex,
-    isOpen,
-    results,
-  ]);
-
-  useEffect(() => {
-    if (!isOpen || activeIndex < 0) {
-      return;
-    }
-
-    itemRefs.current[activeIndex]?.scrollIntoView({
+    itemRefs.current[displayedActiveIndex]?.scrollIntoView({
       block: "nearest",
     });
-  }, [activeIndex, isOpen, results]);
+  }, [displayedActiveIndex, isOpen, results]);
 
   function closeResults() {
     setIsOpen(false);
@@ -146,6 +134,10 @@ export function RpsDraftUserSearch({
   }
 
   async function handleSearch() {
+    if (disabled || loading) {
+      return;
+    }
+
     const trimmedKeyword = keyword.trim();
 
     if (!trimmedKeyword) {
@@ -185,6 +177,7 @@ export function RpsDraftUserSearch({
       closeResults();
     } finally {
       setLoading(false);
+      inputRef.current?.focus();
     }
   }
 
@@ -194,7 +187,14 @@ export function RpsDraftUserSearch({
     }
 
     onSelect(user);
+    if (clearOnSelect) {
+      setKeyword("");
+      setResults([]);
+      setLastSearchedKeyword("");
+      setError(null);
+    }
     closeResults();
+    inputRef.current?.focus();
   }
 
   const hasFreshResults =
@@ -217,6 +217,7 @@ export function RpsDraftUserSearch({
 
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input
+            ref={inputRef}
             value={keyword}
             onChange={(event) => {
               setKeyword(event.target.value);
@@ -261,6 +262,10 @@ export function RpsDraftUserSearch({
               if (event.key === "Enter") {
                 event.preventDefault();
 
+                if (loading) {
+                  return;
+                }
+
                 if (!loading && isOpen && hasFreshResults && activeUser) {
                   selectUser(activeUser);
                   return;
@@ -273,7 +278,8 @@ export function RpsDraftUserSearch({
                 closeResults();
               }
             }}
-            disabled={disabled || loading}
+            disabled={disabled}
+            readOnly={loading}
             placeholder={placeholder}
           />
           <Button
@@ -305,7 +311,7 @@ export function RpsDraftUserSearch({
               const isSelected = selectedUser?.id === user.id;
               const isDisabledUser = disabledUserIds.includes(user.id);
               const isUnavailable = disabled || isDisabledUser;
-              const isActive = index === activeIndex;
+              const isActive = index === displayedActiveIndex;
 
               return (
                 <button
@@ -314,7 +320,6 @@ export function RpsDraftUserSearch({
                   ref={(node) => {
                     itemRefs.current[index] = node;
                   }}
-                  aria-selected={isActive}
                   disabled={isUnavailable}
                   onMouseMove={() => {
                     if (!isDisabledUser && activeIndex !== index) {

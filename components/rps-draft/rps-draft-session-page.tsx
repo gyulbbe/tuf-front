@@ -26,7 +26,7 @@ import {
   rpsDraftSessionPath,
 } from "@/lib/rps-draft/routes";
 import {
-  formatRpsDraftUserId,
+  formatRpsDraftResolvedUserId,
   getCachedRpsDraftUserIdMap,
   mergeRpsDraftUserIdMap,
 } from "@/lib/rps-draft/user-id-display";
@@ -60,7 +60,33 @@ function sortCandidates(candidates: RpsDraftCandidate[]) {
       return rankDelta;
     }
 
-    return left.candidateName.localeCompare(right.candidateName, "ko-KR");
+    const leftLabel = left.candidateUserLoginId ?? left.candidateName;
+    const rightLabel = right.candidateUserLoginId ?? right.candidateName;
+
+    return leftLabel.localeCompare(rightLabel, "ko-KR");
+  });
+}
+
+function formatCandidateUserId(
+  candidate: Pick<RpsDraftCandidate, "candidateUserId" | "candidateUserLoginId">,
+  resolvedUserIds: Record<number, string>,
+) {
+  return formatRpsDraftResolvedUserId({
+    resolvedUserIds,
+    userLoginId: candidate.candidateUserLoginId,
+    userPk: candidate.candidateUserId,
+  });
+}
+
+function formatTeamPickerUserId(
+  team: Pick<RpsDraftTeam, "pickerUserId" | "pickerUserLoginId">,
+  resolvedUserIds: Record<number, string>,
+) {
+  return formatRpsDraftResolvedUserId({
+    fallback: "미지정",
+    resolvedUserIds,
+    userLoginId: team.pickerUserLoginId,
+    userPk: team.pickerUserId,
   });
 }
 
@@ -217,9 +243,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
     setActionMessage(null);
 
     try {
-      await registerRpsDraftCandidate(sessionId, {
-        candidateUserId: candidateUser.id,
-      });
+      await registerRpsDraftCandidate(sessionId, candidateUser.id);
       setCandidateUser(null);
       await refreshPage("후보를 추가했습니다.");
     } catch (registerError) {
@@ -304,7 +328,12 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
               ) : null}
               {session ? (
                 <ValueBadge>
-                  방장 {formatRpsDraftUserId(session.ownerUserId, resolvedUserIds)}
+                  방장{" "}
+                  {formatRpsDraftResolvedUserId({
+                    resolvedUserIds,
+                    userLoginId: session.ownerUserLoginId,
+                    userPk: session.ownerUserId,
+                  })}
                 </ValueBadge>
               ) : null}
             </div>
@@ -388,7 +417,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                   </div>
 
                   <p className="mt-3 text-sm text-muted">
-                    팀장 {formatRpsDraftUserId(team.pickerUserId, resolvedUserIds)}
+                    팀장 {formatTeamPickerUserId(team, resolvedUserIds)}
                   </p>
 
                   {needsFallbackSetup ? (
@@ -503,10 +532,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-semibold text-foreground">
-                            {formatRpsDraftUserId(
-                              candidate.candidateUserId,
-                              resolvedUserIds,
-                            )}
+                            {formatCandidateUserId(candidate, resolvedUserIds)}
                           </span>
                           <StatusBadge status={candidate.status} />
                           <ValueBadge>{formatRace(candidate.race)}</ValueBadge>

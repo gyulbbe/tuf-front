@@ -24,6 +24,7 @@ import {
   updateDraftTeam,
   type DraftCandidate,
   type DraftLiveTeam,
+  type DraftOrderMode,
   type DraftOrder,
   type DraftPick,
   type DraftSessionDetail,
@@ -49,6 +50,7 @@ type NoticeState = {
 };
 
 type SessionFormState = {
+  orderMode: DraftOrderMode;
   title: string;
   teamCount: string;
   pickTimeSeconds: string;
@@ -112,12 +114,14 @@ const SELECT_CLASS_NAME =
   "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
 
 const EMPTY_CREATE_FORM: SessionFormState = {
+  orderMode: "SNAKE",
   title: "",
   teamCount: "6",
   pickTimeSeconds: "30",
 };
 
 const EMPTY_EDIT_FORM: SessionFormState = {
+  orderMode: "SNAKE",
   title: "",
   teamCount: "",
   pickTimeSeconds: "",
@@ -523,33 +527,22 @@ function formatOrderPlanPreview(plan: GeneratedOrderPlanItem[]) {
     .join(" → ");
 }
 
-function detectOrderGenerationMode(
-  orders: DraftOrder[],
-  teams: DraftLiveTeam[],
+function normalizeOrderGenerationMode(
+  value: DraftOrderMode | null | undefined,
 ): OrderGenerationMode | null {
-  if (orders.length === 0 || teams.length === 0) {
-    return null;
+  if (value === "BASIC") {
+    return "basic";
   }
 
-  for (const mode of ["basic", "snake"] as const) {
-    const plan = buildGeneratedOrderPlan(teams, orders.length, mode);
-
-    if (
-      plan.length === orders.length &&
-      orders.every((order, index) => {
-        const planned = plan[index];
-        return (
-          order.pickNo === planned.pickNo &&
-          order.roundNo === planned.roundNo &&
-          order.draftTeamId === planned.draftTeamId
-        );
-      })
-    ) {
-      return mode;
-    }
+  if (value === "SNAKE") {
+    return "snake";
   }
 
   return null;
+}
+
+function toDraftOrderMode(mode: OrderGenerationMode): DraftOrderMode {
+  return mode === "snake" ? "SNAKE" : "BASIC";
 }
 
 function getNoticeClassName(tone: NoticeTone) {
@@ -1174,16 +1167,18 @@ export function DraftAdminConsole({
       "snake",
     ),
   );
-  const selectedOrderGenerationMode = detectOrderGenerationMode(sortedOrders, sortedTeams);
+  const selectedOrderGenerationMode = normalizeOrderGenerationMode(
+    selectedSessionDetail?.orderMode,
+  );
   const effectiveOrderGenerationMode = creationFlow
-    ? stagedOrderGenerationMode
+    ? stagedOrderGenerationMode ?? selectedOrderGenerationMode
     : selectedOrderGenerationMode;
   const stagedOrderPlan =
-    stagedOrderGenerationMode && selectedSessionDetail
+    effectiveOrderGenerationMode && selectedSessionDetail
       ? buildGeneratedOrderPlan(
           sortedTeams,
           orderGenerationTargetCount,
-          stagedOrderGenerationMode,
+          effectiveOrderGenerationMode,
         )
       : [];
   const candidateTierGroups = buildCandidateTierGroups(sortedCandidates);
@@ -1271,6 +1266,7 @@ export function DraftAdminConsole({
           : currentSessions,
       );
       setEditForm({
+        orderMode: detail.orderMode ?? "SNAKE",
         title: detail.title,
         teamCount: String(detail.teamCount),
         pickTimeSeconds: String(detail.pickTimeSeconds),
@@ -1505,6 +1501,7 @@ export function DraftAdminConsole({
 
     try {
       const payload = {
+        orderMode: createForm.orderMode,
         title: createForm.title.trim(),
         teamCount: parsePositiveInt(createForm.teamCount, "팀 수", 2),
         pickTimeSeconds: parsePositiveInt(createForm.pickTimeSeconds, "픽 제한 시간"),
@@ -1549,6 +1546,7 @@ export function DraftAdminConsole({
 
     try {
       const payload = {
+        orderMode: editForm.orderMode,
         title: editForm.title.trim(),
         teamCount: parsePositiveInt(editForm.teamCount, "팀 수", 2),
         pickTimeSeconds: parsePositiveInt(editForm.pickTimeSeconds, "픽 제한 시간"),
@@ -1574,6 +1572,28 @@ export function DraftAdminConsole({
     } finally {
       setPendingAction(null);
     }
+  }
+
+  async function syncSessionOrderMode(mode: OrderGenerationMode) {
+    if (selectedSessionId === null || !selectedSessionDetail) {
+      return null;
+    }
+
+    if (selectedSessionDetail.orderMode === toDraftOrderMode(mode)) {
+      return selectedSessionDetail;
+    }
+
+    const detail = await updateDraftSession(selectedSessionId, {
+      orderMode: toDraftOrderMode(mode),
+      title: selectedSessionDetail.title,
+      teamCount: selectedSessionDetail.teamCount,
+      pickTimeSeconds: selectedSessionDetail.pickTimeSeconds,
+    });
+
+    applyDetail(detail);
+    notifyChange(detail);
+
+    return detail;
   }
 
   async function handleSaveTeam(teamId: number) {
@@ -1857,6 +1877,8 @@ export function DraftAdminConsole({
     setNotice(null);
 
     try {
+      await syncSessionOrderMode(mode);
+
       const detail = await replaceDraftOrders(selectedSessionId, {
         orders: result.plan.map((order) => ({
           roundNo: order.roundNo,
@@ -1888,7 +1910,10 @@ export function DraftAdminConsole({
       return;
     }
 
-    if (!stagedOrderGenerationMode) {
+    const finalizedOrderGenerationMode =
+      stagedOrderGenerationMode ?? selectedOrderGenerationMode;
+
+    if (!finalizedOrderGenerationMode) {
       setNotice({
         tone: "error",
         text: "드래프트 방식을 먼저 선택해 주세요.",
@@ -1896,7 +1921,7 @@ export function DraftAdminConsole({
       return;
     }
 
-    const result = validateOrderGeneration(stagedOrderGenerationMode);
+    const result = validateOrderGeneration(finalizedOrderGenerationMode);
 
     if (!result.ok) {
       return;
@@ -1906,6 +1931,8 @@ export function DraftAdminConsole({
     setNotice(null);
 
     try {
+      await syncSessionOrderMode(finalizedOrderGenerationMode);
+
       const detail = await replaceDraftOrders(selectedSessionId, {
         orders: result.plan.map((order) => ({
           roundNo: order.roundNo,
@@ -1927,7 +1954,7 @@ export function DraftAdminConsole({
     } catch (error) {
       await refreshSelectedSession(selectedSessionId).catch(() => undefined);
       handleActionError("드래프트 생성 마무리", error, {
-        mode: stagedOrderGenerationMode,
+        mode: finalizedOrderGenerationMode,
         sessionId: selectedSessionId,
       });
     } finally {
@@ -2450,7 +2477,7 @@ export function DraftAdminConsole({
                     pendingAction !== null ||
                     !isPickerSetupReady ||
                     orderGenerationTargetCount === 0 ||
-                    stagedOrderGenerationMode === null
+                    effectiveOrderGenerationMode === null
                   }
                   onClick={() => {
                     void handleFinalizeSessionCreation();

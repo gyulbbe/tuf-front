@@ -20,6 +20,7 @@ import {
   startDraftSession,
   type DraftCandidate,
   type DraftLiveNormalizedPosition,
+  type DraftLivePermissions,
   type DraftLivePreviewEndReason,
   type DraftLiveSessionInfo,
   type DraftLiveSnapshot,
@@ -28,6 +29,7 @@ import {
 } from "@/lib/api/draft";
 import { subscribeToDraftSession } from "@/lib/draft/live-events";
 import { useAuth } from "@/components/auth/auth-provider";
+import type { AuthUser } from "@/lib/auth/auth-types";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -223,6 +225,46 @@ function sortTeams(teams: DraftLiveTeam[]) {
   });
 }
 
+function isDraftAdminRole(role: string | null | undefined) {
+  return role === "ROLE_MASTER" || role === "ROLE_MANAGER" || role === "ROLE_ADMIN";
+}
+
+function buildLocalPermissions(
+  snapshot: DraftLiveSnapshot,
+  user: AuthUser | null,
+): DraftLivePermissions {
+  const canControl = Boolean(
+    user &&
+      (isDraftAdminRole(user.role) ||
+        snapshot.session.ownerUserId === user.userPk),
+  );
+
+  if (!user) {
+    return {
+      canControl,
+      canPick: false,
+      myRole: null,
+      myTeamId: null,
+    };
+  }
+
+  const myTeam =
+    snapshot.teams.find((team) => team.pickerUserId === user.userPk) ?? null;
+  const canPick = Boolean(
+    myTeam &&
+      snapshot.currentTurn &&
+      myTeam.id === snapshot.currentTurn.teamId &&
+      myTeam.pickerUserId === user.userPk,
+  );
+
+  return {
+    canControl,
+    canPick,
+    myRole: myTeam ? "PICKER" : null,
+    myTeamId: myTeam?.id ?? null,
+  };
+}
+
 function chooseInitialSessionId(sessions: DraftSessionSummary[]) {
   return sessions[0]?.id ?? null;
 }
@@ -245,7 +287,9 @@ function mergeSessionSummary(
         id: session.id,
         title: session.title,
         ownerUserId: session.ownerUserId,
+        ownerUserLoginId: session.ownerUserLoginId,
         ownerName: session.ownerName,
+        orderMode: session.orderMode,
         status: session.status,
         teamCount: session.teamCount,
         pickTimeSeconds: session.pickTimeSeconds,
@@ -1178,16 +1222,19 @@ export function DraftLiveDashboard({
 
         if (event.snapshot) {
           const broadcastSnapshot = event.snapshot;
+          const nextPermissions =
+            broadcastSnapshot.permissions ??
+            buildLocalPermissions(broadcastSnapshot, user);
 
           if (
             localPreviewRef.current &&
             (broadcastSnapshot.session.status !== "LIVE" ||
-              !(broadcastSnapshot.permissions?.canPick ?? false) ||
+              !nextPermissions.canPick ||
               broadcastSnapshot.currentTurn === null)
           ) {
             endLocalPreview(
               readPreviewAutoEndReason({
-                canPick: broadcastSnapshot.permissions?.canPick ?? false,
+                canPick: nextPermissions.canPick,
                 hasCurrentTurn: broadcastSnapshot.currentTurn !== null,
                 connectionState: "connected",
                 sessionStatus: broadcastSnapshot.session.status,
@@ -1198,8 +1245,7 @@ export function DraftLiveDashboard({
           startTransition(() => {
             setSnapshot((currentSnapshot) => ({
               ...broadcastSnapshot,
-              permissions:
-                broadcastSnapshot.permissions ?? currentSnapshot?.permissions ?? null,
+              permissions: nextPermissions ?? currentSnapshot?.permissions ?? null,
             }));
             setServerOffsetMs(readServerOffsetMs(broadcastSnapshot.session.serverNow));
             setSessions((currentSessions) =>
@@ -1234,7 +1280,7 @@ export function DraftLiveDashboard({
       setRemotePreviews({});
       connection.unsubscribe();
     };
-  }, [selectedSessionId]);
+  }, [adminMode, selectedSessionId, user]);
 
   async function runSnapshotAction(
     actionKey: string,

@@ -107,6 +107,21 @@ function findCandidate(
   );
 }
 
+function formatPickCandidateLoginId(
+  pick: DraftPick,
+  candidate: DraftCandidate | null,
+) {
+  const pickLoginId = pick.candidateUserLoginId?.trim();
+
+  if (pickLoginId) {
+    return pickLoginId;
+  }
+
+  const candidateLoginId = candidate?.candidateUserLoginId?.trim();
+
+  return candidateLoginId || "아이디 확인 필요";
+}
+
 export function DraftHistoryConsole() {
   const [sessions, setSessions] = useState<DraftSessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
@@ -300,7 +315,7 @@ export function DraftHistoryConsole() {
               <div className="grid grid-cols-[60px_minmax(0,1fr)_110px_70px_70px] items-center gap-2 rounded-xl border border-line bg-surface-muted px-3 py-2 text-[11px] font-semibold text-muted">
                 <span>순서</span>
                 <span>팀</span>
-                <span>user_id</span>
+                <span>아이디</span>
                 <span>티어</span>
                 <span>종족</span>
               </div>
@@ -318,7 +333,9 @@ export function DraftHistoryConsole() {
                   >
                     <span className="font-semibold">{pick.pickNo}</span>
                     <span className="truncate">{pick.draftTeamName}</span>
-                    <span className="truncate">{pick.candidateUserId}</span>
+                    <span className="truncate">
+                      {formatPickCandidateLoginId(pick, candidate)}
+                    </span>
                     <span className="truncate">{candidate?.tier ?? "-"}</span>
                     <span className="truncate">{candidate?.race ?? "-"}</span>
                   </div>

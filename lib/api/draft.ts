@@ -7,6 +7,8 @@ type ApiEnvelope<T> = {
   data?: T | null;
 };
 
+export type DraftOrderMode = "BASIC" | "SNAKE";
+
 type ErrorResponseBody = {
   message?: string;
   error?: string;
@@ -18,6 +20,7 @@ export type DraftSessionSummary = {
   ownerUserId: number;
   ownerUserLoginId?: string | null;
   ownerName: string | null;
+  orderMode: DraftOrderMode | null;
   status: string;
   teamCount: number;
   pickTimeSeconds: number;
@@ -97,6 +100,7 @@ export type DraftLiveSessionInfo = {
   ownerUserId: number;
   ownerUserLoginId?: string | null;
   ownerName: string | null;
+  orderMode: DraftOrderMode | null;
   status: string;
   teamCount: number;
   pickTimeSeconds: number;
@@ -173,6 +177,7 @@ export type DraftSessionDetail = {
   ownerUserId: number;
   ownerUserLoginId?: string | null;
   ownerName: string | null;
+  orderMode: DraftOrderMode | null;
   status: string;
   teamCount: number;
   pickTimeSeconds: number;
@@ -189,6 +194,7 @@ export type DraftSessionDetail = {
 
 export type DraftSessionRequest = {
   title?: string;
+  orderMode?: DraftOrderMode | null;
   status?: string;
   teamCount?: number;
   pickTimeSeconds?: number;
@@ -337,12 +343,17 @@ function normalizeOwnerName(value: string | null | undefined) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function normalizeDraftOrderMode(value: string | null | undefined) {
+  return value === "BASIC" || value === "SNAKE" ? value : null;
+}
+
 function normalizeDraftSessionSummary(
   value: DraftSessionSummary,
 ): DraftSessionSummary {
   return {
     ...value,
     ownerName: normalizeOwnerName(value.ownerName),
+    orderMode: normalizeDraftOrderMode(value.orderMode),
   };
 }
 
@@ -372,6 +383,7 @@ function normalizeDraftSnapshot(value: DraftLiveSnapshot): DraftLiveSnapshot {
     session: {
       ...value.session,
       ownerName: normalizeOwnerName(value.session.ownerName),
+      orderMode: normalizeDraftOrderMode(value.session.orderMode),
     },
     teams: readArray<DraftLiveTeam>(value.teams).map((team) =>
       normalizeDraftTeam(team),
@@ -387,6 +399,7 @@ function normalizeDraftSessionDetail(value: DraftSessionDetail): DraftSessionDet
   return {
     ...value,
     ownerName: normalizeOwnerName(value.ownerName),
+    orderMode: normalizeDraftOrderMode(value.orderMode),
     teams: readArray<DraftLiveTeam>(value.teams).map((team) =>
       normalizeDraftTeam(team),
     ),

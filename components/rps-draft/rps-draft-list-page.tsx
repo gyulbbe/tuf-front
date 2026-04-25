@@ -23,10 +23,6 @@ import {
   rpsDraftLivePath,
 } from "@/lib/rps-draft/routes";
 import {
-  normalizeRpsDraftUserLoginId,
-  rememberRpsDraftUserIds,
-} from "@/lib/rps-draft/user-id-display";
-import {
   formatDateTime,
   formatRelativePickNo,
   StatusBadge,
@@ -117,6 +113,10 @@ function describeProgress(session: RpsDraftSessionSummary) {
 
 function formatSelectedUser(user: RpsDraftUserSearchResult) {
   return user.userId;
+}
+
+function formatUserLoginId(value: string | null | undefined) {
+  return value?.trim() || "아이디 확인 필요";
 }
 
 function hasUser(user: RpsDraftUserSearchResult[], userId: number) {
@@ -210,16 +210,6 @@ export function RpsDraftListPage() {
     setCreateError(null);
 
     try {
-      const knownUserIds = {
-        [form.team1Picker!.id]: form.team1Picker!.userId,
-        [form.team2Picker!.id]: form.team2Picker!.userId,
-        ...Object.fromEntries(
-          form.candidates.map((candidate) => [candidate.id, candidate.userId]),
-        ),
-      };
-
-      rememberRpsDraftUserIds(knownUserIds);
-
       const createdSession = await createRpsDraftSession({
         title: form.title.trim(),
         team1PickerUserId: form.team1Picker!.id,
@@ -382,11 +372,7 @@ export function RpsDraftListPage() {
                 role: user?.role,
                 userPk: user?.userPk,
               });
-              const ownerLabel =
-                normalizeRpsDraftUserLoginId(session.ownerUserLoginId) ??
-                (session.ownerUserId === user?.userPk && user?.username
-                  ? user.username
-                  : "아이디 확인 필요");
+              const ownerLabel = formatUserLoginId(session.ownerUserLoginId);
               const liveClassName = canManage
                 ? primaryLinkClassName
                 : secondaryLinkClassName;

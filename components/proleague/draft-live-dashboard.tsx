@@ -80,35 +80,12 @@ function formatDraftStatus(status: string | null | undefined) {
   return STATUS_LABELS[status] ?? status;
 }
 
-function formatUserRole(role: string | null | undefined) {
-  switch (role) {
-    case "ROLE_MASTER":
-      return "마스터";
-    case "ROLE_MANAGER":
-      return "매니저";
-    case "ROLE_ADMIN":
-      return "관리자";
-    case "ROLE_SYSTEM":
-      return "시스템";
-    default:
-      return role ?? "일반 사용자";
-  }
-}
-
 function readErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
 
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
-}
-
-function formatRoleBadge(role: string | null | undefined) {
-  if (!role) {
-    return null;
-  }
-
-  return role.replace(/^ROLE_/, "") || null;
 }
 
 function formatCandidateId(value: string | null | undefined) {
@@ -537,151 +514,6 @@ function PreviewGhostCard({
   );
 }
 
-function TeamCard({
-  currentTeamId,
-  draftTeam,
-}: {
-  currentTeamId: number | null;
-  draftTeam: DraftLiveTeam;
-}) {
-  const isCurrentTeam = draftTeam.id === currentTeamId;
-
-  return (
-    <article
-      className={cn(
-        "rounded-[28px] border px-5 py-5 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]",
-        isCurrentTeam
-          ? "border-accent/20 bg-[linear-gradient(180deg,rgba(220,229,222,0.65)_0%,rgba(255,255,255,0.95)_100%)]"
-          : "border-line bg-surface-strong",
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <div>
-          <p className="text-lg font-semibold text-foreground">{draftTeam.teamName}</p>
-          <p className="mt-1 text-sm text-muted">
-            로스터 {draftTeam.roster.length}명
-            {isCurrentTeam ? " · 현재 차례" : ""}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-2xl border border-line/80 bg-surface px-4 py-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-          Picker
-        </p>
-        <p className="mt-2 text-sm font-semibold text-foreground">
-          {draftTeam.pickerName ? "지정됨" : "미지정"}
-        </p>
-        <p className="mt-1 text-xs text-muted">이름 비공개</p>
-      </div>
-
-      <div className="mt-5 space-y-2">
-        <p className="text-sm font-semibold text-foreground">현재 로스터</p>
-        {draftTeam.roster.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-line px-4 py-4 text-sm text-muted">
-            아직 지명한 선수가 없다.
-          </p>
-        ) : (
-          draftTeam.roster.map((player) => (
-            <div
-              key={`${draftTeam.id}-${player.pickNo}`}
-              className="rounded-2xl bg-surface-muted px-4 py-3"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-foreground">
-                  {formatCandidateLoginId(player)}
-                </p>
-                <span className="text-xs font-semibold text-muted">
-                  #{player.pickNo}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-muted">{formatDateTime(player.pickedAt)}</p>
-            </div>
-          ))
-        )}
-      </div>
-    </article>
-  );
-}
-
-function CandidateCard({
-  canPick,
-  canPreviewDrag,
-  candidate,
-  isDragging,
-  pendingAction,
-  onPick,
-  onPreviewPointerDown,
-}: {
-  canPick: boolean;
-  canPreviewDrag: boolean;
-  candidate: DraftCandidate;
-  isDragging: boolean;
-  pendingAction: string | null;
-  onPick: (candidateUserId: number) => Promise<void>;
-  onPreviewPointerDown: (
-    event: ReactPointerEvent<HTMLElement>,
-    candidate: DraftCandidate,
-  ) => void;
-}) {
-  const actionKey = `pick-${candidate.candidateUserId}`;
-  const canInteractPreview = canPreviewDrag && pendingAction === null;
-
-  return (
-    <article
-      className={cn(
-        "rounded-[20px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.72)_100%)] px-4 py-4 shadow-[0_16px_40px_-34px_rgba(31,42,40,0.7)]",
-        canInteractPreview && "cursor-grab touch-none select-none",
-        isDragging && "cursor-grabbing opacity-45",
-      )}
-      onPointerDown={(event) => {
-        if (!canInteractPreview) {
-          return;
-        }
-
-        onPreviewPointerDown(event, candidate);
-      }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-            아이디
-          </p>
-          <p className="mt-1 truncate text-base font-semibold text-foreground">
-            {formatCandidateLoginId(candidate)}
-          </p>
-        </div>
-        <Button
-          data-no-preview-drag="true"
-          variant="accent"
-          disabled={!canPick || pendingAction !== null}
-          onClick={() => {
-            void onPick(candidate.candidateUserId);
-          }}
-          className="shrink-0 min-w-20 whitespace-nowrap"
-        >
-          {pendingAction === actionKey ? "지명 중" : "지명"}
-        </Button>
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <div className="rounded-full bg-surface px-3 py-1.5 text-sm text-muted">
-          티어{" "}
-          <span className="font-semibold text-foreground">
-            {formatCandidateTier(candidate.tier)}
-          </span>
-        </div>
-        <div className="rounded-full bg-surface px-3 py-1.5 text-sm text-muted">
-          종족{" "}
-          <span className="font-semibold text-foreground">
-            {formatCandidateRace(candidate.race)}
-          </span>
-        </div>
-      </div>
-    </article>
-  );
-}
-
 function CompactTeamCard({
   candidateLookup,
   currentTeamId,
@@ -865,7 +697,7 @@ export function DraftLiveDashboard({
     variant === "content"
       ? "팀배와 컨텐츠용 드래프트를 실시간으로 진행하고, 수동 팀장 모드도 여기서 확인한다."
       : variant === "proleague"
-        ? "기존 고정 순서 기반 프로리그 드래프트 진행 화면이다."
+        ? "순서 패턴을 따라 이어지는 프로리그 드래프트 진행 화면이다."
         : "드래프트 상태와 픽 진행을 실시간으로 확인한다.";
 
   function clearLocalPreviewAnimationFrame() {
@@ -1287,7 +1119,6 @@ export function DraftLiveDashboard({
     }
 
     const sessionId = selectedSessionId;
-    let disposed = false;
 
     const connection = subscribeToDraftSession({
       sessionId,
@@ -1393,8 +1224,6 @@ export function DraftLiveDashboard({
     draftSessionConnectionRef.current = connection;
 
     return () => {
-      disposed = true;
-
       if (draftSessionConnectionRef.current === connection) {
         endLocalPreview("DISCONNECTED");
         draftSessionConnectionRef.current = null;

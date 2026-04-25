@@ -22,7 +22,7 @@ export type RpsDraftSessionSummary = {
   id: number;
   title: string;
   ownerUserId: number;
-  ownerUserLoginId?: string | null;
+  ownerUserLoginId: string;
   ownerName: string | null;
   status: RpsDraftStatus | string;
   currentPickNo: number | null;
@@ -38,7 +38,7 @@ export type RpsDraftTeam = {
   teamName: string;
   displayOrder: 1 | 2 | number;
   pickerUserId: number | null;
-  pickerUserLoginId?: string | null;
+  pickerUserLoginId: string | null;
   pickerName: string | null;
 };
 
@@ -46,7 +46,7 @@ export type RpsDraftSessionDetail = {
   id: number;
   title: string;
   ownerUserId: number;
-  ownerUserLoginId?: string | null;
+  ownerUserLoginId: string;
   ownerName: string | null;
   status: RpsDraftStatus | string;
   currentPickNo: number | null;
@@ -61,7 +61,7 @@ export type RpsDraftSessionDetail = {
 export type RpsDraftCandidate = {
   rpsDraftSessionId: number;
   candidateUserId: number;
-  candidateUserLoginId?: string | null;
+  candidateUserLoginId: string;
   candidateName: string;
   tier?: string | null;
   race: string | null;
@@ -74,7 +74,7 @@ export type RpsDraftCandidate = {
 export type RpsDraftRosterItem = {
   pickNo: number;
   candidateUserId: number;
-  candidateUserLoginId?: string | null;
+  candidateUserLoginId: string;
   candidateName: string;
   tier?: string | null;
   race?: string | null;
@@ -94,7 +94,7 @@ export type RpsDraftPick = {
   rpsDraftTeamId: number;
   rpsDraftTeamName: string;
   candidateUserId: number;
-  candidateUserLoginId?: string | null;
+  candidateUserLoginId: string;
   candidateName: string;
   tier?: string | null;
   race?: string | null;
@@ -107,6 +107,9 @@ export type RpsDraftPick = {
 export type RpsDraftLiveSessionInfo = {
   id: number;
   title: string;
+  ownerUserId: number;
+  ownerUserLoginId: string;
+  ownerName: string | null;
   status: RpsDraftStatus | string;
   currentPickNo: number | null;
   currentDraftTeamId: number | null;
@@ -172,13 +175,6 @@ export type RpsDraftPickerAssignRequest = {
   pickerUserId: number;
 };
 
-export type RpsDraftPickerResponse = {
-  rpsDraftTeamId: number;
-  pickerUserId: number | null;
-  pickerUserLoginId?: string | null;
-  pickerName: string | null;
-};
-
 export type RpsDraftCandidateRequest = {
   candidateUserId: number;
   race?: string;
@@ -195,10 +191,8 @@ export type RpsDraftPickRequest = {
 export type RpsDraftUserSearchResult = {
   id: number;
   userId: string;
-  name?: string | null;
   tier: string | null;
   race: string | null;
-  photo?: string | null;
 };
 
 export type RpsDraftApiErrorInfo = {
@@ -538,20 +532,6 @@ export async function deleteRpsDraftSession(sessionId: number) {
   );
 }
 
-export async function listRpsDraftTeams(sessionId: number) {
-  const teams = await unwrapResponse(
-    apiClient.get<ApiEnvelope<RpsDraftTeam[]>>(
-      `/rps-drafts/sessions/${sessionId}/teams`,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "팀 목록을 불러오지 못했습니다.",
-  );
-
-  return sortTeams(teams).map((team) => ({ ...normalizeTeam(team), roster: [] }));
-}
-
 export async function assignRpsDraftPicker(
   sessionId: number,
   teamId: number,
@@ -651,21 +631,6 @@ export async function pickRpsDraftCandidate(
       },
     ),
     "후보를 지명하지 못했습니다.",
-  );
-
-  return normalizeSnapshot(snapshot);
-}
-
-export async function finishRpsDraftSession(sessionId: number) {
-  const snapshot = await unwrapResponse(
-    apiClient.post<ApiEnvelope<RpsDraftLiveSnapshot>>(
-      `/rps-drafts/live/sessions/${sessionId}/finish`,
-      {},
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "세션을 종료하지 못했습니다.",
   );
 
   return normalizeSnapshot(snapshot);

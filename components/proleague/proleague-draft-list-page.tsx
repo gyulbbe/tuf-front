@@ -265,14 +265,6 @@ export function ProleagueDraftListPage() {
     setIsCreateOpen(true);
   }
 
-  function handleOpenEditDialog(sessionId: number) {
-    setCreateError(null);
-    setCreationFlowSessionId(null);
-    setInitialDraftDetail(null);
-    setEditingSessionId(sessionId);
-    setIsCreateOpen(true);
-  }
-
   function handleCloseCreateDialog() {
     if (creating) {
       return;
@@ -364,9 +356,6 @@ export function ProleagueDraftListPage() {
                 session.ownerUserId === user?.userPk && user?.username
                   ? user.username
                   : "아이디 확인 필요";
-              const settingsClassName = canManage
-                ? primaryLinkClassName
-                : secondaryLinkClassName;
               const liveClassName = canManage
                 ? secondaryLinkClassName
                 : primaryLinkClassName;
@@ -406,15 +395,6 @@ export function ProleagueDraftListPage() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className={settingsClassName}
-                        onClick={() => {
-                          handleOpenEditDialog(session.id);
-                        }}
-                      >
-                        설정
-                      </button>
                       <Link
                         href={proleagueDraftLivePath(session.id)}
                         className={liveClassName}

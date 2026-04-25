@@ -361,15 +361,6 @@ export async function deleteBoard(boardId: number) {
   );
 }
 
-export async function listBoardComments(boardId: number) {
-  return unwrapResponse(
-    apiClient.get<ApiEnvelope<BoardCommentsSnapshot>>(`/boards/${boardId}/comments`, {
-      validateStatus: () => true,
-    }),
-    "댓글을 불러오지 못했습니다.",
-  );
-}
-
 export async function createBoardComment(
   boardId: number,
   payload: BoardCommentCreateRequest,

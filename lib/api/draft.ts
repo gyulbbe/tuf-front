@@ -199,16 +199,6 @@ export type DraftSessionRequest = {
   endedAt?: string | null;
 };
 
-export type DraftTeamRecord = {
-  id: number;
-  draftSessionId: number;
-  teamName: string;
-  displayOrder: number;
-  pickerUserId?: number | null;
-  pickerUserLoginId?: string | null;
-  pickerName?: string | null;
-};
-
 export type DraftTeamRequest = {
   draftSessionId: number;
   teamName: string;
@@ -225,13 +215,6 @@ export type DraftCandidateRequest = {
   pickedAt?: string | null;
 };
 
-export type DraftOrderRequest = {
-  draftSessionId: number;
-  roundNo: number;
-  pickNo: number;
-  draftTeamId: number;
-};
-
 export type DraftOrderReplaceRequest = {
   orders: Array<{
     roundNo: number;
@@ -240,30 +223,11 @@ export type DraftOrderReplaceRequest = {
   }>;
 };
 
-export type DraftPickRequest = {
-  draftSessionId: number;
-  roundNo: number;
-  pickNo: number;
-  draftTeamId: number;
-  candidateUserId: number;
-  pickedByUserId: number;
-  pickedAt?: string | null;
-};
-
 export type DraftUserSearchResult = {
   id: number;
   userId: string;
-  name?: string | null;
   tier: string | null;
   race: string | null;
-  photo?: string | null;
-};
-
-export type DraftPickerResponse = {
-  draftTeamId: number;
-  pickerUserId: number | null;
-  pickerUserLoginId?: string | null;
-  pickerName: string | null;
 };
 
 export type DraftApiErrorInfo = {
@@ -382,7 +346,7 @@ function normalizeDraftSessionSummary(
   };
 }
 
-function normalizeDraftTeam(value: DraftLiveTeam | DraftTeamRecord): DraftLiveTeam {
+function normalizeDraftTeam(value: DraftLiveTeam): DraftLiveTeam {
   return {
     id: value.id,
     draftSessionId: value.draftSessionId,
@@ -708,24 +672,6 @@ export async function skipDraftTurn(sessionId: number, reason = "manual") {
   return normalizeDraftSnapshot(snapshot);
 }
 
-export async function finishDraftSession(
-  sessionId: number,
-  reason = "manual-finish",
-) {
-  const snapshot = await unwrapResponse(
-    apiClient.post<ApiEnvelope<DraftLiveSnapshot>>(
-      `/draft/admin/sessions/${sessionId}/finish`,
-      { reason },
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "드래프트를 종료하지 못했습니다.",
-  );
-
-  return normalizeDraftSnapshot(snapshot);
-}
-
 export async function assignDraftPicker(teamId: number, pickerUserId: number) {
   const detail = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftSessionDetail>>(
@@ -790,15 +736,6 @@ export async function deleteDraftSession(sessionId: number) {
   );
 }
 
-export async function createDraftTeam(payload: DraftTeamRequest) {
-  return unwrapResponse(
-    apiClient.post<ApiEnvelope<DraftTeamRecord>>("/draft/teams", payload, {
-      validateStatus: () => true,
-    }),
-    "팀을 생성하지 못했습니다.",
-  );
-}
-
 export async function updateDraftTeam(teamId: number, payload: DraftTeamRequest) {
   const detail = await unwrapResponse(
     apiClient.put<ApiEnvelope<DraftSessionDetail>>(`/draft/teams/${teamId}`, payload, {
@@ -810,40 +747,12 @@ export async function updateDraftTeam(teamId: number, payload: DraftTeamRequest)
   return normalizeDraftSessionDetail(detail);
 }
 
-export async function deleteDraftTeam(teamId: number) {
-  return unwrapVoidResponse(
-    apiClient.delete<ApiEnvelope<null>>(`/draft/teams/${teamId}`, {
-      validateStatus: () => true,
-    }),
-    "팀을 삭제하지 못했습니다.",
-  );
-}
-
 export async function createDraftCandidate(payload: DraftCandidateRequest) {
   const detail = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftSessionDetail>>("/draft/candidates", payload, {
       validateStatus: () => true,
     }),
     "드래프트 인원을 등록하지 못했습니다.",
-  );
-
-  return normalizeDraftSessionDetail(detail);
-}
-
-export async function updateDraftCandidate(
-  sessionId: number,
-  candidateUserId: number,
-  payload: DraftCandidateRequest,
-) {
-  const detail = await unwrapResponse(
-    apiClient.put<ApiEnvelope<DraftSessionDetail>>(
-      `/draft/sessions/${sessionId}/candidates/${candidateUserId}`,
-      payload,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "드래프트 인원을 수정하지 못했습니다.",
   );
 
   return normalizeDraftSessionDetail(detail);
@@ -866,50 +775,6 @@ export async function deleteDraftCandidate(
   return normalizeDraftSessionDetail(detail);
 }
 
-export async function createDraftOrder(payload: DraftOrderRequest) {
-  const detail = await unwrapResponse(
-    apiClient.post<ApiEnvelope<DraftSessionDetail>>("/draft/orders", payload, {
-      validateStatus: () => true,
-    }),
-    "드래프트 순서를 등록하지 못했습니다.",
-  );
-
-  return normalizeDraftSessionDetail(detail);
-}
-
-export async function updateDraftOrder(
-  sessionId: number,
-  pickNo: number,
-  payload: DraftOrderRequest,
-) {
-  const detail = await unwrapResponse(
-    apiClient.put<ApiEnvelope<DraftSessionDetail>>(
-      `/draft/sessions/${sessionId}/orders/${pickNo}`,
-      payload,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "드래프트 순서를 수정하지 못했습니다.",
-  );
-
-  return normalizeDraftSessionDetail(detail);
-}
-
-export async function deleteDraftOrder(sessionId: number, pickNo: number) {
-  const detail = await unwrapResponse(
-    apiClient.delete<ApiEnvelope<DraftSessionDetail>>(
-      `/draft/sessions/${sessionId}/orders/${pickNo}`,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "드래프트 순서를 삭제하지 못했습니다.",
-  );
-
-  return normalizeDraftSessionDetail(detail);
-}
-
 export async function replaceDraftOrders(
   sessionId: number,
   payload: DraftOrderReplaceRequest,
@@ -926,35 +791,6 @@ export async function replaceDraftOrders(
   );
 
   return normalizeDraftSessionDetail(detail);
-}
-
-export async function updateDraftPick(
-  sessionId: number,
-  pickNo: number,
-  payload: DraftPickRequest,
-) {
-  return unwrapResponse(
-    apiClient.put<ApiEnvelope<DraftPick>>(
-      `/draft/sessions/${sessionId}/picks/${pickNo}`,
-      payload,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "픽 기록을 수정하지 못했습니다.",
-  );
-}
-
-export async function deleteDraftPick(sessionId: number, pickNo: number) {
-  return unwrapVoidResponse(
-    apiClient.delete<ApiEnvelope<null>>(
-      `/draft/sessions/${sessionId}/picks/${pickNo}`,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "픽 기록을 삭제하지 못했습니다.",
-  );
 }
 
 export async function searchDraftUsers(keyword: string, limit = 8) {

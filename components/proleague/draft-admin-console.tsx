@@ -14,8 +14,6 @@ import {
   createDraftCandidate,
   createDraftSession,
   deleteDraftCandidate,
-  deleteDraftOrder,
-  deleteDraftSession,
   getDraftErrorDebugInfo,
   getDraftSessionDetail,
   isDraftApiError,
@@ -109,19 +107,6 @@ type UserAutocompleteInputProps = {
 };
 
 const RACE_OPTIONS = ["TERRAN", "ZERG", "PROTOSS", "RANDOM"] as const;
-const CANDIDATE_STATUS_OPTIONS = [
-  "WAITING",
-  "PICKED",
-  "SKIPPED",
-  "EXCLUDED",
-] as const;
-
-const CANDIDATE_STATUS_LABELS: Record<string, string> = {
-  WAITING: "대기",
-  PICKED: "지명됨",
-  SKIPPED: "스킵",
-  EXCLUDED: "제외",
-};
 
 const SELECT_CLASS_NAME =
   "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
@@ -180,15 +165,6 @@ function isMissingSessionError(error: unknown) {
   return status === 404;
 }
 
-function buildSessionDeleteConfirmText(sessionTitle: string) {
-  return [
-    `"${sessionTitle}" 드래프트를 삭제할까?`,
-    "",
-    "팀, 드래프트 인원, 순서, 픽 기록이 함께 삭제된다.",
-    "삭제 후에는 되돌릴 수 없다.",
-  ].join("\n");
-}
-
 function logDraftAdminIssue(
   action: string,
   error: unknown,
@@ -232,14 +208,6 @@ function formatDateTime(value: string | null | undefined) {
     minute: "2-digit",
     second: "2-digit",
   }).format(timestamp);
-}
-
-function formatCandidateStatus(status: string | null | undefined) {
-  if (!status) {
-    return "미정";
-  }
-
-  return CANDIDATE_STATUS_LABELS[status] ?? status;
 }
 
 function parsePositiveInt(value: string, fieldName: string, minimum = 1) {
@@ -449,16 +417,6 @@ function createEmptyTeamLookupState(): TeamPickerLookupState {
   };
 }
 
-function createInitialTeamLookups(detail: DraftSessionDetail) {
-  const nextState: Record<number, TeamPickerLookupState> = {};
-
-  for (const team of detail.teams) {
-    nextState[team.id] = createEmptyTeamLookupState();
-  }
-
-  return nextState;
-}
-
 function createNextTeamLookups(
   detail: DraftSessionDetail,
   current: Record<number, TeamPickerLookupState>,
@@ -604,57 +562,6 @@ function getNoticeClassName(tone: NoticeTone) {
   }
 
   return "border border-line bg-surface-muted text-foreground";
-}
-
-function getStateChipClassName(active: boolean) {
-  return active
-    ? "border border-success-ink/15 bg-success-soft text-success-ink"
-    : "border border-line bg-surface-muted text-muted";
-}
-
-function getCandidateStatusClassName(status: string) {
-  switch (status) {
-    case "WAITING":
-      return "border border-success-ink/15 bg-success-soft text-success-ink";
-    case "PICKED":
-      return "bg-accent text-white";
-    case "EXCLUDED":
-      return "border border-danger-ink/15 bg-danger-soft text-danger-ink";
-    default:
-      return "border border-line bg-surface-muted text-muted";
-  }
-}
-
-function SetupStatCard({
-  description,
-  label,
-  ready,
-  value,
-}: {
-  description: string;
-  label: string;
-  ready: boolean;
-  value: string;
-}) {
-  return (
-    <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-foreground">{label}</p>
-        <span
-          className={cn(
-            "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]",
-            getStateChipClassName(ready),
-          )}
-        >
-          {ready ? "READY" : "NEED"}
-        </span>
-      </div>
-      <p className="mt-4 text-2xl font-semibold tracking-tight text-foreground">
-        {value}
-      </p>
-      <p className="mt-2 text-sm leading-6 text-muted">{description}</p>
-    </div>
-  );
 }
 
 function UserAutocompleteInput({
@@ -976,204 +883,6 @@ function TeamRow({
         >
           {pendingAction === `team-save:${draftTeam.id}` ? "수정 중" : "수정"}
         </Button>
-      </div>
-    </div>
-  );
-}
-
-function TeamPickerManager({
-  draftTeam,
-  lookupState,
-  pendingAction,
-  excludedUserIds = [],
-  onChangeLookup,
-  onAssignPicker,
-}: {
-  draftTeam: DraftLiveTeam;
-  lookupState: TeamPickerLookupState;
-  pendingAction: string | null;
-  excludedUserIds?: readonly number[];
-  onChangeLookup: (teamId: number, patch: Partial<TeamPickerLookupState>) => void;
-  onAssignPicker: (
-    teamId: number,
-    user: DraftUserSearchResult,
-    previousLookup: TeamPickerLookupState,
-  ) => Promise<void>;
-}) {
-  return (
-    <article className="rounded-[24px] border border-line bg-surface-strong px-4 py-4 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-base font-semibold text-foreground">{draftTeam.teamName}</p>
-          <p className="mt-1 text-sm text-muted">displayOrder {draftTeam.displayOrder}</p>{/*
-            displayOrder {draftTeam.displayOrder} · teamId {draftTeam.id}
-          */}
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-[20px] border border-line bg-surface px-3 py-3">
-        <div className="grid gap-3">
-          <UserAutocompleteInput
-            busy={pendingAction !== null}
-            value={lookupState.query}
-            excludedUserIds={excludedUserIds}
-            placeholder="아이디 검색"
-            onValueChange={(value) => {
-              onChangeLookup(draftTeam.id, {
-                query: value,
-                pickerUserId: "",
-                selectedUser: null,
-              });
-            }}
-            onSelect={(user) => {
-              const previousLookup = { ...lookupState };
-              onChangeLookup(draftTeam.id, {
-                query: user.userId,
-                pickerUserId: String(user.id),
-                selectedUser: user,
-              });
-              void onAssignPicker(draftTeam.id, user, previousLookup);
-            }}
-          />
-        </div>
-
-        {lookupState.selectedUser ? (
-          <div className="mt-3 rounded-[18px] bg-surface-muted px-3 py-3">
-            <p className="text-sm font-semibold text-foreground">순서</p><p className="hidden">
-              선택됨: {lookupState.selectedUser.userId}
-            </p>
-            <p className="hidden">
-              각 팀에 픽커를 1명 지정할 수 있다. 아이디 검색으로 바로 찾고 지정한다.
-            </p>
-            <p className="mt-1 text-sm text-muted">
-              {lookupState.selectedUser.userId}
-              {lookupState.selectedUser.tier
-                ? ` · ${lookupState.selectedUser.tier}`
-                : ""}
-              {lookupState.selectedUser.race
-                ? ` · ${lookupState.selectedUser.race}`
-                : ""}
-            </p>
-          </div>
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
-function CandidateRow({
-  candidate,
-  pendingAction,
-  onDelete,
-}: {
-  candidate: DraftCandidate;
-  pendingAction: string | null;
-  onDelete: () => Promise<void>;
-}) {
-  const isDeleting = pendingAction === `candidate-delete:${candidate.candidateUserId}`;
-
-  return (
-    <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-foreground">
-              {candidate.candidateName}
-            </p>
-            <span
-              className={cn(
-                "rounded-full px-3 py-1 text-[11px] font-semibold",
-                getCandidateStatusClassName(candidate.status),
-              )}
-            >
-              {formatCandidateStatus(candidate.status)}
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-muted">
-            userPk {candidate.candidateUserId}
-            {candidate.race ? ` · ${candidate.race}` : ""}
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="danger"
-          disabled={pendingAction !== null}
-          onClick={() => {
-            void onDelete();
-          }}
-        >
-          {isDeleting ? "삭제 중" : "삭제"}
-        </Button>
-      </div>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-            Candidate
-          </p>
-          <p className="mt-2 font-semibold text-foreground">{candidate.candidateName}</p>
-          <p className="mt-1">{candidate.race ?? "종족 미정"}</p>
-        </div>
-        <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-            Picked Info
-          </p>
-          <p className="mt-2 font-semibold text-foreground">
-            {candidate.pickedDraftTeamName ?? "-"}
-          </p>
-          <p className="mt-1">{formatDateTime(candidate.pickedAt)}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function OrderRow({
-  order,
-  pendingAction,
-  onDelete,
-}: {
-  order: DraftOrder;
-  pendingAction: string | null;
-  onDelete: () => Promise<void>;
-}) {
-  const isDeleting = pendingAction === `order-delete:${order.pickNo}`;
-
-  return (
-    <div className="flex items-center gap-2 rounded-[18px] border border-line bg-surface-strong px-3 py-2 text-sm"><span className="shrink-0 font-semibold text-muted">#{order.pickNo}</span><span className="truncate font-semibold text-foreground">{order.draftTeamName}</span>
-      <div className="hidden">
-        <div>
-          <p className="text-sm font-semibold text-foreground">#{order.pickNo}</p>
-          <p className="mt-1 text-xs text-muted">
-            {order.draftTeamName} · teamId {order.draftTeamId}
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="danger"
-          disabled={pendingAction !== null}
-          onClick={() => {
-            void onDelete();
-          }}
-        >
-          {isDeleting ? "삭제 중" : "삭제"}
-        </Button>
-      </div>
-
-      <div className="hidden">
-        <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-            Pick No
-          </p>
-          <p className="mt-2 font-semibold text-foreground">{order.pickNo}</p>
-        </div>
-        <div className="rounded-[20px] bg-surface px-4 py-4 text-sm text-muted">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-            Team
-          </p>
-          <p className="mt-2 font-semibold text-foreground">{order.draftTeamName}</p>
-          <p className="mt-1">teamId {order.draftTeamId}</p>
-        </div>
       </div>
     </div>
   );
@@ -1867,47 +1576,6 @@ export function DraftAdminConsole({
     }
   }
 
-  async function handleDeleteSession() {
-    if (selectedSessionId === null) {
-      return;
-    }
-
-    const sessionId = selectedSessionId;
-    const sessionTitle =
-      (selectedSessionDetail?.title ?? editForm.title.trim()) || `드래프트 ${sessionId}`;
-
-    if (!window.confirm(buildSessionDeleteConfirmText(sessionTitle))) {
-      return;
-    }
-
-    setPendingAction("session-delete");
-    setNotice(null);
-
-    try {
-      await deleteDraftSession(sessionId);
-      await syncAfterSessionRemoval();
-      setNotice({
-        tone: "success",
-        text: "드래프트와 연결된 팀, 드래프트 인원, 순서, 픽 기록을 함께 삭제했다.",
-      });
-    } catch (error) {
-      if (isMissingSessionError(error)) {
-        await syncAfterSessionRemoval().catch(() => undefined);
-        setNotice({
-          tone: "neutral",
-          text: "선택한 드래프트가 이미 삭제되어 목록에서 제거했다.",
-        });
-        return;
-      }
-
-      handleActionError("드래프트 삭제", error, {
-        sessionId,
-      });
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
   async function handleSaveTeam(teamId: number) {
     if (selectedSessionId === null) {
       return;
@@ -2267,33 +1935,6 @@ export function DraftAdminConsole({
     }
   }
 
-  async function handleDeleteOrder(pickNo: number) {
-    if (selectedSessionId === null) {
-      return;
-    }
-
-    setPendingAction(`order-delete:${pickNo}`);
-    setNotice(null);
-
-    try {
-      const detail = await deleteDraftOrder(selectedSessionId, pickNo);
-
-      applyDetail(detail);
-      notifyChange(detail);
-      setNotice({
-        tone: "success",
-        text: "순서를 삭제했다.",
-      });
-    } catch (error) {
-      handleActionError("순서 삭제", error, {
-        pickNo,
-        sessionId: selectedSessionId,
-      });
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
   if (isSessionScoped && !loadingDetail && selectedSessionDetail && !canManageSession) {
     return (
       <SurfaceCard className="p-6 sm:p-8">
@@ -2325,6 +1966,12 @@ export function DraftAdminConsole({
 
   return (
     <div className="space-y-4">
+      {notice ? (
+        <div className={cn("rounded-[24px] px-4 py-4 text-sm", getNoticeClassName(notice.tone))}>
+          {notice.text}
+        </div>
+      ) : null}
+
       <div className={cn("grid gap-4", isSessionScoped ? undefined : "xl:grid-cols-2")}>
         {!isSessionScoped ? (
           <SurfaceCard className="p-6">

@@ -25,10 +25,6 @@ import {
   rpsDraftSessionPath,
 } from "@/lib/rps-draft/routes";
 import {
-  formatRpsDraftResolvedUserId,
-  getCachedRpsDraftUserIdMap,
-} from "@/lib/rps-draft/user-id-display";
-import {
   formatRace,
   formatRelativePickNo,
   StatusBadge,
@@ -58,34 +54,27 @@ function sortCandidates(candidates: RpsDraftCandidate[]) {
       return rankDelta;
     }
 
-    const leftLabel = left.candidateUserLoginId ?? left.candidateName;
-    const rightLabel = right.candidateUserLoginId ?? right.candidateName;
+    const leftLabel = left.candidateUserLoginId || "";
+    const rightLabel = right.candidateUserLoginId || "";
 
     return leftLabel.localeCompare(rightLabel, "ko-KR");
   });
 }
 
 function formatCandidateUserId(
-  candidate: Pick<RpsDraftCandidate, "candidateUserId" | "candidateUserLoginId">,
-  resolvedUserIds: Record<number, string>,
+  candidate: Pick<RpsDraftCandidate, "candidateUserLoginId">,
 ) {
-  return formatRpsDraftResolvedUserId({
-    resolvedUserIds,
-    userLoginId: candidate.candidateUserLoginId,
-    userPk: candidate.candidateUserId,
-  });
+  return candidate.candidateUserLoginId?.trim() || "아이디 확인 필요";
 }
 
 function formatTeamPickerUserId(
-  team: Pick<RpsDraftTeam, "pickerUserId" | "pickerUserLoginId">,
-  resolvedUserIds: Record<number, string>,
+  team: Pick<RpsDraftTeam, "pickerUserLoginId">,
 ) {
-  return formatRpsDraftResolvedUserId({
-    fallback: "미지정",
-    resolvedUserIds,
-    userLoginId: team.pickerUserLoginId,
-    userPk: team.pickerUserId,
-  });
+  return team.pickerUserLoginId?.trim() || "미지정";
+}
+
+function formatOwnerUserId(session: Pick<RpsDraftSessionDetail, "ownerUserLoginId">) {
+  return session.ownerUserLoginId?.trim() || "아이디 확인 필요";
 }
 
 function describeSetupHelp(options: {
@@ -128,9 +117,6 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
   const { isAuthenticated, status, user } = useAuth();
   const [session, setSession] = useState<RpsDraftSessionDetail | null>(null);
   const [candidates, setCandidates] = useState<RpsDraftCandidate[]>([]);
-  const [resolvedUserIds] = useState<Record<number, string>>(
-    () => getCachedRpsDraftUserIdMap(),
-  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -305,11 +291,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
               {session ? (
                 <ValueBadge>
                   방장{" "}
-                  {formatRpsDraftResolvedUserId({
-                    resolvedUserIds,
-                    userLoginId: session.ownerUserLoginId,
-                    userPk: session.ownerUserId,
-                  })}
+                  {formatOwnerUserId(session)}
                 </ValueBadge>
               ) : null}
             </div>
@@ -393,7 +375,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                   </div>
 
                   <p className="mt-3 text-sm text-muted">
-                    팀장 {formatTeamPickerUserId(team, resolvedUserIds)}
+                    팀장 {formatTeamPickerUserId(team)}
                   </p>
 
                   {needsFallbackSetup ? (
@@ -508,7 +490,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-semibold text-foreground">
-                            {formatCandidateUserId(candidate, resolvedUserIds)}
+                            {formatCandidateUserId(candidate)}
                           </span>
                           <StatusBadge status={candidate.status} />
                           <ValueBadge>{formatRace(candidate.race)}</ValueBadge>

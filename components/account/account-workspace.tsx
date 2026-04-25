@@ -141,7 +141,7 @@ export function AccountWorkspace() {
     ACCOUNT_TABS.find((tab) => tab.id === activeTab) ?? ACCOUNT_TABS[0];
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+    <div className="grid gap-4">
       <SurfaceCard className="p-7 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
           Account
@@ -396,40 +396,6 @@ export function AccountWorkspace() {
         </div>
       </SurfaceCard>
 
-      <div className="grid gap-4">
-        <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">계정 메뉴</p>
-          <div className="mt-4 space-y-3 text-sm leading-7 text-muted">
-            <p>상단 우측 사용자 아이디를 누르면 이 화면으로 들어온다.</p>
-            <p>이 화면 안에 계정용 탭을 계속 추가할 수 있게 구조를 분리해뒀다.</p>
-            <p>현재는 비밀번호 변경 기능이 먼저 연결되어 있다.</p>
-          </div>
-        </SurfaceCard>
-
-        <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">현재 로그인</p>
-          <div className="mt-4 space-y-3 text-sm leading-7 text-muted">
-            <p>
-              아이디{" "}
-              <span className="font-medium text-foreground">
-                {user?.username ?? "-"}
-              </span>
-            </p>
-            <p>
-              권한{" "}
-              <span className="font-medium text-foreground">
-                {user?.role ?? "-"}
-              </span>
-            </p>
-            <p>
-              사용자 PK{" "}
-              <span className="font-medium text-foreground">
-                {user?.userPk ?? "-"}
-              </span>
-            </p>
-          </div>
-        </SurfaceCard>
-      </div>
     </div>
   );
 }

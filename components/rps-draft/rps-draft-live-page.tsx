@@ -27,10 +27,6 @@ import {
   rpsDraftLivePath,
 } from "@/lib/rps-draft/routes";
 import {
-  formatRpsDraftResolvedUserId,
-  getCachedRpsDraftUserIdMap,
-} from "@/lib/rps-draft/user-id-display";
-import {
   formatChoice,
   formatDateTime,
   formatRace,
@@ -87,42 +83,24 @@ function sortRoster(team: RpsDraftLiveTeam) {
 }
 
 function formatCandidateUserId(
-  candidate: Pick<RpsDraftCandidate, "candidateUserId" | "candidateUserLoginId">,
-  resolvedUserIds: Record<number, string>,
+  candidate: Pick<RpsDraftCandidate, "candidateUserLoginId">,
   fallback = "아이디 확인 필요",
 ) {
-  return formatRpsDraftResolvedUserId({
-    fallback,
-    resolvedUserIds,
-    userLoginId: candidate.candidateUserLoginId,
-    userPk: candidate.candidateUserId,
-  });
+  return candidate.candidateUserLoginId?.trim() || fallback;
 }
 
 function formatRosterUserId(
-  item: Pick<RpsDraftRosterItem, "candidateUserId" | "candidateUserLoginId">,
-  resolvedUserIds: Record<number, string>,
+  item: Pick<RpsDraftRosterItem, "candidateUserLoginId">,
   fallback = "아이디 확인 필요",
 ) {
-  return formatRpsDraftResolvedUserId({
-    fallback,
-    resolvedUserIds,
-    userLoginId: item.candidateUserLoginId,
-    userPk: item.candidateUserId,
-  });
+  return item.candidateUserLoginId?.trim() || fallback;
 }
 
 function formatPickUserId(
-  pick: Pick<RpsDraftPick, "candidateUserId" | "candidateUserLoginId">,
-  resolvedUserIds: Record<number, string>,
+  pick: Pick<RpsDraftPick, "candidateUserLoginId">,
   fallback = "아이디 확인 필요",
 ) {
-  return formatRpsDraftResolvedUserId({
-    fallback,
-    resolvedUserIds,
-    userLoginId: pick.candidateUserLoginId,
-    userPk: pick.candidateUserId,
-  });
+  return pick.candidateUserLoginId?.trim() || fallback;
 }
 
 function findTeamById(teams: RpsDraftLiveTeam[], teamId: number | null | undefined) {
@@ -231,13 +209,11 @@ function RpsHandIcon({ choice }: { choice: RpsChoice }) {
 
 function TeamPanel({
   myTeamId,
-  resolvedUserIds,
   sessionCurrentTeamId,
   sessionPendingTeamId,
   team,
 }: {
   myTeamId: number | null;
-  resolvedUserIds: Record<number, string>;
   sessionCurrentTeamId: number | null;
   sessionPendingTeamId: number | null;
   team: RpsDraftLiveTeam;
@@ -281,7 +257,7 @@ function TeamPanel({
               <div className="flex flex-wrap items-center gap-2">
                 <ValueBadge>{item.pickNo}픽</ValueBadge>
                 <span className="text-sm font-semibold text-foreground">
-                  {formatRosterUserId(item, resolvedUserIds)}
+                  {formatRosterUserId(item)}
                 </span>
               </div>
               <p className="mt-2 text-xs leading-6 text-muted">
@@ -298,9 +274,6 @@ function TeamPanel({
 export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
   const { isAuthenticated, status } = useAuth();
   const [liveState, setLiveState] = useState(INITIAL_LIVE_STATE);
-  const [resolvedUserIds] = useState<Record<number, string>>(
-    () => getCachedRpsDraftUserIdMap(),
-  );
   const [loading, setLoading] = useState(true);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -568,8 +541,6 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
         pickedCandidate
           ? `${formatCandidateUserId(
               pickedCandidate,
-              resolvedUserIds,
-              "선수",
             )}을 선택했습니다.`
           : "선수를 선택했습니다.",
       );
@@ -630,8 +601,6 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                 최근 선택: {latestPick.pickNo}픽{" "}
                 {formatPickUserId(
                   latestPick,
-                  resolvedUserIds,
-                  "선수",
                 )}{" "}
                 ·{" "}
                 {latestPick.rpsDraftTeamName}
@@ -822,8 +791,6 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                             <span className="text-sm font-semibold text-foreground">
                               {formatCandidateUserId(
                                 candidate,
-                                resolvedUserIds,
-                                "user",
                               )}
                             </span>
                             <ValueBadge>{formatRace(candidate.race)}</ValueBadge>
@@ -853,7 +820,6 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                 key={team.id}
                 team={team}
                 myTeamId={myTeamId}
-                resolvedUserIds={resolvedUserIds}
                 sessionCurrentTeamId={snapshot.session.currentDraftTeamId}
                 sessionPendingTeamId={snapshot.session.pendingDraftTeamId}
               />

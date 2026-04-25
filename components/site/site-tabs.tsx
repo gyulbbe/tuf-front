@@ -214,14 +214,15 @@ function filterVisibleTabs(tabs: SiteTab[], canSeeAdminTab: boolean) {
 export function SiteTabs({ tabs }: SiteTabsProps) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  const [openMenuState, setOpenMenuState] = useState<{
+    key: string | null;
+    pathname: string | null;
+  }>({ key: null, pathname: null });
   const navRef = useRef<HTMLElement | null>(null);
   const canSeeAdminTab = isAdminRole(user?.role);
   const visibleTabs = filterVisibleTabs(tabs, canSeeAdminTab);
-
-  useEffect(() => {
-    setOpenMenuKey(null);
-  }, [pathname]);
+  const openMenuKey =
+    openMenuState.pathname === pathname ? openMenuState.key : null;
 
   useEffect(() => {
     if (!openMenuKey) {
@@ -233,17 +234,34 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
         return;
       }
 
-      setOpenMenuKey(null);
+      setOpenMenuState({ key: null, pathname });
     }
 
     document.addEventListener("pointerdown", handlePointerDown);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
     };
-  }, [openMenuKey]);
+  }, [openMenuKey, pathname]);
+
+  function updateOpenMenuKey(
+    nextKeyOrUpdater: string | null | ((current: string | null) => string | null),
+  ) {
+    setOpenMenuState((current) => {
+      const currentKey = current.pathname === pathname ? current.key : null;
+      const nextKey =
+        typeof nextKeyOrUpdater === "function"
+          ? nextKeyOrUpdater(currentKey)
+          : nextKeyOrUpdater;
+
+      return {
+        key: nextKey,
+        pathname,
+      };
+    });
+  }
 
   function closeMenus() {
-    setOpenMenuKey(null);
+    updateOpenMenuKey(null);
   }
 
   return (
@@ -290,12 +308,12 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
             className="relative flex flex-col"
             onMouseEnter={() => {
               if (hasItems) {
-                setOpenMenuKey(menuKey);
+                updateOpenMenuKey(menuKey);
               }
             }}
             onMouseLeave={() => {
               if (hasItems) {
-                setOpenMenuKey((current) => (current === menuKey ? null : current));
+                updateOpenMenuKey((current) => (current === menuKey ? null : current));
               }
             }}
           >
@@ -315,7 +333,7 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                   className={tabClassName}
                   isOpen={isMenuOpen}
                   onClick={() => {
-                    setOpenMenuKey((current) => (current === menuKey ? null : menuKey));
+                    updateOpenMenuKey((current) => (current === menuKey ? null : menuKey));
                   }}
                 />
               )}
@@ -330,7 +348,7 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                     isMenuOpen && "border-accent bg-accent-soft text-accent-ink",
                   )}
                   onClick={() => {
-                    setOpenMenuKey((current) => (current === menuKey ? null : menuKey));
+                    updateOpenMenuKey((current) => (current === menuKey ? null : menuKey));
                   }}
                 >
                   메뉴

@@ -50,7 +50,6 @@ type NoticeState = {
 };
 
 type SessionFormState = {
-  orderMode: DraftOrderMode;
   title: string;
   teamCount: string;
   pickTimeSeconds: string;
@@ -114,14 +113,12 @@ const SELECT_CLASS_NAME =
   "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
 
 const EMPTY_CREATE_FORM: SessionFormState = {
-  orderMode: "SNAKE",
   title: "",
   teamCount: "6",
   pickTimeSeconds: "30",
 };
 
 const EMPTY_EDIT_FORM: SessionFormState = {
-  orderMode: "SNAKE",
   title: "",
   teamCount: "",
   pickTimeSeconds: "",
@@ -1171,14 +1168,14 @@ export function DraftAdminConsole({
     selectedSessionDetail?.orderMode,
   );
   const effectiveOrderGenerationMode = creationFlow
-    ? stagedOrderGenerationMode ?? selectedOrderGenerationMode
+    ? stagedOrderGenerationMode
     : selectedOrderGenerationMode;
   const stagedOrderPlan =
-    effectiveOrderGenerationMode && selectedSessionDetail
+    stagedOrderGenerationMode && selectedSessionDetail
       ? buildGeneratedOrderPlan(
           sortedTeams,
           orderGenerationTargetCount,
-          effectiveOrderGenerationMode,
+          stagedOrderGenerationMode,
         )
       : [];
   const candidateTierGroups = buildCandidateTierGroups(sortedCandidates);
@@ -1266,7 +1263,6 @@ export function DraftAdminConsole({
           : currentSessions,
       );
       setEditForm({
-        orderMode: detail.orderMode ?? "SNAKE",
         title: detail.title,
         teamCount: String(detail.teamCount),
         pickTimeSeconds: String(detail.pickTimeSeconds),
@@ -1501,7 +1497,6 @@ export function DraftAdminConsole({
 
     try {
       const payload = {
-        orderMode: createForm.orderMode,
         title: createForm.title.trim(),
         teamCount: parsePositiveInt(createForm.teamCount, "팀 수", 2),
         pickTimeSeconds: parsePositiveInt(createForm.pickTimeSeconds, "픽 제한 시간"),
@@ -1546,7 +1541,6 @@ export function DraftAdminConsole({
 
     try {
       const payload = {
-        orderMode: editForm.orderMode,
         title: editForm.title.trim(),
         teamCount: parsePositiveInt(editForm.teamCount, "팀 수", 2),
         pickTimeSeconds: parsePositiveInt(editForm.pickTimeSeconds, "픽 제한 시간"),
@@ -1814,7 +1808,7 @@ export function DraftAdminConsole({
     if (!isPickerSetupReady) {
       setNotice({
         tone: "error",
-        text: "팀별 픽커 지정이 모두 끝나야 드래프트 방식을 정할 수 있다.",
+        text: "팀별 픽커 지정이 모두 끝나야 픽 순서 생성 방식을 정할 수 있다.",
       });
       return { ok: false as const };
     }
@@ -1910,13 +1904,12 @@ export function DraftAdminConsole({
       return;
     }
 
-    const finalizedOrderGenerationMode =
-      stagedOrderGenerationMode ?? selectedOrderGenerationMode;
+    const finalizedOrderGenerationMode = stagedOrderGenerationMode;
 
     if (!finalizedOrderGenerationMode) {
       setNotice({
         tone: "error",
-        text: "드래프트 방식을 먼저 선택해 주세요.",
+        text: "픽 순서 생성 방식을 먼저 선택해 주세요.",
       });
       return;
     }
@@ -2346,7 +2339,7 @@ export function DraftAdminConsole({
         >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-foreground">드래프트 방식</p>
+              <p className="text-sm font-semibold text-foreground">픽 순서 생성 방식</p>
             </div>
           </div>
 
@@ -2445,7 +2438,7 @@ export function DraftAdminConsole({
                 {(creationFlow ? stagedOrderPlan.length === 0 : sortedOrders.length === 0) ? (
                   <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted sm:col-span-2 xl:col-span-3">
                     {creationFlow
-                      ? "드래프트 방식을 고르면 순서 미리보기가 나온다."
+                      ? "픽 순서 생성 방식을 고르면 순서 미리보기가 나온다."
                       : "아직 등록한 드래프트 순서가 없다."}
                   </div>
                 ) : creationFlow ? (

@@ -19,6 +19,7 @@ import {
   skipDraftTurn,
   startDraftSession,
   type DraftCandidate,
+  type DraftLiveEvent,
   type DraftLiveNormalizedPosition,
   type DraftLivePermissions,
   type DraftLivePreviewEndReason,
@@ -48,6 +49,8 @@ type NoticeState = {
   tone: NoticeTone;
   text: string;
 };
+
+type SnapshotSuccessText = string | ((snapshot: DraftLiveSnapshot) => string);
 
 type CandidateDisplayInfo = {
   candidateName: string;
@@ -88,6 +91,71 @@ function readErrorMessage(error: unknown) {
   }
 
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+}
+
+function isFinalPickMessage(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("final pick") || message.includes("마지막 지명");
+}
+
+function hasKoreanText(message: string) {
+  return /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(message);
+}
+
+function formatDraftEventMessage(event: DraftLiveEvent) {
+  const message = event.message?.trim() ?? "";
+  const normalizedMessage = message.toLowerCase();
+
+  if (normalizedMessage.includes("timeout")) {
+    return "지명 시간이 초과하였습니다.";
+  }
+
+  if (isFinalPickMessage(message)) {
+    return "마지막 지명이 완료되어 드래프트가 종료되었습니다.";
+  }
+
+  if (message && hasKoreanText(message)) {
+    return message;
+  }
+
+  if (event.type === "SESSION_STARTED") {
+    return "드래프트를 시작했습니다.";
+  }
+
+  if (event.type === "SESSION_PAUSED") {
+    return "드래프트를 일시정지했습니다.";
+  }
+
+  if (event.type === "SESSION_RESUMED") {
+    return "드래프트를 재개했습니다.";
+  }
+
+  if (event.type === "TIMER_EXTENDED") {
+    return "제한 시간을 연장했습니다.";
+  }
+
+  if (event.type === "PICK_SKIPPED") {
+    return normalizedMessage.includes("timeout")
+      ? "지명 시간이 초과하였습니다."
+      : "현재 턴을 스킵했습니다.";
+  }
+
+  if (event.type === "PICK_COMPLETED") {
+    return "지명을 완료했습니다.";
+  }
+
+  if (event.type === "SESSION_FINISHED") {
+    return "드래프트가 종료되었습니다.";
+  }
+
+  return message || null;
+}
+
+function resolveSnapshotSuccessText(
+  successText: SnapshotSuccessText,
+  snapshot: DraftLiveSnapshot,
+) {
+  return typeof successText === "function" ? successText(snapshot) : successText;
 }
 
 function formatCandidateId(value: string | null | undefined) {
@@ -1259,10 +1327,12 @@ export function DraftLiveDashboard({
 
         }
 
-        if (event.message) {
+        const eventMessage = formatDraftEventMessage(event);
+
+        if (eventMessage) {
           setNotice({
             tone: "success",
-            text: event.message,
+            text: eventMessage,
           });
         }
       },
@@ -1285,7 +1355,7 @@ export function DraftLiveDashboard({
   async function runSnapshotAction(
     actionKey: string,
     request: () => Promise<DraftLiveSnapshot>,
-    successText: string,
+    successText: SnapshotSuccessText,
   ) {
     setPendingAction(actionKey);
     setNotice(null);
@@ -1302,7 +1372,7 @@ export function DraftLiveDashboard({
       });
       setNotice({
         tone: "success",
-        text: successText,
+        text: resolveSnapshotSuccessText(successText, nextSnapshot),
       });
     } catch (error) {
       if (selectedSessionId !== null && isMissingSessionError(error)) {
@@ -1337,7 +1407,10 @@ export function DraftLiveDashboard({
     await runSnapshotAction(
       `pick-${candidateUserId}`,
       () => pickDraftCandidate(sessionId, candidateUserId),
-      "지명을 반영했다.",
+      (nextSnapshot) =>
+        nextSnapshot.session.status === "FINISHED"
+          ? "마지막 지명이 완료되어 드래프트가 종료되었습니다."
+          : "지명을 완료했습니다.",
     );
   }
 
@@ -1679,7 +1752,7 @@ export function DraftLiveDashboard({
                     void runSnapshotAction(
                       "start",
                       () => startDraftSession(sessionId),
-                      "드래프트를 시작했다.",
+                      "드래프트를 시작했습니다.",
                     );
                   }}
                 >
@@ -1698,7 +1771,7 @@ export function DraftLiveDashboard({
                     void runSnapshotAction(
                       "pause",
                       () => pauseDraftSession(sessionId),
-                      "드래프트를 일시정지했다.",
+                      "드래프트를 일시정지했습니다.",
                     );
                   }}
                 >
@@ -1736,7 +1809,7 @@ export function DraftLiveDashboard({
                           void runSnapshotAction(
                             "resume",
                             () => resumeDraftSession(sessionId, seconds),
-                            `${seconds}초로 드래프트를 재개했다.`,
+                            "드래프트를 재개했습니다.",
                           );
                         } catch (error) {
                           setNotice({
@@ -1776,7 +1849,7 @@ export function DraftLiveDashboard({
                           void runSnapshotAction(
                             "extend",
                             () => extendDraftTurn(sessionId, seconds),
-                            `${seconds}초 연장했다.`,
+                            "제한 시간을 연장했습니다.",
                           );
                         } catch (error) {
                           setNotice({
@@ -1811,11 +1884,14 @@ export function DraftLiveDashboard({
                     void runSnapshotAction(
                       "skip",
                       () => skipDraftTurn(sessionId, "manual"),
-                      "현재 턴을 스킵했다.",
+                      (nextSnapshot) =>
+                        nextSnapshot.session.status === "FINISHED"
+                          ? "드래프트가 종료되었습니다."
+                          : "현재 턴을 스킵했습니다.",
                     );
                   }}
                 >
-                  {pendingAction === "skip" ? "스킵 중" : "강제 스킵"}
+                  {pendingAction === "skip" ? "처리 중" : "지명 포기"}
                 </Button>
 
               </div>

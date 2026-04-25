@@ -13,7 +13,6 @@ import {
   createDraftSession,
   deleteDraftSession,
   listDraftSessions,
-  type DraftOrderMode,
   type DraftSessionDetail,
   type DraftSessionSummary,
 } from "@/lib/api/draft";
@@ -26,7 +25,6 @@ import {
 import { cn } from "@/lib/utils";
 
 type CreateFormState = {
-  orderMode: DraftOrderMode;
   pickTimeSeconds: string;
   teamCount: string;
   title: string;
@@ -45,7 +43,6 @@ function buildDefaultDraftTitle(username?: string | null) {
 
 function createEmptyForm(title = ""): CreateFormState {
   return {
-    orderMode: "SNAKE",
     title,
     teamCount: "",
     pickTimeSeconds: "",
@@ -236,7 +233,6 @@ export function ProleagueDraftListPage() {
 
     try {
       const createdSession = await createDraftSession({
-        orderMode: form.orderMode,
         title,
         teamCount,
         pickTimeSeconds,
@@ -521,29 +517,6 @@ export function ProleagueDraftListPage() {
                 placeholder="픽 제한 시간(초)"
                 disabled={creating}
               />
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">픽 순서 모드</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button
-                  variant={form.orderMode === "BASIC" ? "accent" : "outline"}
-                  disabled={creating}
-                  onClick={() => {
-                    setForm((current) => ({ ...current, orderMode: "BASIC" }));
-                  }}
-                >
-                  기본
-                </Button>
-                <Button
-                  variant={form.orderMode === "SNAKE" ? "accent" : "outline"}
-                  disabled={creating}
-                  onClick={() => {
-                    setForm((current) => ({ ...current, orderMode: "SNAKE" }));
-                  }}
-                >
-                  스네이크
-                </Button>
-              </div>
             </div>
 
             {createError ? (

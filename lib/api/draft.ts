@@ -679,7 +679,7 @@ export async function skipDraftTurn(sessionId: number, reason = "manual") {
         validateStatus: () => true,
       },
     ),
-    "현재 턴을 스킵하지 못했습니다.",
+    "지명 포기를 처리하지 못했습니다.",
   );
 
   return normalizeDraftSnapshot(snapshot);

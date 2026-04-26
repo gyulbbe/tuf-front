@@ -6,11 +6,20 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import type { SiteSubTab, SiteTab } from "@/content/site";
 import { isAdminRole } from "@/lib/auth/roles";
+import {
+  buildMenuVisibilityRecord,
+  getSiteMenuVisibility,
+} from "@/lib/api/menu-visibility";
 import { cn } from "@/lib/utils";
 
 type SiteTabsProps = {
   tabs: SiteTab[];
 };
+
+type MenuVisibilityRecord = Record<string, boolean>;
+
+const ALWAYS_VISIBLE_MENU_KEYS = new Set(["admin", "admin.menuVisibility"]);
+const MENU_VISIBILITY_CHANGED_EVENT = "site-menu-visibility-changed";
 
 function isPathActive(pathname: string, href?: string) {
   if (!href) {
@@ -202,13 +211,45 @@ function SubTabItem({
   );
 }
 
-function filterVisibleTabs(tabs: SiteTab[], canSeeAdminTab: boolean) {
+function isMenuVisible(
+  menuKey: string | undefined,
+  menuVisibility: MenuVisibilityRecord,
+) {
+  if (!menuKey || ALWAYS_VISIBLE_MENU_KEYS.has(menuKey)) {
+    return true;
+  }
+
+  return menuVisibility[menuKey] !== false;
+}
+
+function filterVisibleTabs(
+  tabs: SiteTab[],
+  canSeeAdminTab: boolean,
+  menuVisibility: MenuVisibilityRecord,
+) {
   return tabs
     .filter((tab) => !tab.requiresAdmin || canSeeAdminTab)
-    .map((tab) => ({
-      ...tab,
-      items: tab.items?.filter((item) => !item.requiresAdmin || canSeeAdminTab),
-    }));
+    .map((tab) => {
+      const items = tab.items
+        ?.filter((item) => !item.requiresAdmin || canSeeAdminTab)
+        .filter((item) => isMenuVisible(item.menuKey, menuVisibility));
+
+      return {
+        ...tab,
+        items,
+      };
+    })
+    .filter((tab) => {
+      if (!isMenuVisible(tab.menuKey, menuVisibility)) {
+        return false;
+      }
+
+      if (tab.items) {
+        return tab.items.length > 0;
+      }
+
+      return true;
+    });
 }
 
 export function SiteTabs({ tabs }: SiteTabsProps) {
@@ -218,11 +259,59 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
     key: string | null;
     pathname: string | null;
   }>({ key: null, pathname: null });
+  const [menuVisibility, setMenuVisibility] = useState<MenuVisibilityRecord>({});
   const navRef = useRef<HTMLElement | null>(null);
   const canSeeAdminTab = isAdminRole(user?.role);
-  const visibleTabs = filterVisibleTabs(tabs, canSeeAdminTab);
+  const visibleTabs = filterVisibleTabs(tabs, canSeeAdminTab, menuVisibility);
   const openMenuKey =
     openMenuState.pathname === pathname ? openMenuState.key : null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMenuVisibility() {
+      try {
+        const data = await getSiteMenuVisibility();
+
+        if (!cancelled) {
+          setMenuVisibility(buildMenuVisibilityRecord(data.items));
+        }
+      } catch {
+        if (!cancelled) {
+          setMenuVisibility({});
+        }
+      }
+    }
+
+    void loadMenuVisibility();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleMenuVisibilityChanged(event: Event) {
+      const detail = (event as CustomEvent<unknown>).detail;
+
+      if (!Array.isArray(detail)) {
+        return;
+      }
+
+      setMenuVisibility(buildMenuVisibilityRecord(detail));
+    }
+
+    window.addEventListener(
+      MENU_VISIBILITY_CHANGED_EVENT,
+      handleMenuVisibilityChanged,
+    );
+    return () => {
+      window.removeEventListener(
+        MENU_VISIBILITY_CHANGED_EVENT,
+        handleMenuVisibilityChanged,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (!openMenuKey) {

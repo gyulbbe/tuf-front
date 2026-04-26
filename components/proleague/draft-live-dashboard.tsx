@@ -1438,6 +1438,10 @@ export function DraftLiveDashboard({
   const canPick = snapshot?.permissions?.canPick ?? false;
   const viewerRole: string | null = null;
   const isBusy = pendingAction !== null;
+  const canSkipCurrentTurn =
+    Boolean(snapshot?.currentTurn) &&
+    snapshot?.session.status === "LIVE" &&
+    (canControl || canPick);
   const remainingSeconds = calculateRemainingSeconds(
     snapshot,
     nowTickMs,
@@ -1868,12 +1872,7 @@ export function DraftLiveDashboard({
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button
                   variant="danger"
-                  disabled={
-                    !canControl ||
-                    isBusy ||
-                    snapshot.session.status !== "LIVE" ||
-                    snapshot.currentTurn === null
-                  }
+                  disabled={!canSkipCurrentTurn || isBusy}
                   onClick={() => {
                     const sessionId = selectedSessionId;
 

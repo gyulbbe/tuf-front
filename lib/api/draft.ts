@@ -673,7 +673,7 @@ export async function extendDraftTurn(sessionId: number, seconds: number) {
 export async function skipDraftTurn(sessionId: number, reason = "manual") {
   const snapshot = await unwrapResponse(
     apiClient.post<ApiEnvelope<DraftLiveSnapshot>>(
-      `/draft/admin/sessions/${sessionId}/force-skip`,
+      `/draft/live/sessions/${sessionId}/skip`,
       { reason },
       {
         validateStatus: () => true,

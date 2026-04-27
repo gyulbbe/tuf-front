@@ -401,6 +401,43 @@ function readServerOffsetMs(serverNow: string | null | undefined) {
   return timestamp - Date.now();
 }
 
+function isStaleDraftSnapshot(
+  currentSnapshot: DraftLiveSnapshot | null,
+  incomingSnapshot: DraftLiveSnapshot,
+) {
+  if (!currentSnapshot || currentSnapshot.session.id !== incomingSnapshot.session.id) {
+    return false;
+  }
+
+  if (
+    currentSnapshot.session.status === "FINISHED" &&
+    incomingSnapshot.session.status !== "FINISHED"
+  ) {
+    return true;
+  }
+
+  const currentServerNow = toTimestamp(currentSnapshot.session.serverNow);
+  const incomingServerNow = toTimestamp(incomingSnapshot.session.serverNow);
+
+  if (
+    currentServerNow !== null &&
+    incomingServerNow !== null &&
+    incomingServerNow < currentServerNow
+  ) {
+    return true;
+  }
+
+  const currentPickNo = currentSnapshot.session.currentPickNo;
+  const incomingPickNo = incomingSnapshot.session.currentPickNo;
+
+  return (
+    incomingServerNow === null &&
+    typeof currentPickNo === "number" &&
+    typeof incomingPickNo === "number" &&
+    incomingPickNo < currentPickNo
+  );
+}
+
 function parsePositiveSeconds(value: string, fallback?: number) {
   const trimmed = value.trim();
 
@@ -791,6 +828,7 @@ export function DraftLiveDashboard({
   );
   const sessionsRequestRef = useRef(0);
   const snapshotRequestRef = useRef(0);
+  const snapshotRef = useRef<DraftLiveSnapshot | null>(null);
   const draftSessionConnectionRef =
     useRef<ReturnType<typeof subscribeToDraftSession> | null>(null);
   const localPreviewRef = useRef<LocalDraftPreviewState | null>(null);
@@ -811,6 +849,10 @@ export function DraftLiveDashboard({
       : variant === "proleague"
         ? "순서 패턴을 따라 이어지는 프로리그 드래프트 진행 화면이다."
         : "드래프트 상태와 픽 진행을 실시간으로 확인한다.";
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
   function clearLocalPreviewAnimationFrame() {
     if (localPreviewAnimationFrameRef.current === null) {
@@ -1176,6 +1218,7 @@ export function DraftLiveDashboard({
           return;
         }
 
+        snapshotRef.current = nextSnapshot;
         startTransition(() => {
           setSnapshot(nextSnapshot);
           setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
@@ -1293,33 +1336,39 @@ export function DraftLiveDashboard({
           const nextPermissions =
             broadcastSnapshot.permissions ??
             buildLocalPermissions(broadcastSnapshot, user);
+          const nextSnapshot = {
+            ...broadcastSnapshot,
+            permissions: nextPermissions ?? snapshotRef.current?.permissions ?? null,
+          };
+
+          if (isStaleDraftSnapshot(snapshotRef.current, nextSnapshot)) {
+            return;
+          }
 
           if (
             localPreviewRef.current &&
-            (broadcastSnapshot.session.status !== "LIVE" ||
+            (nextSnapshot.session.status !== "LIVE" ||
               !nextPermissions.canPick ||
-              broadcastSnapshot.currentTurn === null)
+              nextSnapshot.currentTurn === null)
           ) {
             endLocalPreview(
               readPreviewAutoEndReason({
                 canPick: nextPermissions.canPick,
-                hasCurrentTurn: broadcastSnapshot.currentTurn !== null,
+                hasCurrentTurn: nextSnapshot.currentTurn !== null,
                 connectionState: "connected",
-                sessionStatus: broadcastSnapshot.session.status,
+                sessionStatus: nextSnapshot.session.status,
               }),
             );
           }
 
+          snapshotRef.current = nextSnapshot;
           startTransition(() => {
-            setSnapshot((currentSnapshot) => ({
-              ...broadcastSnapshot,
-              permissions: nextPermissions ?? currentSnapshot?.permissions ?? null,
-            }));
-            setServerOffsetMs(readServerOffsetMs(broadcastSnapshot.session.serverNow));
+            setSnapshot(nextSnapshot);
+            setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
             setSessions((currentSessions) =>
               mergeSessionSummary(
                 currentSessions,
-                broadcastSnapshot.session,
+                nextSnapshot.session,
                 adminMode,
               ),
             );
@@ -1363,6 +1412,11 @@ export function DraftLiveDashboard({
     try {
       const nextSnapshot = await request();
 
+      if (isStaleDraftSnapshot(snapshotRef.current, nextSnapshot)) {
+        return;
+      }
+
+      snapshotRef.current = nextSnapshot;
       startTransition(() => {
         setSnapshot(nextSnapshot);
         setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
@@ -1883,10 +1937,17 @@ export function DraftLiveDashboard({
                     void runSnapshotAction(
                       "skip",
                       () => skipDraftTurn(sessionId, "manual"),
-                      (nextSnapshot) =>
-                        nextSnapshot.session.status === "FINISHED"
-                          ? "드래프트가 종료되었습니다."
-                          : "현재 턴을 스킵했습니다.",
+                      (nextSnapshot) => {
+                        if (nextSnapshot.session.status === "FINISHED") {
+                          return "드래프트가 종료되었습니다.";
+                        }
+
+                        if (nextSnapshot.currentTurn) {
+                          return `#${nextSnapshot.currentTurn.pickNo} ${nextSnapshot.currentTurn.teamName} 차례로 이동했습니다.`;
+                        }
+
+                        return "현재 턴을 스킵했습니다.";
+                      },
                     );
                   }}
                 >

@@ -6,7 +6,7 @@ type AdSlotProps = {
   title?: string;
 };
 
-export function AdSlot({ className, slotId, title = "AD SPACE" }: AdSlotProps) {
+export function AdSlot({ className, slotId }: AdSlotProps) {
   return (
     <aside
       data-ad-slot={slotId}
@@ -15,17 +15,8 @@ export function AdSlot({ className, slotId, title = "AD SPACE" }: AdSlotProps) {
         className,
       )}
     >
-      <div className="flex min-h-[96px] flex-col items-center justify-center rounded-[20px] bg-surface-strong px-4 text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-          {title}
-        </p>
-        <p className="mt-3 text-sm font-medium text-foreground">
-          Google AdSense / Kakao AdFit
-        </p>
-        <p className="mt-2 text-xs leading-6 text-muted">
-          광고 스크립트와 발급 ID를 연결하면 이 영역에 바로 붙일 수 있습니다.
-        </p>
-      </div>
+      {/* Reserved ad mount point. Real ad scripts can target data-ad-slot. */}
+      <div className="min-h-[96px] rounded-[20px] bg-surface-strong" />
     </aside>
   );
 }

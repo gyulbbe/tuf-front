@@ -166,6 +166,8 @@ export type DraftLiveEvent = {
   occurredAt: string | null;
   serverNow: string | null;
   actorUserId: number | null;
+  actorUserLoginId?: string | null;
+  actorName?: string | null;
   message: string | null;
   snapshot: DraftLiveSnapshot | null;
   preview?: DraftLivePreviewPayload | null;

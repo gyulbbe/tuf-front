@@ -50,7 +50,11 @@ type NoticeState = {
   text: string;
 };
 
-type SnapshotSuccessText = string | ((snapshot: DraftLiveSnapshot) => string);
+type ActivityLogItem = {
+  id: string;
+  message: string;
+  occurredAt: string | null;
+};
 
 type CandidateDisplayInfo = {
   candidateName: string;
@@ -76,6 +80,16 @@ const CONNECTION_LABELS: Record<ConnectionState, string> = {
   disconnected: "연결 종료",
   error: "연결 오류",
 };
+
+const ACTIVITY_LOG_EVENT_TYPES = new Set([
+  "PICK_COMPLETED",
+  "PICK_SKIPPED",
+  "SESSION_STARTED",
+  "SESSION_PAUSED",
+  "SESSION_RESUMED",
+  "SESSION_FINISHED",
+  "TIMER_EXTENDED",
+]);
 
 function formatDraftStatus(status: string | null | undefined) {
   if (!status) {
@@ -151,11 +165,104 @@ function formatDraftEventMessage(event: DraftLiveEvent) {
   return message || null;
 }
 
-function resolveSnapshotSuccessText(
-  successText: SnapshotSuccessText,
-  snapshot: DraftLiveSnapshot,
+function buildActivityLogId(event: DraftLiveEvent) {
+  return [
+    event.type,
+    event.sessionId,
+    event.occurredAt ?? event.serverNow ?? "no-time",
+    event.actorUserId ?? "system",
+    event.message ?? "",
+  ].join(":");
+}
+
+function formatActivityActorSubject(event: DraftLiveEvent) {
+  const actor =
+    event.actorUserLoginId?.trim() ||
+    event.actorName?.trim() ||
+    (typeof event.actorUserId === "number" ? `user_${event.actorUserId}` : "");
+
+  return actor ? `${actor}님이` : "";
+}
+
+function isTimeoutEvent(event: DraftLiveEvent) {
+  const message = event.message?.trim() ?? "";
+  const normalizedMessage = message.toLowerCase();
+
+  return normalizedMessage.includes("timeout") || message.includes("시간이 초과");
+}
+
+function findActivityPickCandidateName(
+  event: DraftLiveEvent,
+  currentSnapshot: DraftLiveSnapshot | null,
 ) {
-  return typeof successText === "function" ? successText(snapshot) : successText;
+  const pick =
+    event.snapshot?.recentPicks?.[0] ?? currentSnapshot?.recentPicks?.[0] ?? null;
+
+  return pick ? formatCandidateLoginId(pick) : null;
+}
+
+function formatActivityLogMessage(
+  event: DraftLiveEvent,
+  currentSnapshot: DraftLiveSnapshot | null,
+) {
+  if (!ACTIVITY_LOG_EVENT_TYPES.has(event.type)) {
+    return null;
+  }
+
+  if (event.type === "PICK_SKIPPED" && isTimeoutEvent(event)) {
+    return "제한 시간이 초과되어 현재 턴이 넘어갔습니다.";
+  }
+
+  const actorSubject = formatActivityActorSubject(event);
+  const fallbackMessage = formatDraftEventMessage(event);
+
+  if (event.type === "PICK_COMPLETED") {
+    const candidateName = findActivityPickCandidateName(event, currentSnapshot);
+
+    if (actorSubject && candidateName) {
+      return `${actorSubject} ${candidateName}를 지명했습니다.`;
+    }
+
+    return fallbackMessage;
+  }
+
+  if (event.type === "PICK_SKIPPED") {
+    return actorSubject
+      ? `${actorSubject} 지명 포기했습니다.`
+      : fallbackMessage;
+  }
+
+  if (event.type === "SESSION_STARTED") {
+    return actorSubject
+      ? `${actorSubject} 드래프트를 시작했습니다.`
+      : fallbackMessage;
+  }
+
+  if (event.type === "SESSION_PAUSED") {
+    return actorSubject
+      ? `${actorSubject} 드래프트를 일시정지했습니다.`
+      : fallbackMessage;
+  }
+
+  if (event.type === "SESSION_RESUMED") {
+    return actorSubject
+      ? `${actorSubject} 드래프트를 재개했습니다.`
+      : fallbackMessage;
+  }
+
+  if (event.type === "TIMER_EXTENDED") {
+    return actorSubject
+      ? `${actorSubject} 제한 시간을 연장했습니다.`
+      : fallbackMessage;
+  }
+
+  if (event.type === "SESSION_FINISHED") {
+    return actorSubject
+      ? `${actorSubject} 드래프트를 종료했습니다.`
+      : fallbackMessage;
+  }
+
+  return fallbackMessage;
 }
 
 function formatCandidateId(value: string | null | undefined) {
@@ -775,6 +882,7 @@ export function DraftLiveDashboard({
   const [loadingSnapshot, setLoadingSnapshot] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<NoticeState | null>(null);
+  const [activityLog, setActivityLog] = useState<ActivityLogItem[]>([]);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [resumeSeconds, setResumeSeconds] = useState("30");
@@ -797,6 +905,7 @@ export function DraftLiveDashboard({
   const pendingLocalPreviewRef = useRef<LocalDraftPreviewState | null>(null);
   const localPreviewAnimationFrameRef = useRef<number | null>(null);
   const localPreviewCleanupRef = useRef<(() => void) | null>(null);
+  const snapshotRef = useRef<DraftLiveSnapshot | null>(null);
   const canPickRef = useRef(false);
   const currentPreviewKeyRef = useRef<string | null>(null);
   const dashboardLabel =
@@ -805,12 +914,6 @@ export function DraftLiveDashboard({
       : variant === "proleague"
         ? "프로리그 드래프트"
         : "드래프트 라이브";
-  const dashboardDescription =
-    variant === "content"
-      ? "팀배와 컨텐츠용 드래프트를 실시간으로 진행하고, 수동 팀장 모드도 여기서 확인한다."
-      : variant === "proleague"
-        ? "순서 패턴을 따라 이어지는 프로리그 드래프트 진행 화면이다."
-        : "드래프트 상태와 픽 진행을 실시간으로 확인한다.";
 
   function clearLocalPreviewAnimationFrame() {
     if (localPreviewAnimationFrameRef.current === null) {
@@ -836,6 +939,16 @@ export function DraftLiveDashboard({
     pendingLocalPreviewRef.current = null;
     localPreviewRef.current = null;
     setLocalPreview(null);
+  }
+
+  function pushActivityLog(item: ActivityLogItem) {
+    setActivityLog((currentLog) => {
+      if (currentLog.some((currentItem) => currentItem.id === item.id)) {
+        return currentLog;
+      }
+
+      return [item, ...currentLog].slice(0, 10);
+    });
   }
 
   function endLocalPreview(endReason: DraftLivePreviewEndReason) {
@@ -1005,6 +1118,14 @@ export function DraftLiveDashboard({
       window.clearInterval(timer);
     };
   }, [refreshSignal]);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
+
+  useEffect(() => {
+    setActivityLog([]);
+  }, [selectedSessionId]);
 
   useEffect(() => {
     if (fixedSessionId !== null) {
@@ -1327,12 +1448,16 @@ export function DraftLiveDashboard({
 
         }
 
-        const eventMessage = formatDraftEventMessage(event);
+        const activityMessage = formatActivityLogMessage(
+          event,
+          event.snapshot ?? snapshotRef.current,
+        );
 
-        if (eventMessage) {
-          setNotice({
-            tone: "success",
-            text: eventMessage,
+        if (activityMessage) {
+          pushActivityLog({
+            id: buildActivityLogId(event),
+            message: activityMessage,
+            occurredAt: event.occurredAt ?? event.serverNow,
           });
         }
       },
@@ -1355,7 +1480,6 @@ export function DraftLiveDashboard({
   async function runSnapshotAction(
     actionKey: string,
     request: () => Promise<DraftLiveSnapshot>,
-    successText: SnapshotSuccessText,
   ) {
     setPendingAction(actionKey);
     setNotice(null);
@@ -1369,10 +1493,6 @@ export function DraftLiveDashboard({
         setSessions((currentSessions) =>
           mergeSessionSummary(currentSessions, nextSnapshot.session, adminMode),
         );
-      });
-      setNotice({
-        tone: "success",
-        text: resolveSnapshotSuccessText(successText, nextSnapshot),
       });
     } catch (error) {
       if (selectedSessionId !== null && isMissingSessionError(error)) {
@@ -1407,10 +1527,6 @@ export function DraftLiveDashboard({
     await runSnapshotAction(
       `pick-${candidateUserId}`,
       () => pickDraftCandidate(sessionId, candidateUserId),
-      (nextSnapshot) =>
-        nextSnapshot.session.status === "FINISHED"
-          ? "마지막 지명이 완료되어 드래프트가 종료되었습니다."
-          : "지명을 완료했습니다.",
     );
   }
 
@@ -1433,20 +1549,30 @@ export function DraftLiveDashboard({
   const currentTeamId =
     snapshot?.currentTurn?.teamId ?? snapshot?.session.currentDraftTeamId ?? null;
   const currentTeam = teams.find((team) => team.id === currentTeamId) ?? null;
-  const myTeam = teams.find((team) => team.id === snapshot?.permissions?.myTeamId) ?? null;
-  const canControl = snapshot?.permissions?.canControl ?? false;
+  const currentPickerDisplayId = currentTeam?.pickerUserLoginId?.trim() || null;
   const canPick = snapshot?.permissions?.canPick ?? false;
-  const viewerRole: string | null = null;
+  const canAdminControl = isDraftAdminRole(user?.role);
   const isBusy = pendingAction !== null;
   const canSkipCurrentTurn =
     Boolean(snapshot?.currentTurn) &&
     snapshot?.session.status === "LIVE" &&
-    (canControl || canPick);
+    canPick;
   const remainingSeconds = calculateRemainingSeconds(
     snapshot,
     nowTickMs,
     serverOffsetMs,
   );
+  const timerProgressPercent =
+    snapshot?.session.status === "LIVE" && snapshot.currentTurn
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            (remainingSeconds / Math.max(snapshot.session.pickTimeSeconds, 1)) *
+              100,
+          ),
+        )
+      : 0;
   const canPreviewDrag =
     canPick &&
     !isBusy &&
@@ -1518,164 +1644,326 @@ export function DraftLiveDashboard({
   }, [currentPreviewKey]);
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <SurfaceCard className="p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-              {dashboardLabel}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={cn(
-                  "rounded-full px-3 py-1 text-xs font-semibold",
-                  getStatusBadgeClassName(snapshot?.session.status),
-                )}
-              >
-                {snapshot ? formatDraftStatus(snapshot.session.status) : "드래프트 선택 대기"}
-              </span>
-              <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
-                {CONNECTION_LABELS[connectionState]}
-              </span>
-              {user?.username ? (
-                <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
-                  ID {user.username}
-                  {viewerRole ? ` · ${viewerRole}` : ""}
-                </span>
-              ) : null}
+    <div className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <SurfaceCard className="p-6">
+          <div className="flex flex-wrap items-start justify-between gap-5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
+                  {dashboardLabel}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      "rounded-full px-3 py-1 text-xs font-semibold",
+                      getStatusBadgeClassName(snapshot?.session.status),
+                    )}
+                  >
+                    {snapshot
+                      ? formatDraftStatus(snapshot.session.status)
+                      : "드래프트 선택 대기"}
+                  </span>
+                  <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
+                    {CONNECTION_LABELS[connectionState]}
+                  </span>
+                </div>
+              </div>
+              <h2 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                {snapshot?.currentTurn
+                  ? `${currentPickerDisplayId ?? "픽커 미지정"} 차례`
+                  : "진행 중인 차례 없음"}
+              </h2>
             </div>
-            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-              {snapshot?.currentTurn
-                ? `${snapshot.currentTurn.teamName} 차례`
-                : "진행 중인 차례 없음"}
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-muted">
-              {dashboardDescription}
-            </p>
-            <p className="mt-2 text-sm leading-7 text-muted">
-              서버 시간 {formatDateTime(snapshot?.session.serverNow)}
-              {snapshot?.session.deadlineAt
-                ? ` · 마감 ${formatDateTime(snapshot.session.deadlineAt)}`
-                : ""}
-            </p>
+
+            <div className="w-full max-w-sm space-y-3">
+              {hideSessionPicker ? null : (
+                <select
+                  className="w-full rounded-[20px] border border-line bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white"
+                  value={selectedSessionId ?? ""}
+                  onChange={(event) => {
+                    const nextSessionId = event.target.value
+                      ? Number(event.target.value)
+                      : null;
+                    setSelectedSessionId(nextSessionId);
+                  }}
+                >
+                  {loadingSessions && sessions.length === 0 ? (
+                    <option value="">드래프트 목록 불러오는 중</option>
+                  ) : sessions.length === 0 ? (
+                    <option value="">드래프트 없음</option>
+                  ) : null}
+
+                  {sessions.map((session) => (
+                    <option key={session.id} value={session.id}>
+                      {session.title} · {formatDraftStatus(session.status)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
 
-          <div className="w-full max-w-sm space-y-3">
-            {hideSessionPicker ? null : (
-              <select
-                className="w-full rounded-[20px] border border-line bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white"
-                value={selectedSessionId ?? ""}
-                onChange={(event) => {
-                  const nextSessionId = event.target.value
-                    ? Number(event.target.value)
-                    : null;
-                  setSelectedSessionId(nextSessionId);
-                }}
-              >
-                {loadingSessions && sessions.length === 0 ? (
-                  <option value="">드래프트 목록 불러오는 중</option>
-                ) : sessions.length === 0 ? (
-                  <option value="">드래프트 없음</option>
+          <div
+            className="mt-7 rounded-[28px] border border-line/70 bg-white/70 px-6 py-5"
+            aria-label={`남은 시간 ${remainingSeconds}초`}
+          >
+            <div className="flex items-center gap-5">
+              <div className="relative h-16 w-16 shrink-0">
+                <div className="absolute bottom-1 left-1 h-12 w-12 rounded-full bg-foreground shadow-[inset_-10px_-10px_0_rgba(255,255,255,0.12),0_10px_24px_-14px_rgba(31,42,40,0.8)]" />
+                <div className="absolute left-11 top-2 h-5 w-3 rotate-45 rounded-full bg-foreground" />
+                <div className="absolute left-12 top-0 h-4 w-5 rounded-full bg-danger-ink" />
+              </div>
+              <div className="relative h-12 min-w-0 flex-1 overflow-visible">
+                <div className="absolute left-0 top-1/2 h-4 w-full -translate-y-1/2 rounded-full bg-[repeating-linear-gradient(90deg,#b9b0a7_0_12px,#8f867d_12px_22px)] opacity-45" />
+                <div
+                  className="absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-full bg-[repeating-linear-gradient(90deg,#41352d_0_12px,#2b221e_12px_22px)] shadow-[inset_0_2px_3px_rgba(255,255,255,0.18),0_0_18px_rgba(196,82,48,0.2)] transition-[width] duration-500"
+                  style={{ width: `${timerProgressPercent}%` }}
+                />
+                {timerProgressPercent > 0 ? (
+                  <span
+                    className="draft-fuse-fire absolute top-1/2 h-12 w-12 -translate-y-1/2"
+                    style={{
+                      left: `clamp(0rem, calc(${timerProgressPercent}% - 1.5rem), calc(100% - 3rem))`,
+                    }}
+                  >
+                    <span className="draft-flame draft-flame-outer" />
+                    <span className="draft-flame draft-flame-inner" />
+                    <span className="draft-spark draft-spark-one" />
+                    <span className="draft-spark draft-spark-two" />
+                    <span className="draft-spark draft-spark-three" />
+                    <span className="draft-smoke draft-smoke-one" />
+                    <span className="draft-smoke draft-smoke-two" />
+                  </span>
                 ) : null}
-
-                {sessions.map((session) => (
-                  <option key={session.id} value={session.id}>
-                    {session.title} · {formatDraftStatus(session.status)}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <div className="rounded-[24px] border border-line/70 bg-white/70 px-5 py-4 text-right">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
-                Remaining
-              </p>
-              <p className="mt-2 text-4xl font-semibold tracking-tight text-foreground">
-                {formatCountdown(remainingSeconds)}
-              </p>
-              <p className="mt-2 text-sm text-muted">
-                {currentTeam ? `${currentTeam.teamName} 응답 대기` : "대기 중"}
-              </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        {notice ? (
-          <div className={cn("mt-6 rounded-[24px] px-4 py-4 text-sm", getToneClassName(notice.tone))}>
-            {notice.text}
-          </div>
-        ) : null}
+          {notice ? (
+            <div
+              className={cn(
+                "mt-5 rounded-[20px] px-4 py-3 text-sm",
+                getToneClassName(notice.tone),
+              )}
+            >
+              {notice.text}
+            </div>
+          ) : null}
 
-        {selectedSessionId !== null ? (
-          <div className="mt-6 space-y-5">
-            <section className="rounded-[30px] border border-line bg-[radial-gradient(circle_at_top_right,rgba(220,229,222,0.84),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(238,241,236,0.9)_100%)] p-6 shadow-[0_24px_60px_-48px_rgba(31,42,40,0.72)]">
-              {loadingSnapshot && !snapshot ? (
-                <div className="space-y-3">
-                  <div className="h-5 w-40 rounded-full bg-surface-muted" />
-                  <div className="h-10 w-72 rounded-full bg-surface-muted" />
-                  <div className="h-24 rounded-[24px] bg-surface-muted" />
-                </div>
-              ) : snapshot ? (
-                <>
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {[
-                      {
-                        label: "진행률",
-                        value: `${snapshot.pickedCandidates.length}/${totalCandidates}`,
-                        subtext: "완료 / 전체 드래프트 인원",
-                      },
-                      {
-                        label: "현재 픽",
-                        value: snapshot.session.currentPickNo ?? "-",
-                        subtext: snapshot.currentTurn
-                          ? `${snapshot.currentTurn.teamName} 차례`
-                          : "시작 대기",
-                      },
-                      {
-                        label: "내 팀",
-                        value: myTeam?.teamName ?? "-",
-                        subtext: canPick ? "지명 가능" : canControl ? "드래프트 제어 가능" : "관전",
-                      },
-                    ].map((stat) => (
-                      <div
-                        key={stat.label}
-                        className="rounded-[24px] border border-line bg-white/70 px-4 py-4"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-                          {stat.label}
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                          {stat.value}
-                        </p>
-                        <p className="mt-1 text-sm text-muted">{stat.subtext}</p>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-            </section>
-
-            <section className="rounded-[28px] border border-line bg-surface-strong px-5 py-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-semibold text-foreground">
-                    드래프트 선수 추가
-                  </h2>
-                  <p className="hidden">
-                    드래프트 인원을 검색하고 현재 픽 권한이 있으면 바로 지명할 수 있다.
+          {activityLog.length > 0 ? (
+            <div className="mt-6 space-y-2">
+              {activityLog.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-line bg-surface px-4 py-3"
+                >
+                  <p className="text-sm font-semibold text-foreground">
+                    {item.message}
                   </p>
-                  <p className="mt-2 text-sm leading-7 text-muted">지명할 선수를 확인하고 선택하면 된다.</p>
+                  <span className="text-xs text-muted">
+                    {formatDateTime(item.occurredAt)}
+                  </span>
                 </div>
+              ))}
+            </div>
+          ) : null}
+        </SurfaceCard>
 
-                <div className="w-full max-w-xs">
+        <SurfaceCard className="self-start p-6">
+          <p className="text-sm font-semibold text-foreground">드래프트 제어</p>
+
+          {snapshot ? (
+            <div className="mt-5 space-y-4">
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                <Button
+                  variant="accent"
+                  disabled={
+                    !canAdminControl ||
+                    isBusy ||
+                    snapshot.session.status !== "READY"
+                  }
+                  onClick={() => {
+                    const sessionId = selectedSessionId;
+
+                    if (sessionId === null) {
+                      return;
+                    }
+
+                    void runSnapshotAction("start", () =>
+                      startDraftSession(sessionId),
+                    );
+                  }}
+                >
+                  {pendingAction === "start" ? "시작 중" : "시작"}
+                </Button>
+
+                <Button
+                  disabled={
+                    !canAdminControl ||
+                    isBusy ||
+                    snapshot.session.status !== "LIVE"
+                  }
+                  onClick={() => {
+                    const sessionId = selectedSessionId;
+
+                    if (sessionId === null) {
+                      return;
+                    }
+
+                    void runSnapshotAction("pause", () =>
+                      pauseDraftSession(sessionId),
+                    );
+                  }}
+                >
+                  {pendingAction === "pause" ? "정지 중" : "일시정지"}
+                </Button>
+              </div>
+
+              <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
+                <p className="text-sm font-semibold text-foreground">재개 시간</p>
+                <div className="mt-3 flex gap-2">
                   <Input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="ID 검색"
+                    type="number"
+                    min={1}
+                    value={resumeSeconds}
+                    onChange={(event) => setResumeSeconds(event.target.value)}
+                    placeholder="기본 30"
                   />
+                  <Button
+                    variant="accent"
+                    disabled={
+                      !canAdminControl ||
+                      isBusy ||
+                      snapshot.session.status !== "PAUSED"
+                    }
+                    onClick={() => {
+                      const sessionId = selectedSessionId;
+
+                      if (sessionId === null) {
+                        return;
+                      }
+
+                      try {
+                        const seconds = parsePositiveSeconds(
+                          resumeSeconds,
+                          snapshot.session.pickTimeSeconds,
+                        );
+
+                        void runSnapshotAction("resume", () =>
+                          resumeDraftSession(sessionId, seconds),
+                        );
+                      } catch (error) {
+                        setNotice({
+                          tone: "error",
+                          text: readErrorMessage(error),
+                        });
+                      }
+                    }}
+                  >
+                    {pendingAction === "resume" ? "재개 중" : "재개"}
+                  </Button>
                 </div>
               </div>
 
+              <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
+                <p className="text-sm font-semibold text-foreground">현재 턴 연장</p>
+                <div className="mt-3 flex gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={extendSeconds}
+                    onChange={(event) => setExtendSeconds(event.target.value)}
+                    placeholder="30"
+                  />
+                  <Button
+                    disabled={
+                      !canAdminControl ||
+                      isBusy ||
+                      snapshot.session.status !== "LIVE"
+                    }
+                    onClick={() => {
+                      const sessionId = selectedSessionId;
+
+                      if (sessionId === null) {
+                        return;
+                      }
+
+                      try {
+                        const seconds = parsePositiveSeconds(extendSeconds);
+
+                        void runSnapshotAction("extend", () =>
+                          extendDraftTurn(sessionId, seconds),
+                        );
+                      } catch (error) {
+                        setNotice({
+                          tone: "error",
+                          text: readErrorMessage(error),
+                        });
+                      }
+                    }}
+                  >
+                    {pendingAction === "extend" ? "연장 중" : "연장"}
+                  </Button>
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                variant="danger"
+                disabled={!canSkipCurrentTurn || isBusy}
+                onClick={() => {
+                  const sessionId = selectedSessionId;
+
+                  if (sessionId === null) {
+                    return;
+                  }
+
+                  void runSnapshotAction("skip", () =>
+                    skipDraftTurn(sessionId, "manual"),
+                  );
+                }}
+              >
+                {pendingAction === "skip" ? "처리 중" : "지명 포기"}
+              </Button>
+
+              {!canAdminControl ? (
+                <p className="rounded-[18px] bg-surface-muted px-4 py-3 text-sm leading-7 text-muted">
+                  관리자 권한 계정만 드래프트를 제어할 수 있습니다.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm leading-7 text-muted">
+              드래프트를 선택해 달라.
+            </p>
+          )}
+        </SurfaceCard>
+      </div>
+
+      {selectedSessionId !== null ? (
+        <>
+          <SurfaceCard className="p-5 sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold text-foreground">
+                남아있는 선수
+              </h2>
+
+              <div className="w-full max-w-xs">
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="ID 검색"
+                />
+              </div>
+            </div>
+
+            {loadingSnapshot && !snapshot ? (
+              <div className="mt-5 space-y-3">
+                <div className="h-20 rounded-[24px] bg-surface-muted" />
+                <div className="h-20 rounded-[24px] bg-surface-muted" />
+              </div>
+            ) : (
               <div className="mt-5 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {filteredCandidates.length === 0 ? (
                   <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm leading-7 text-muted md:col-span-2 2xl:col-span-3">
@@ -1701,7 +1989,8 @@ export function DraftLiveDashboard({
                           race: displayInfo?.race ?? candidate.race,
                         }}
                         isDragging={
-                          localPreview?.candidateUserId === candidate.candidateUserId
+                          localPreview?.candidateUserId ===
+                          candidate.candidateUserId
                         }
                         pendingAction={pendingAction}
                         onPick={handlePick}
@@ -1711,282 +2000,38 @@ export function DraftLiveDashboard({
                   })
                 )}
               </div>
-            </section>
+            )}
+          </SurfaceCard>
 
-            <section className="rounded-[28px] border border-line bg-surface-strong px-5 py-5">
-              <div>
-                <h2 className="text-xl font-semibold text-foreground">팀 보드</h2>
-                <p className="mt-2 text-sm leading-7 text-muted">
-                  각 팀의 현재 픽커와 로스터를 한 번에 확인할 수 있다.
-                </p>
-              </div>
+          <SurfaceCard className="p-5 sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold text-foreground">현황</h2>
+              {snapshot ? (
+                <span className="rounded-full bg-surface-muted px-3 py-1 text-xs text-muted">
+                  지명 {snapshot.pickedCandidates.length} / {totalCandidates}
+                </span>
+              ) : null}
+            </div>
 
-              <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                {teams.map((team) => (
+            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              {teams.length > 0 ? (
+                teams.map((team) => (
                   <CompactTeamCard
                     candidateLookup={candidateLookup}
                     key={team.id}
                     currentTeamId={currentTeamId}
                     draftTeam={team}
                   />
-                ))}
-              </div>
-            </section>
-          </div>
-        ) : null}
-      </SurfaceCard>
-
-      <div className="grid gap-4 [&>*:nth-child(n+2)]:hidden">
-        <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">드래프트 제어</p>
-
-          {snapshot ? (
-            <div className="mt-5 space-y-4">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button
-                  variant="accent"
-                  disabled={!canControl || isBusy || snapshot.session.status !== "READY"}
-                  onClick={() => {
-                    const sessionId = selectedSessionId;
-
-                    if (sessionId === null) {
-                      return;
-                    }
-
-                    void runSnapshotAction(
-                      "start",
-                      () => startDraftSession(sessionId),
-                      "드래프트를 시작했습니다.",
-                    );
-                  }}
-                >
-                  {pendingAction === "start" ? "시작 중" : "시작"}
-                </Button>
-
-                <Button
-                  disabled={!canControl || isBusy || snapshot.session.status !== "LIVE"}
-                  onClick={() => {
-                    const sessionId = selectedSessionId;
-
-                    if (sessionId === null) {
-                      return;
-                    }
-
-                    void runSnapshotAction(
-                      "pause",
-                      () => pauseDraftSession(sessionId),
-                      "드래프트를 일시정지했습니다.",
-                    );
-                  }}
-                >
-                  {pendingAction === "pause" ? "정지 중" : "일시정지"}
-                </Button>
-              </div>
-
-              <>
-                <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
-                  <p className="text-sm font-semibold text-foreground">재개 시간</p>
-                  <div className="mt-3 flex gap-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      value={resumeSeconds}
-                      onChange={(event) => setResumeSeconds(event.target.value)}
-                      placeholder="기본 30"
-                    />
-                    <Button
-                      variant="accent"
-                      disabled={!canControl || isBusy || snapshot.session.status !== "PAUSED"}
-                      onClick={() => {
-                        const sessionId = selectedSessionId;
-
-                        if (sessionId === null) {
-                          return;
-                        }
-
-                        try {
-                          const seconds = parsePositiveSeconds(
-                            resumeSeconds,
-                            snapshot.session.pickTimeSeconds,
-                          );
-
-                          void runSnapshotAction(
-                            "resume",
-                            () => resumeDraftSession(sessionId, seconds),
-                            "드래프트를 재개했습니다.",
-                          );
-                        } catch (error) {
-                          setNotice({
-                            tone: "error",
-                            text: readErrorMessage(error),
-                          });
-                        }
-                      }}
-                    >
-                      {pendingAction === "resume" ? "재개 중" : "재개"}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
-                  <p className="text-sm font-semibold text-foreground">현재 턴 연장</p>
-                  <div className="mt-3 flex gap-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      value={extendSeconds}
-                      onChange={(event) => setExtendSeconds(event.target.value)}
-                      placeholder="30"
-                    />
-                    <Button
-                      disabled={!canControl || isBusy || snapshot.session.status !== "LIVE"}
-                      onClick={() => {
-                        const sessionId = selectedSessionId;
-
-                        if (sessionId === null) {
-                          return;
-                        }
-
-                        try {
-                          const seconds = parsePositiveSeconds(extendSeconds);
-
-                          void runSnapshotAction(
-                            "extend",
-                            () => extendDraftTurn(sessionId, seconds),
-                            "제한 시간을 연장했습니다.",
-                          );
-                        } catch (error) {
-                          setNotice({
-                            tone: "error",
-                            text: readErrorMessage(error),
-                          });
-                        }
-                      }}
-                    >
-                      {pendingAction === "extend" ? "연장 중" : "연장"}
-                    </Button>
-                  </div>
-                </div>
-              </>
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button
-                  variant="danger"
-                  disabled={!canSkipCurrentTurn || isBusy}
-                  onClick={() => {
-                    const sessionId = selectedSessionId;
-
-                    if (sessionId === null) {
-                      return;
-                    }
-
-                    void runSnapshotAction(
-                      "skip",
-                      () => skipDraftTurn(sessionId, "manual"),
-                      (nextSnapshot) =>
-                        nextSnapshot.session.status === "FINISHED"
-                          ? "드래프트가 종료되었습니다."
-                          : "현재 턴을 스킵했습니다.",
-                    );
-                  }}
-                >
-                  {pendingAction === "skip" ? "처리 중" : "지명 포기"}
-                </Button>
-
-              </div>
-
-              {false ? (
-                <p className="rounded-[18px] bg-surface-muted px-4 py-3 text-sm leading-7 text-muted">
-                  이 계정은 드래프트 제어 권한이 없다.
+                ))
+              ) : (
+                <p className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm leading-7 text-muted xl:col-span-2">
+                  표시할 팀이 없습니다.
                 </p>
-              ) : null}
+              )}
             </div>
-          ) : (
-            <p className="mt-4 text-sm leading-7 text-muted">드래프트를 선택해 달라.</p>
-          )}
-        </SurfaceCard>
-
-        <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">최근 지명</p>
-          <div className="mt-4 space-y-3">
-            {snapshot?.recentPicks?.length ? (
-              snapshot.recentPicks.slice(0, 8).map((pick) => (
-                <div
-                  key={`${pick.draftSessionId}-${pick.pickNo}`}
-                  className="rounded-[22px] bg-surface-muted px-4 py-4"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-foreground">
-                      {formatCandidateLoginId(pick)}
-                    </p>
-                    <span className="text-xs font-semibold text-muted">
-                      #{pick.pickNo}
-                    </span>
-                  </div>
-                    <p className="mt-1 text-sm text-muted">{pick.draftTeamName}</p>
-                  <p className="mt-1 text-xs text-muted">
-                    {formatDateTime(pick.pickedAt)}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p className="rounded-[22px] border border-dashed border-line px-4 py-6 text-sm text-muted">
-                아직 기록된 지명이 없다.
-              </p>
-            )}
-          </div>
-        </SurfaceCard>
-
-        <SurfaceCard className="p-6">
-          <p className="text-sm font-semibold text-foreground">현재 상태</p>
-          <div className="mt-4 space-y-3">
-            <div className="rounded-[22px] bg-surface-muted px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-                Current Team
-              </p>
-              <p className="mt-2 text-lg font-semibold text-foreground">
-                {currentTeam?.teamName ?? "-"}
-              </p>
-              <p className="mt-1 text-sm text-muted">
-                {snapshot?.currentTurn
-                  ? `${snapshot.currentTurn.pickNo}번째 픽`
-                  : "대기 중"}
-              </p>
-            </div>
-
-            <div className="rounded-[22px] bg-surface-muted px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-                Current Picker
-              </p>
-              <p className="mt-2 text-lg font-semibold text-foreground">
-                {currentTeam?.pickerName ? "지정됨" : snapshot?.currentTurn ? "미지정" : "대기 중"}
-              </p>
-              <p className="mt-1 text-sm text-muted">이름 비공개</p>
-            </div>
-
-            <div className="rounded-[22px] bg-surface-muted px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-                Available / Picked
-              </p>
-              <p className="mt-2 text-lg font-semibold text-foreground">
-                {snapshot?.availableCandidates.length ?? 0} /{" "}
-                {snapshot?.pickedCandidates.length ?? 0}
-              </p>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
-                <div
-                  className="h-full rounded-full bg-accent transition-[width]"
-                  style={{
-                    width:
-                      totalCandidates > 0
-                        ? `${((snapshot?.pickedCandidates.length ?? 0) / totalCandidates) * 100}%`
-                        : "0%",
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        </SurfaceCard>
-      </div>
+          </SurfaceCard>
+        </>
+      ) : null}
 
       {localPreview ? (
         <PreviewGhostCard
@@ -2020,6 +2065,154 @@ export function DraftLiveDashboard({
           </div>
         );
       })}
+      <style>{`
+        @keyframes draft-flame-outer {
+          0% {
+            transform: translate(-50%, -52%) rotate(-11deg) scale(0.9, 1.05);
+            opacity: 0.88;
+          }
+          28% {
+            transform: translate(-49%, -56%) rotate(7deg) scale(1.1, 0.94);
+            opacity: 1;
+          }
+          58% {
+            transform: translate(-52%, -50%) rotate(-3deg) scale(0.96, 1.18);
+            opacity: 0.92;
+          }
+          100% {
+            transform: translate(-50%, -52%) rotate(-11deg) scale(0.9, 1.05);
+            opacity: 0.88;
+          }
+        }
+
+        @keyframes draft-flame-inner {
+          0% {
+            transform: translate(-50%, -48%) rotate(8deg) scale(0.82, 1.04);
+            opacity: 0.96;
+          }
+          40% {
+            transform: translate(-51%, -55%) rotate(-9deg) scale(1.02, 0.88);
+            opacity: 1;
+          }
+          72% {
+            transform: translate(-48%, -49%) rotate(3deg) scale(0.88, 1.16);
+            opacity: 0.9;
+          }
+          100% {
+            transform: translate(-50%, -48%) rotate(8deg) scale(0.82, 1.04);
+            opacity: 0.96;
+          }
+        }
+
+        @keyframes draft-spark-fly {
+          0% {
+            transform: translate(0, 0) scale(0.35);
+            opacity: 0;
+          }
+          15% {
+            opacity: 1;
+          }
+          100% {
+            transform: translate(var(--spark-x), var(--spark-y)) scale(0);
+            opacity: 0;
+          }
+        }
+
+        @keyframes draft-smoke-rise {
+          0% {
+            transform: translate(0, 0) scale(0.4);
+            opacity: 0;
+          }
+          20% {
+            opacity: 0.45;
+          }
+          100% {
+            transform: translate(var(--smoke-x), -34px) scale(1.35);
+            opacity: 0;
+          }
+        }
+
+        .draft-fuse-fire {
+          pointer-events: none;
+          filter: drop-shadow(0 0 10px rgba(239, 88, 42, 0.72))
+            drop-shadow(0 0 22px rgba(255, 179, 71, 0.44));
+        }
+
+        .draft-flame {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          border-radius: 58% 42% 62% 38% / 64% 45% 55% 36%;
+          transform-origin: 50% 82%;
+        }
+
+        .draft-flame-outer {
+          width: 32px;
+          height: 42px;
+          background:
+            radial-gradient(circle at 42% 31%, #fff7ad 0 12%, transparent 28%),
+            radial-gradient(circle at 53% 55%, #ffb347 0 30%, #ef5b2f 52%, #9f281f 76%, transparent 78%);
+          animation: draft-flame-outer 0.68s infinite ease-in-out;
+        }
+
+        .draft-flame-inner {
+          width: 18px;
+          height: 29px;
+          background:
+            radial-gradient(circle at 52% 34%, #ffffff 0 16%, #fff3a3 32%, #ff9b24 70%, transparent 72%);
+          animation: draft-flame-inner 0.48s infinite ease-in-out;
+        }
+
+        .draft-spark {
+          position: absolute;
+          left: 23px;
+          top: 22px;
+          width: 5px;
+          height: 5px;
+          border-radius: 999px;
+          background: #fff2a4;
+          box-shadow: 0 0 8px rgba(255, 188, 64, 0.9);
+          animation: draft-spark-fly 0.72s infinite ease-out;
+        }
+
+        .draft-spark-one {
+          --spark-x: 28px;
+          --spark-y: -20px;
+        }
+
+        .draft-spark-two {
+          --spark-x: 15px;
+          --spark-y: 19px;
+          animation-delay: 0.17s;
+        }
+
+        .draft-spark-three {
+          --spark-x: -12px;
+          --spark-y: -18px;
+          animation-delay: 0.33s;
+        }
+
+        .draft-smoke {
+          position: absolute;
+          left: 22px;
+          top: 12px;
+          width: 14px;
+          height: 14px;
+          border-radius: 999px;
+          background: rgba(66, 72, 69, 0.32);
+          filter: blur(4px);
+          animation: draft-smoke-rise 1.35s infinite ease-out;
+        }
+
+        .draft-smoke-one {
+          --smoke-x: -13px;
+        }
+
+        .draft-smoke-two {
+          --smoke-x: 11px;
+          animation-delay: 0.48s;
+        }
+      `}</style>
     </div>
   );
 }

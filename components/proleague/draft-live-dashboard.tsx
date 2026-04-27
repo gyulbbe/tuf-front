@@ -743,6 +743,7 @@ function CompactTeamCard({
   draftTeam: DraftLiveTeam;
 }) {
   const isCurrentTeam = draftTeam.id === currentTeamId;
+  const pickerDisplayId = draftTeam.pickerUserLoginId?.trim() || "미지정";
 
   return (
     <article
@@ -759,8 +760,7 @@ function CompactTeamCard({
       </div>
 
       <p className="mt-2 text-[11px] text-muted">
-        {draftTeam.pickerName ? "픽커 지정됨" : "픽커 미지정"}
-        {isCurrentTeam ? " · 현재 픽 팀" : ""}
+        픽커 : {pickerDisplayId}
       </p>
 
       <div className="mt-3 space-y-1.5">

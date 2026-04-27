@@ -508,6 +508,43 @@ function readServerOffsetMs(serverNow: string | null | undefined) {
   return timestamp - Date.now();
 }
 
+function isStaleDraftSnapshot(
+  currentSnapshot: DraftLiveSnapshot | null,
+  incomingSnapshot: DraftLiveSnapshot,
+) {
+  if (!currentSnapshot || currentSnapshot.session.id !== incomingSnapshot.session.id) {
+    return false;
+  }
+
+  if (
+    currentSnapshot.session.status === "FINISHED" &&
+    incomingSnapshot.session.status !== "FINISHED"
+  ) {
+    return true;
+  }
+
+  const currentServerNow = toTimestamp(currentSnapshot.session.serverNow);
+  const incomingServerNow = toTimestamp(incomingSnapshot.session.serverNow);
+
+  if (
+    currentServerNow !== null &&
+    incomingServerNow !== null &&
+    incomingServerNow < currentServerNow
+  ) {
+    return true;
+  }
+
+  const currentPickNo = currentSnapshot.session.currentPickNo;
+  const incomingPickNo = incomingSnapshot.session.currentPickNo;
+
+  return (
+    incomingServerNow === null &&
+    typeof currentPickNo === "number" &&
+    typeof incomingPickNo === "number" &&
+    incomingPickNo < currentPickNo
+  );
+}
+
 function parsePositiveSeconds(value: string, fallback?: number) {
   const trimmed = value.trim();
 
@@ -1297,6 +1334,7 @@ export function DraftLiveDashboard({
           return;
         }
 
+        snapshotRef.current = nextSnapshot;
         startTransition(() => {
           setSnapshot(nextSnapshot);
           setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
@@ -1414,33 +1452,39 @@ export function DraftLiveDashboard({
           const nextPermissions =
             broadcastSnapshot.permissions ??
             buildLocalPermissions(broadcastSnapshot, user);
+          const nextSnapshot = {
+            ...broadcastSnapshot,
+            permissions: nextPermissions ?? snapshotRef.current?.permissions ?? null,
+          };
+
+          if (isStaleDraftSnapshot(snapshotRef.current, nextSnapshot)) {
+            return;
+          }
 
           if (
             localPreviewRef.current &&
-            (broadcastSnapshot.session.status !== "LIVE" ||
+            (nextSnapshot.session.status !== "LIVE" ||
               !nextPermissions.canPick ||
-              broadcastSnapshot.currentTurn === null)
+              nextSnapshot.currentTurn === null)
           ) {
             endLocalPreview(
               readPreviewAutoEndReason({
                 canPick: nextPermissions.canPick,
-                hasCurrentTurn: broadcastSnapshot.currentTurn !== null,
+                hasCurrentTurn: nextSnapshot.currentTurn !== null,
                 connectionState: "connected",
-                sessionStatus: broadcastSnapshot.session.status,
+                sessionStatus: nextSnapshot.session.status,
               }),
             );
           }
 
+          snapshotRef.current = nextSnapshot;
           startTransition(() => {
-            setSnapshot((currentSnapshot) => ({
-              ...broadcastSnapshot,
-              permissions: nextPermissions ?? currentSnapshot?.permissions ?? null,
-            }));
-            setServerOffsetMs(readServerOffsetMs(broadcastSnapshot.session.serverNow));
+            setSnapshot(nextSnapshot);
+            setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));
             setSessions((currentSessions) =>
               mergeSessionSummary(
                 currentSessions,
-                broadcastSnapshot.session,
+                nextSnapshot.session,
                 adminMode,
               ),
             );
@@ -1487,6 +1531,11 @@ export function DraftLiveDashboard({
     try {
       const nextSnapshot = await request();
 
+      if (isStaleDraftSnapshot(snapshotRef.current, nextSnapshot)) {
+        return;
+      }
+
+      snapshotRef.current = nextSnapshot;
       startTransition(() => {
         setSnapshot(nextSnapshot);
         setServerOffsetMs(readServerOffsetMs(nextSnapshot.session.serverNow));

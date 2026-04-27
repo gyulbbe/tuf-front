@@ -661,37 +661,37 @@ function renderFlamethrowerCone(
   const { canvas } = context;
   const centerX = canvas.width / 2;
   const bottomY = canvas.height;
-  const flameTopY = canvas.height * 0.43;
+  const flameTopY = canvas.height * 0.34;
   const time = options.now * 0.018;
   const leftJitter = Math.sin(time) * 5 + Math.cos(time * 1.7) * 3;
   const rightJitter = Math.cos(time * 1.3) * 5 + Math.sin(time * 2.1) * 3;
   const tipJitter = Math.sin(time * 2.6) * 5;
   const gradient = context.createLinearGradient(centerX, bottomY, centerX, flameTopY);
 
-  gradient.addColorStop(0, "rgba(160, 20, 10, 0.12)");
-  gradient.addColorStop(0.35, "rgba(255, 72, 18, 0.52)");
-  gradient.addColorStop(0.68, "rgba(255, 198, 48, 0.48)");
-  gradient.addColorStop(1, "rgba(255, 255, 230, 0.25)");
+  gradient.addColorStop(0, "rgba(170, 18, 8, 0.18)");
+  gradient.addColorStop(0.32, "rgba(255, 58, 12, 0.68)");
+  gradient.addColorStop(0.66, "rgba(255, 194, 42, 0.58)");
+  gradient.addColorStop(1, "rgba(255, 255, 230, 0.34)");
 
   context.save();
   context.globalCompositeOperation = "lighter";
   context.fillStyle = gradient;
   context.beginPath();
-  context.moveTo(centerX - canvas.width * 0.2 + leftJitter, bottomY);
+  context.moveTo(centerX - canvas.width * 0.27 + leftJitter, bottomY);
   context.lineTo(centerX + tipJitter, flameTopY);
-  context.lineTo(centerX + canvas.width * 0.2 + rightJitter, bottomY);
+  context.lineTo(centerX + canvas.width * 0.27 + rightJitter, bottomY);
   context.closePath();
   context.fill();
 
-  for (let index = 0; index < 22; index += 1) {
+  for (let index = 0; index < 36; index += 1) {
     const seed = options.now * 0.001 + index * 13;
     const t = (Math.sin(seed) + 1) / 2;
     const spread = (Math.cos(seed * 1.7) + 1) / 2 - 0.5;
-    const x = centerX + spread * canvas.width * 0.3 * (1 - t * 0.35);
+    const x = centerX + spread * canvas.width * 0.42 * (1 - t * 0.35);
     const y = bottomY - t * (bottomY - flameTopY);
     const radius = 1.5 + ((Math.sin(seed * 2.3) + 1) / 2) * 3.5;
 
-    context.fillStyle = t > 0.7 ? "rgba(255,255,210,0.55)" : "rgba(255,122,20,0.35)";
+    context.fillStyle = t > 0.7 ? "rgba(255,255,210,0.72)" : "rgba(255,98,18,0.48)";
     context.beginPath();
     context.arc(x, y, radius, 0, Math.PI * 2);
     context.fill();

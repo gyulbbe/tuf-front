@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 120">
+  <defs>
+    <linearGradient id="tank" x1="0" x2="1">
+      <stop offset="0" stop-color="#6b1611"/>
+      <stop offset="0.5" stop-color="#d0442f"/>
+      <stop offset="1" stop-color="#55110e"/>
+    </linearGradient>
+    <linearGradient id="nozzle" x1="0" x2="1">
+      <stop offset="0" stop-color="#36393d"/>
+      <stop offset="0.55" stop-color="#a5abb0"/>
+      <stop offset="1" stop-color="#202327"/>
+    </linearGradient>
+  </defs>
+  <rect width="250" height="120" fill="none"/>
+  <rect x="28" y="51" width="112" height="30" rx="15" fill="url(#tank)" stroke="#210705" stroke-width="5"/>
+  <rect x="114" y="57" width="88" height="14" rx="5" fill="url(#nozzle)" stroke="#111" stroke-width="4"/>
+  <rect x="193" y="54" width="36" height="20" rx="4" fill="#282b2f" stroke="#111" stroke-width="4"/>
+  <path d="M226 49c11 9 12 22 1 31 24-4 30-26-1-31z" fill="#ff9f1a"/>
+  <path d="M230 56c8 6 8 14 0 19 16-3 20-15 0-19z" fill="#ffe066"/>
+  <path d="M58 80l-28 24h56l24-24z" fill="#2c2520" stroke="#100c09" stroke-width="4"/>
+  <path d="M92 79h42l-5 28h-30z" fill="#3a2a22" stroke="#100c09" stroke-width="4"/>
+  <rect x="45" y="42" width="70" height="9" rx="4" fill="#2d3034" stroke="#111" stroke-width="3"/>
+</svg>

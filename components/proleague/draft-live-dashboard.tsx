@@ -18,6 +18,7 @@ import {
   resumeDraftSession,
   skipDraftTurn,
   startDraftSession,
+  type DraftAiAdvice,
   type DraftCandidate,
   type DraftLiveEvent,
   type DraftLiveNormalizedPosition,
@@ -56,6 +57,23 @@ type ActivityLogItem = {
   occurredAt: string | null;
 };
 
+type AiAdviceDisplayItem = {
+  id: string;
+  message: string;
+  occurredAt: string | null;
+  pickNo: number | null;
+  nextPickNo: number | null;
+  evaluatedCandidateName: string | null;
+  evaluatedTeamName: string | null;
+  recommendedCandidateName: string | null;
+  recommendedTeamName: string | null;
+};
+
+type DraftLiveAuxiliaryState = {
+  sessionId: number | null;
+  activityLog: ActivityLogItem[];
+};
+
 type CandidateDisplayInfo = {
   candidateName: string;
   tier: string | null;
@@ -81,6 +99,10 @@ const CONNECTION_LABELS: Record<ConnectionState, string> = {
   error: "연결 오류",
 };
 
+const AI_ADVISOR_NAME = "훈수충";
+const AI_PICK_REVIEW_READY = "AI_PICK_REVIEW_READY";
+const AI_RECOMMENDATION_READY = "AI_RECOMMENDATION_READY";
+
 const ACTIVITY_LOG_EVENT_TYPES = new Set([
   "PICK_COMPLETED",
   "PICK_SKIPPED",
@@ -105,6 +127,115 @@ function readErrorMessage(error: unknown) {
   }
 
   return "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+}
+
+function readTrimmedText(value: string | null | undefined) {
+  return value?.trim() || null;
+}
+
+function isAiAdviceEvent(event: DraftLiveEvent) {
+  return (
+    event.type === AI_PICK_REVIEW_READY ||
+    event.type === AI_RECOMMENDATION_READY
+  );
+}
+
+function readAiAdviceMessage(event: DraftLiveEvent) {
+  return readTrimmedText(event.aiAdvice?.message) ?? readTrimmedText(event.message);
+}
+
+function readAiAdviceNumber(value: number | null | undefined) {
+  return typeof value === "number" ? value : null;
+}
+
+function buildAiAdviceId(event: DraftLiveEvent) {
+  return [
+    event.type,
+    event.sessionId,
+    event.occurredAt ?? event.serverNow ?? "no-time",
+    event.aiAdvice?.pickNo ?? "no-pick",
+    event.aiAdvice?.nextPickNo ?? "no-next",
+    event.aiAdvice?.evaluatedCandidateUserId ?? "no-evaluated",
+    event.aiAdvice?.recommendedCandidateUserId ?? "no-recommended",
+    readAiAdviceMessage(event) ?? "",
+  ].join(":");
+}
+
+function buildAiAdviceDisplayItem(event: DraftLiveEvent) {
+  const message = readAiAdviceMessage(event);
+
+  if (!message) {
+    return null;
+  }
+
+  const advice: DraftAiAdvice | null = event.aiAdvice ?? null;
+
+  return {
+    id: buildAiAdviceId(event),
+    message,
+    occurredAt: event.occurredAt ?? event.serverNow,
+    pickNo: readAiAdviceNumber(advice?.pickNo),
+    nextPickNo: readAiAdviceNumber(advice?.nextPickNo),
+    evaluatedCandidateName: readTrimmedText(advice?.evaluatedCandidateName),
+    evaluatedTeamName: readTrimmedText(advice?.evaluatedTeamName),
+    recommendedCandidateName: readTrimmedText(advice?.recommendedCandidateName),
+    recommendedTeamName: readTrimmedText(advice?.recommendedTeamName),
+  } satisfies AiAdviceDisplayItem;
+}
+
+function isCurrentTurnRecommendation(
+  item: AiAdviceDisplayItem,
+  snapshot: DraftLiveSnapshot | null,
+) {
+  return (
+    typeof item.nextPickNo === "number" &&
+    snapshot?.currentTurn?.pickNo === item.nextPickNo
+  );
+}
+
+function formatAiAdviceSubject(item: AiAdviceDisplayItem) {
+  if (item.recommendedCandidateName && item.recommendedTeamName) {
+    return `추천 ${item.recommendedCandidateName} · ${item.recommendedTeamName}`;
+  }
+
+  if (item.recommendedCandidateName) {
+    return `추천 ${item.recommendedCandidateName}`;
+  }
+
+  if (item.evaluatedCandidateName && item.evaluatedTeamName) {
+    return `평가 ${item.evaluatedCandidateName} · ${item.evaluatedTeamName}`;
+  }
+
+  if (item.evaluatedCandidateName) {
+    return `평가 ${item.evaluatedCandidateName}`;
+  }
+
+  return null;
+}
+
+function formatAiAdviceLogMessage(
+  item: AiAdviceDisplayItem,
+  options?: {
+    staleRecommendation?: boolean;
+  },
+) {
+  const subject = formatAiAdviceSubject(item);
+  const label = options?.staleRecommendation
+    ? `${AI_ADVISOR_NAME} 지난 추천`
+    : AI_ADVISOR_NAME;
+
+  return subject
+    ? `${label} (${subject}): ${item.message}`
+    : `${label}: ${item.message}`;
+}
+
+function createDraftLiveAuxiliaryState(
+  sessionId: number | null,
+): DraftLiveAuxiliaryState {
+  return {
+    sessionId,
+    activityLog: [],
+  };
 }
 
 function isFinalPickMessage(message: string) {
@@ -172,6 +303,7 @@ function buildActivityLogId(event: DraftLiveEvent) {
     event.occurredAt ?? event.serverNow ?? "no-time",
     event.actorUserId ?? "system",
     event.message ?? "",
+    event.aiAdvice?.message ?? "",
   ].join(":");
 }
 
@@ -919,7 +1051,10 @@ export function DraftLiveDashboard({
   const [loadingSnapshot, setLoadingSnapshot] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<NoticeState | null>(null);
-  const [activityLog, setActivityLog] = useState<ActivityLogItem[]>([]);
+  const [auxiliaryState, setAuxiliaryState] =
+    useState<DraftLiveAuxiliaryState>(() =>
+      createDraftLiveAuxiliaryState(fixedSessionId),
+    );
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [resumeSeconds, setResumeSeconds] = useState("30");
@@ -951,6 +1086,17 @@ export function DraftLiveDashboard({
       : variant === "proleague"
         ? "프로리그 드래프트"
         : "드래프트 라이브";
+  const scopedAuxiliaryState =
+    auxiliaryState.sessionId === selectedSessionId
+      ? auxiliaryState
+      : createDraftLiveAuxiliaryState(selectedSessionId);
+  const activityLog = scopedAuxiliaryState.activityLog;
+
+  function readCurrentAuxiliaryState(currentState: DraftLiveAuxiliaryState) {
+    return currentState.sessionId === selectedSessionId
+      ? currentState
+      : createDraftLiveAuxiliaryState(selectedSessionId);
+  }
 
   function clearLocalPreviewAnimationFrame() {
     if (localPreviewAnimationFrameRef.current === null) {
@@ -979,13 +1125,61 @@ export function DraftLiveDashboard({
   }
 
   function pushActivityLog(item: ActivityLogItem) {
-    setActivityLog((currentLog) => {
-      if (currentLog.some((currentItem) => currentItem.id === item.id)) {
-        return currentLog;
+    setAuxiliaryState((currentState) => {
+      const nextState = readCurrentAuxiliaryState(currentState);
+
+      if (
+        nextState.activityLog.some((currentItem) => currentItem.id === item.id)
+      ) {
+        return nextState;
       }
 
-      return [item, ...currentLog].slice(0, 10);
+      return {
+        ...nextState,
+        activityLog: [item, ...nextState.activityLog].slice(0, 10),
+      };
     });
+  }
+
+  function handleAiAdviceEvent(event: DraftLiveEvent) {
+    const adviceItem = buildAiAdviceDisplayItem(event);
+
+    if (!adviceItem) {
+      return;
+    }
+
+    if (event.type === AI_PICK_REVIEW_READY) {
+      pushActivityLog({
+        id: adviceItem.id,
+        message: formatAiAdviceLogMessage(adviceItem),
+        occurredAt: adviceItem.occurredAt,
+      });
+      return;
+    }
+
+    if (event.type === AI_RECOMMENDATION_READY) {
+      const matchesCurrentTurn = isCurrentTurnRecommendation(
+        adviceItem,
+        snapshotRef.current,
+      );
+
+      if (matchesCurrentTurn) {
+        pushActivityLog({
+          id: adviceItem.id,
+          message: formatAiAdviceLogMessage(adviceItem),
+          occurredAt: adviceItem.occurredAt,
+        });
+        return;
+      }
+
+      pushActivityLog({
+        id: adviceItem.id,
+        message: formatAiAdviceLogMessage(adviceItem, {
+          staleRecommendation: !matchesCurrentTurn,
+        }),
+        occurredAt: adviceItem.occurredAt,
+      });
+    }
   }
 
   function endLocalPreview(endReason: DraftLivePreviewEndReason) {
@@ -1159,10 +1353,6 @@ export function DraftLiveDashboard({
   useEffect(() => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
-
-  useEffect(() => {
-    setActivityLog([]);
-  }, [selectedSessionId]);
 
   useEffect(() => {
     if (fixedSessionId !== null) {
@@ -1444,6 +1634,11 @@ export function DraftLiveDashboard({
               turnKey,
             },
           }));
+          return;
+        }
+
+        if (isAiAdviceEvent(event)) {
+          handleAiAdviceEvent(event);
           return;
         }
 

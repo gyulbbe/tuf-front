@@ -160,6 +160,20 @@ export type DraftLiveSnapshot = {
   permissions: DraftLivePermissions | null;
 };
 
+export type DraftAiAdvice = {
+  pickNo: number | null;
+  evaluatedTeamId: number | null;
+  evaluatedTeamName: string | null;
+  evaluatedCandidateUserId: number | null;
+  evaluatedCandidateName: string | null;
+  nextPickNo: number | null;
+  recommendedTeamId: number | null;
+  recommendedTeamName: string | null;
+  recommendedCandidateUserId: number | null;
+  recommendedCandidateName: string | null;
+  message: string | null;
+};
+
 export type DraftLiveEvent = {
   type: string;
   sessionId: number;
@@ -171,6 +185,7 @@ export type DraftLiveEvent = {
   message: string | null;
   snapshot: DraftLiveSnapshot | null;
   preview?: DraftLivePreviewPayload | null;
+  aiAdvice?: DraftAiAdvice | null;
 };
 
 export type DraftSessionDetail = {

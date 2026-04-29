@@ -193,40 +193,17 @@ function isCurrentTurnRecommendation(
   );
 }
 
-function formatAiAdviceSubject(item: AiAdviceDisplayItem) {
-  if (item.recommendedCandidateName && item.recommendedTeamName) {
-    return `추천 ${item.recommendedCandidateName} · ${item.recommendedTeamName}`;
-  }
-
-  if (item.recommendedCandidateName) {
-    return `추천 ${item.recommendedCandidateName}`;
-  }
-
-  if (item.evaluatedCandidateName && item.evaluatedTeamName) {
-    return `평가 ${item.evaluatedCandidateName} · ${item.evaluatedTeamName}`;
-  }
-
-  if (item.evaluatedCandidateName) {
-    return `평가 ${item.evaluatedCandidateName}`;
-  }
-
-  return null;
-}
-
 function formatAiAdviceLogMessage(
   item: AiAdviceDisplayItem,
   options?: {
     staleRecommendation?: boolean;
   },
 ) {
-  const subject = formatAiAdviceSubject(item);
   const label = options?.staleRecommendation
     ? `${AI_ADVISOR_NAME} 지난 추천`
     : AI_ADVISOR_NAME;
 
-  return subject
-    ? `${label} (${subject}): ${item.message}`
-    : `${label}: ${item.message}`;
+  return `${label}: ${item.message}`;
 }
 
 function createDraftLiveAuxiliaryState(

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 type AdSlotProps = {
@@ -18,6 +17,7 @@ type KakaoAdFitSlotConfig = {
 
 const KAKAO_ADFIT_SCRIPT_SRC = "https://t1.kakaocdn.net/kas/static/ba.min.js";
 const PC_AD_MEDIA_QUERY = "(min-width: 1024px)";
+const KAKAO_AD_PROVIDER = process.env.NEXT_PUBLIC_AD_PROVIDER;
 
 const kakaoAdSlots: Record<
   string,
@@ -53,7 +53,7 @@ const kakaoAdSlots: Record<
 };
 
 function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
+  const [matches, setMatches] = useState<boolean | null>(null);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(query);
@@ -109,19 +109,16 @@ function KakaoAdFitSlot({ height, unit, width }: KakaoAdFitSlotConfig) {
 }
 
 export function AdSlot({ className, slotId }: AdSlotProps) {
-  const pathname = usePathname();
   const isPcAdViewport = useMediaQuery(PC_AD_MEDIA_QUERY);
-  const adProvider = process.env.NEXT_PUBLIC_AD_PROVIDER;
   const kakaoSlotGroup = kakaoAdSlots[slotId];
-  const kakaoSlot = isPcAdViewport
-    ? kakaoSlotGroup?.pc
-    : kakaoSlotGroup?.mobile;
-  const shouldRenderKakaoAd =
-    adProvider === "kakao" &&
-    Boolean(kakaoSlot?.unit) &&
-    Boolean(pathname);
+  const kakaoSlot =
+    isPcAdViewport === null
+      ? null
+      : isPcAdViewport
+        ? kakaoSlotGroup?.pc
+        : kakaoSlotGroup?.mobile;
 
-  if (!shouldRenderKakaoAd) {
+  if (KAKAO_AD_PROVIDER !== "kakao" || !kakaoSlot?.unit) {
     return null;
   }
 

@@ -57,7 +57,7 @@ function AccountNotice({ notice }: { notice: NoticeState }) {
   return (
     <p
       className={cn(
-        "rounded-2xl px-4 py-3 text-sm leading-7",
+        "rounded-lg px-4 py-3 text-sm leading-7",
         getNoticeClassName(notice.tone),
       )}
     >
@@ -164,9 +164,9 @@ export function AccountWorkspace() {
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "rounded-[24px] border px-5 py-4 text-left transition-colors",
+                  "rounded-lg border px-5 py-4 text-left transition-colors",
                   isActive
-                    ? "border-accent-soft bg-white text-foreground shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]"
+                    ? "border-accent-soft bg-white text-foreground shadow-[0_16px_50px_rgba(23,33,43,0.08)]"
                     : "border-line bg-surface-strong text-muted hover:border-accent-soft hover:bg-white hover:text-foreground",
                 )}
               >
@@ -177,7 +177,7 @@ export function AccountWorkspace() {
           })}
         </div>
 
-        <div className="mt-8 rounded-[26px] border border-line bg-surface-strong p-5 sm:p-6">
+        <div className="mt-8 rounded-lg border border-line bg-surface-strong p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold text-foreground">
@@ -207,12 +207,12 @@ export function AccountWorkspace() {
           ) : null}
 
           {isLoadingDetail ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
+            <div className="mt-5 rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
               계정 정보를 불러오는 중입니다.
             </div>
           ) : detail ? (
             <div className="mt-5 grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border border-line bg-surface-muted/60 px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface-muted/60 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                   ID
                 </p>
@@ -220,7 +220,7 @@ export function AccountWorkspace() {
                   {detail.userId}
                 </p>
               </div>
-              <div className="rounded-2xl border border-line bg-surface-muted/60 px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface-muted/60 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                   이름
                 </p>
@@ -228,7 +228,7 @@ export function AccountWorkspace() {
                   {detail.name || "-"}
                 </p>
               </div>
-              <div className="rounded-2xl border border-line bg-surface-muted/60 px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface-muted/60 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                   티어
                 </p>
@@ -236,7 +236,7 @@ export function AccountWorkspace() {
                   {detail.tier || "-"}
                 </p>
               </div>
-              <div className="rounded-2xl border border-line bg-surface-muted/60 px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface-muted/60 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                   종족
                 </p>
@@ -244,7 +244,7 @@ export function AccountWorkspace() {
                   {detail.race || "-"}
                 </p>
               </div>
-              <div className="rounded-2xl border border-line bg-surface-muted/60 px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface-muted/60 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                   배틀태그
                 </p>
@@ -252,7 +252,7 @@ export function AccountWorkspace() {
                   {detail.battleTag || "-"}
                 </p>
               </div>
-              <div className="rounded-2xl border border-line bg-surface-muted/60 px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface-muted/60 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                   코인
                 </p>
@@ -264,7 +264,7 @@ export function AccountWorkspace() {
           ) : null}
 
           {isPasswordFormOpen ? (
-            <div className="mt-6 rounded-[24px] border border-dashed border-line bg-surface-muted/60 p-4 sm:p-5">
+            <div className="mt-6 rounded-lg border border-dashed border-line bg-surface-muted/60 p-4 sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">

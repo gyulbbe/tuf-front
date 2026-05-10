@@ -113,10 +113,10 @@ function buildBadgeClassName(status: string | null | undefined) {
     case "RPS_PENDING":
       return "border-accent/20 bg-accent-soft text-accent-ink";
     case "PICKING":
-      return "border-amber-300/40 bg-amber-100 text-amber-900";
+      return "border-warning-ink/20 bg-warning-soft text-warning-ink";
     case "FINISHED":
     case "PICKED":
-      return "border-emerald-300/40 bg-emerald-100 text-emerald-900";
+      return "border-success-ink/20 bg-success-soft text-success-ink";
     case "EXCLUDED":
       return "border-danger-ink/20 bg-danger-soft text-danger-ink";
     default:

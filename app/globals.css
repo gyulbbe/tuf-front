@@ -1,20 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f3f4ef;
-  --foreground: #1f2a28;
-  --surface: rgba(255, 255, 255, 0.82);
-  --surface-muted: #e9ece5;
+  --background: #f5f7fa;
+  --foreground: #17212b;
+  --surface: #ffffff;
+  --surface-muted: #eef3f7;
   --surface-strong: #ffffff;
-  --line: rgba(31, 42, 40, 0.1);
-  --muted: #64706a;
-  --accent: #56655f;
-  --accent-ink: #31413b;
-  --accent-soft: #dce5de;
-  --success-soft: #e3efe5;
-  --success-ink: #28543c;
-  --danger-soft: #f6e2df;
-  --danger-ink: #8a423a;
+  --line: #d9e1e8;
+  --line-strong: #b9c6d1;
+  --muted: #637384;
+  --accent: #146c94;
+  --accent-ink: #0d4f73;
+  --accent-soft: #d9eef7;
+  --success-soft: #e0f1e9;
+  --success-ink: #267550;
+  --danger-soft: #f8e5e5;
+  --danger-ink: #b34040;
+  --warning-soft: #f8edcf;
+  --warning-ink: #8a6500;
 }
 
 @theme inline {
@@ -24,6 +27,7 @@
   --color-surface-muted: var(--surface-muted);
   --color-surface-strong: var(--surface-strong);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
@@ -32,6 +36,8 @@
   --color-success-ink: var(--success-ink);
   --color-danger-soft: var(--danger-soft);
   --color-danger-ink: var(--danger-ink);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-ink: var(--warning-ink);
   --font-sans:
     "Pretendard",
     "Apple SD Gothic Neo",
@@ -52,8 +58,8 @@
 
 html {
   background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.88), transparent 48%),
-    linear-gradient(180deg, #f8f8f4 0%, #eef1eb 100%);
+    linear-gradient(180deg, #edf3f8 0, #f5f7fa 260px),
+    var(--background);
   color: var(--foreground);
   scroll-behavior: smooth;
 }
@@ -78,7 +84,7 @@ select {
 }
 
 ::selection {
-  background: rgba(86, 101, 95, 0.2);
+  background: rgba(20, 108, 148, 0.18);
   color: var(--foreground);
   font-family: var(--font-geist-sans), sans-serif;
 }

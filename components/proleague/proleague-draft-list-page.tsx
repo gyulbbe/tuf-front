@@ -57,7 +57,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const secondaryLinkClassName =
-  "inline-flex items-center justify-center rounded-full border border-line px-4 py-3 text-sm font-medium text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground";
+  "inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-4 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink";
 
 const primaryLinkClassName =
   "inline-flex items-center justify-center rounded-full bg-accent px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-ink";
@@ -331,17 +331,17 @@ export function ProleagueDraftListPage() {
         </div>
 
         {error ? (
-          <div className="mt-6 rounded-[24px] border border-danger-ink/20 bg-danger-soft px-5 py-4">
+          <div className="mt-6 rounded-lg border border-danger-ink/20 bg-danger-soft px-5 py-4">
             <p className="text-sm font-medium text-danger-ink">{error}</p>
           </div>
         ) : null}
 
         {loading ? (
-          <div className="mt-6 rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
+          <div className="mt-6 rounded-lg border border-dashed border-line px-6 py-10 text-sm text-muted">
             진행 가능한 프로리그 드래프트를 불러오는 중입니다.
           </div>
         ) : activeSessions.length === 0 ? (
-          <div className="mt-6 rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
+          <div className="mt-6 rounded-lg border border-dashed border-line px-6 py-10 text-sm text-muted">
             아직 진행 가능한 프로리그 드래프트가 없습니다.
           </div>
         ) : (

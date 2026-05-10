@@ -126,7 +126,7 @@ export function AdSlot({ className, slotId }: AdSlotProps) {
     <aside
       data-ad-slot={slotId}
       className={cn(
-        "rounded-[24px] border border-dashed border-line bg-surface px-4 py-4 shadow-[0_24px_60px_-48px_rgba(31,42,40,0.65)] backdrop-blur-xl",
+        "rounded-lg border border-dashed border-line bg-surface px-4 py-4 shadow-[0_16px_50px_rgba(23,33,43,0.08)]",
         className,
       )}
     >

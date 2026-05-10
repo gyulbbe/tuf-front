@@ -119,14 +119,14 @@ export function LoginForm({
       {error ? (
         <p
           aria-live="polite"
-          className="rounded-2xl border border-danger-soft bg-danger-soft px-4 py-3 text-sm leading-6 text-danger-ink"
+          className="rounded-lg border border-danger-soft bg-danger-soft px-4 py-3 text-sm leading-6 text-danger-ink"
         >
           {error}
         </p>
       ) : reasonMessage && !isAuthenticated ? (
         <p
           aria-live="polite"
-          className="rounded-2xl border border-danger-soft bg-danger-soft px-4 py-3 text-sm leading-6 text-danger-ink"
+          className="rounded-lg border border-danger-soft bg-danger-soft px-4 py-3 text-sm leading-6 text-danger-ink"
         >
           {reasonMessage}
         </p>

@@ -205,7 +205,7 @@ export function RpsDraftUserSearch({
   return (
     <div
       ref={rootRef}
-      className="rounded-[22px] border border-line bg-surface-strong px-4 py-4"
+      className="rounded-lg border border-line bg-surface-strong px-4 py-4"
     >
       <div className="flex flex-col gap-3">
         <div>
@@ -295,7 +295,7 @@ export function RpsDraftUserSearch({
         </div>
 
         {selectedUser ? (
-          <div className="rounded-2xl bg-surface-muted px-4 py-3 text-sm text-foreground">
+          <div className="rounded-lg bg-surface-muted px-4 py-3 text-sm text-foreground">
             선택됨: {selectedUser.userId}
             <span className="mt-1 block text-xs text-muted">
               {describeUser(selectedUser)}
@@ -331,7 +331,7 @@ export function RpsDraftUserSearch({
                     selectUser(user);
                   }}
                   className={[
-                    "rounded-2xl border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70",
+                    "rounded-lg border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-70",
                     isActive
                       ? "border-accent-soft bg-accent-soft/60 shadow-sm"
                       : "border-line bg-surface-strong hover:border-accent-soft hover:bg-white",

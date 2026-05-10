@@ -36,7 +36,7 @@ type CreateFormState = AdminUserCreateRequest;
 type EditFormState = AdminUserUpdateRequest;
 
 const SELECT_CLASS_NAME =
-  "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
+  "w-full rounded-lg border border-line-strong bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
 
 const SEARCH_FILTER_DEFAULT: SearchFilterState = {
   keyword: "",
@@ -494,7 +494,7 @@ export function AdminUserManagementConsole() {
             </p>
           </div>
 
-          <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-3 text-sm text-muted">
+          <div className="rounded-lg border border-line bg-surface-strong px-4 py-3 text-sm text-muted">
             현재 목록 {users.length}명
           </div>
         </div>
@@ -502,7 +502,7 @@ export function AdminUserManagementConsole() {
         {notice ? (
           <div
             className={cn(
-              "mt-5 rounded-2xl px-4 py-3 text-sm leading-7",
+              "mt-5 rounded-lg px-4 py-3 text-sm leading-7",
               getNoticeClassName(notice.tone),
             )}
           >
@@ -605,11 +605,11 @@ export function AdminUserManagementConsole() {
 
             <div className="mt-5 space-y-3">
               {loadingUsers ? (
-                <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+                <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
                   사용자 목록을 불러오는 중이다.
                 </div>
               ) : users.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+                <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
                   조건에 맞는 사용자가 없다.
                 </div>
               ) : (
@@ -622,9 +622,9 @@ export function AdminUserManagementConsole() {
                         key={user.id}
                         type="button"
                         className={cn(
-                          "w-full rounded-[24px] border px-4 py-4 text-left transition-colors",
+                          "w-full rounded-lg border px-4 py-4 text-left transition-colors",
                           isSelected
-                            ? "border-accent-soft bg-white shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]"
+                            ? "border-accent-soft bg-white shadow-[0_16px_50px_rgba(23,33,43,0.08)]"
                             : "border-line bg-surface-strong hover:border-accent-soft hover:bg-white",
                           user.status === "INACTIVE" && "opacity-80",
                         )}
@@ -826,7 +826,7 @@ export function AdminUserManagementConsole() {
             </div>
 
             {!selectedUser ? (
-              <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+              <div className="mt-5 rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
                 수정할 사용자를 왼쪽 목록에서 선택해 달라.
               </div>
             ) : (
@@ -903,7 +903,7 @@ export function AdminUserManagementConsole() {
                   </select>
                 </label>
 
-                <div className="rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+                <div className="rounded-lg border border-line bg-surface-strong px-4 py-4">
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-foreground">
                       권한

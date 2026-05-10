@@ -191,7 +191,7 @@ export function TufBotChat() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(244,246,241,0.94)_100%)]">
+    <div className="flex h-full min-h-0 flex-col bg-[linear-gradient(180deg,rgba(255,255,255,0.78)_0%,rgba(245,247,250,0.96)_100%)]">
       <div
         ref={transcriptRef}
         className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6"
@@ -199,7 +199,7 @@ export function TufBotChat() {
         {messages.map((message) => {
           const isAssistant = message.role === "assistant";
           const bubbleClassName = cn(
-            "max-w-[88%] rounded-[24px] px-4 py-3 shadow-[0_12px_40px_-32px_rgba(31,42,40,0.75)]",
+            "max-w-[88%] rounded-lg px-4 py-3 shadow-[0_16px_50px_rgba(23,33,43,0.08)]",
             isAssistant
               ? message.state === "error"
                 ? "border border-danger-ink/20 bg-danger-soft text-danger-ink"
@@ -233,7 +233,7 @@ export function TufBotChat() {
         }}
         className="border-t border-line bg-white/55 p-4 sm:p-5"
       >
-        <div className="rounded-[26px] border border-line bg-surface-strong p-3 shadow-[0_18px_50px_-36px_rgba(31,42,40,0.7)]">
+        <div className="rounded-lg border border-line bg-surface-strong p-3 shadow-[0_16px_50px_rgba(23,33,43,0.08)]">
           <Textarea
             value={composer}
             onChange={(event) => setComposer(event.target.value)}

@@ -52,16 +52,16 @@ function findBestMatchingSubTab(
 
 function buildTabClassName(isActive: boolean) {
   return cn(
-    "rounded-full px-4 py-2 text-sm transition-colors",
+    "rounded-full px-4 py-2 text-sm font-semibold transition-colors",
     isActive
       ? "bg-accent text-white"
-      : "border border-line text-muted hover:border-accent-soft hover:bg-surface-strong hover:text-foreground",
+      : "border border-line-strong bg-white text-muted hover:border-accent hover:bg-accent-soft hover:text-accent-ink",
   );
 }
 
 function buildSubTabClassName(isActive: boolean) {
   return cn(
-    "block rounded-[18px] px-4 py-3 text-sm transition-colors",
+    "block rounded-lg px-4 py-3 text-sm transition-colors",
     isActive
       ? "bg-accent text-white"
       : "text-foreground hover:bg-surface-muted",
@@ -85,7 +85,7 @@ function TabLink({
     return (
       <span
         title={`${description} URL 미연결`}
-        className="rounded-full border border-dashed border-line px-4 py-2 text-sm text-muted/80"
+        className="rounded-full border border-dashed border-line-strong bg-white px-4 py-2 text-sm text-muted/80"
       >
         {label}
       </span>
@@ -142,7 +142,7 @@ function ExternalTabLink({
     return (
       <span
         title={`${description} URL 미연결`}
-        className="rounded-full border border-dashed border-line px-4 py-2 text-sm text-muted/80"
+        className="rounded-full border border-dashed border-line-strong bg-white px-4 py-2 text-sm text-muted/80"
       >
         {label}
       </span>
@@ -178,7 +178,7 @@ function SubTabItem({
       return (
         <span
           title={`${item.description} URL 미연결`}
-          className="block rounded-[18px] border border-dashed border-line px-4 py-3 text-sm text-muted/80"
+          className="block rounded-lg border border-dashed border-line-strong bg-white px-4 py-3 text-sm text-muted/80"
         >
           {item.label}
         </span>
@@ -433,7 +433,7 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                   aria-label={`${tab.label} 하위 메뉴`}
                   aria-expanded={isMenuOpen}
                   className={cn(
-                    "rounded-full border border-line px-3 py-2 text-xs text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground sm:hidden",
+                    "rounded-full border border-line-strong bg-white px-3 py-2 text-xs text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink sm:hidden",
                     isMenuOpen && "border-accent bg-accent-soft text-accent-ink",
                   )}
                   onClick={() => {
@@ -451,7 +451,7 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
                 "sm:absolute sm:left-0 sm:top-full sm:z-30 sm:min-w-56",
               )}
             >
-              <div className="rounded-[24px] border border-line bg-surface p-2 shadow-[0_24px_60px_-48px_rgba(31,42,40,0.65)] backdrop-blur-xl">
+              <div className="rounded-lg border border-line bg-surface p-2 shadow-[0_16px_50px_rgba(23,33,43,0.12)]">
                 <div className="space-y-1">
                   {tab.items?.map((item) => (
                     <SubTabItem

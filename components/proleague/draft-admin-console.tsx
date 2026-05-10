@@ -110,7 +110,7 @@ type UserAutocompleteInputProps = {
 const RACE_OPTIONS = ["TERRAN", "ZERG", "PROTOSS", "RANDOM"] as const;
 
 const SELECT_CLASS_NAME =
-  "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
+  "w-full rounded-lg border border-line-strong bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
 
 const EMPTY_CREATE_FORM: SessionFormState = {
   title: "",
@@ -125,7 +125,7 @@ const EMPTY_EDIT_FORM: SessionFormState = {
 };
 
 const secondaryLinkClassName =
-  "inline-flex items-center justify-center rounded-full border border-line px-4 py-3 text-sm font-medium text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground";
+  "inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-4 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink";
 
 const primaryLinkClassName =
   "inline-flex items-center justify-center rounded-full bg-accent px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-ink";
@@ -775,7 +775,7 @@ function UserAutocompleteInput({
       {loading ? <p className="mt-2 text-xs text-muted">검색 중...</p> : null}
 
       {isOpen && value.trim() ? (
-        <div className="absolute left-0 right-0 z-[80] mt-2 overflow-hidden rounded-[20px] border border-line bg-white shadow-[0_18px_60px_-40px_rgba(31,42,40,0.7)]">
+        <div className="absolute left-0 right-0 z-[80] mt-2 overflow-hidden rounded-lg border border-line bg-white shadow-[0_16px_50px_rgba(23,33,43,0.08)]">
           <div className="border-b border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
             아이디 검색 결과
           </div>
@@ -791,7 +791,7 @@ function UserAutocompleteInput({
                     itemRefs.current[index] = node;
                   }}
                   className={cn(
-                    "mx-1 flex w-[calc(100%-0.5rem)] items-start justify-between gap-3 rounded-2xl border px-3 py-2 text-left transition-colors",
+                    "mx-1 flex w-[calc(100%-0.5rem)] items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors",
                     index === displayedActiveIndex
                       ? "border-accent-soft bg-accent-soft/60 shadow-sm"
                       : "border-transparent hover:bg-surface-strong",
@@ -847,7 +847,7 @@ function TeamRow({
   onSave: () => Promise<void>;
 }) {
   return (
-    <div className="rounded-[22px] border border-line bg-surface-strong px-3 py-3">
+    <div className="rounded-lg border border-line bg-surface-strong px-3 py-3">
       <div className="flex flex-wrap items-start gap-3">
         <p className="text-sm font-semibold text-foreground">
           {draftTeam.teamName}
@@ -898,7 +898,7 @@ function TeamPickerManagerClean({
   ) => Promise<void>;
 }) {
   return (
-    <article className="relative overflow-visible rounded-[22px] border border-line bg-surface-strong px-3 py-3 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]">
+    <article className="relative overflow-visible rounded-lg border border-line bg-surface-strong px-3 py-3 shadow-[0_16px_50px_rgba(23,33,43,0.08)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-foreground">{draftTeam.teamName}</p>
@@ -966,7 +966,7 @@ function CandidateComposerClean({
   onCreate: (user: DraftUserSearchResult) => Promise<void>;
 }) {
   return (
-    <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+    <div className="mt-5 rounded-lg border border-line bg-surface-strong px-4 py-4">
       <div className="grid gap-3">
         <UserAutocompleteInput
           busy={pendingAction !== null}
@@ -1051,7 +1051,7 @@ function CandidateTierSection({
   onDelete: (candidateUserId: number) => Promise<void>;
 }) {
   return (
-    <div className="rounded-[22px] border border-line bg-surface-strong">
+    <div className="rounded-lg border border-line bg-surface-strong">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
         <p className="text-sm font-semibold text-foreground">티어 {group.tierLabel}</p>
         <span className="text-xs text-muted">{group.items.length}명</span>
@@ -1987,7 +1987,7 @@ export function DraftAdminConsole({
   return (
     <div className="space-y-4">
       {notice ? (
-        <div className={cn("rounded-[24px] px-4 py-4 text-sm", getNoticeClassName(notice.tone))}>
+        <div className={cn("rounded-lg px-4 py-4 text-sm", getNoticeClassName(notice.tone))}>
           {notice.text}
         </div>
       ) : null}
@@ -2032,7 +2032,7 @@ export function DraftAdminConsole({
                 }}
                 placeholder="픽 제한 시간(초)"
               />
-            </div>            <div className="rounded-[22px] bg-surface-muted px-4 py-4 text-sm leading-7 text-muted">
+            </div>            <div className="rounded-lg bg-surface-muted px-4 py-4 text-sm leading-7 text-muted">
               고정 순서 기준으로 순서표를 만들고 라이브 드래프트를 진행한다.
             </div>
             <Button
@@ -2088,7 +2088,7 @@ export function DraftAdminConsole({
             {isSessionScoped ? (
               selectedSessionDetail ? (
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
+                  <div className="rounded-lg border border-line bg-surface-strong px-4 py-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
                       제목
                     </p>
@@ -2096,7 +2096,7 @@ export function DraftAdminConsole({
                       {selectedSessionDetail.title}
                     </p>
                   </div>
-                  <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
+                  <div className="rounded-lg border border-line bg-surface-strong px-4 py-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
                       팀 수
                     </p>
@@ -2104,7 +2104,7 @@ export function DraftAdminConsole({
                       {selectedSessionDetail.teamCount}
                     </p>
                   </div>
-                  <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
+                  <div className="rounded-lg border border-line bg-surface-strong px-4 py-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
                       픽 제한 시간
                     </p>
@@ -2114,7 +2114,7 @@ export function DraftAdminConsole({
                   </div>
                 </div>
               ) : (
-                <div className="rounded-[22px] border border-dashed border-line px-4 py-4 text-sm text-muted">
+                <div className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">
                   {loadingDetail
                     ? "드래프트 정보를 불러오는 중입니다."
                     : "드래프트 정보를 불러오지 못했습니다."}
@@ -2164,12 +2164,12 @@ export function DraftAdminConsole({
             </div>
 
             {selectedSessionDetail ? (
-              <div className="rounded-[22px] bg-surface-muted px-4 py-4 text-sm leading-7 text-muted">
+              <div className="rounded-lg bg-surface-muted px-4 py-4 text-sm leading-7 text-muted">
                 <p>시작: {formatDateTime(selectedSessionDetail.startedAt)}</p>
                 <p>종료: {formatDateTime(selectedSessionDetail.endedAt)}</p>
               </div>
             ) : (
-              <div className="rounded-[22px] border border-dashed border-line px-4 py-4 text-sm text-muted">
+              <div className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">
                 {loadingDetail
                   ? "드래프트 정보를 불러오는 중이다."
                   : "수정할 드래프트를 선택해 달라."}
@@ -2201,13 +2201,13 @@ export function DraftAdminConsole({
           </div>
 
           {!selectedSessionDetail ? (
-            <div className="mt-4 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+            <div className="mt-4 rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
               먼저 드래프트를 선택해 달라.
             </div>
           ) : (
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {sortedTeams.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted md:col-span-2">
+                <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted md:col-span-2">
                   아직 준비된 팀이 없다.
                 </div>
               ) : (
@@ -2242,11 +2242,11 @@ export function DraftAdminConsole({
 
           <div className="relative z-10 mt-4 overflow-visible">
             {!selectedSessionDetail ? (
-              <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+              <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
                 드래프트를 먼저 선택해 달라.
               </div>
             ) : sortedTeams.length === 0 ? (
-              <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+              <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
                 픽커를 지정하려면 먼저 팀이 있어야 한다.
               </div>
             ) : (
@@ -2286,19 +2286,19 @@ export function DraftAdminConsole({
                 드래프트 인원 등록 / 삭제
               </p>
             </div>
-            <div className="rounded-[22px] bg-surface-muted px-4 py-3 text-sm text-muted">
+            <div className="rounded-lg bg-surface-muted px-4 py-3 text-sm text-muted">
               대기 {waitingCandidateCount}명
             </div>
           </div>
 
           {!selectedSessionDetail ? (
-            <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+            <div className="mt-5 rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
               드래프트를 먼저 선택해 달라.
             </div>
           ) : (
             <>
               {!isPickerSetupReady ? (
-                <div className="mt-5 rounded-[20px] border border-dashed border-line bg-surface-muted px-4 py-4 text-sm font-medium text-muted">
+                <div className="mt-5 rounded-lg border border-dashed border-line bg-surface-muted px-4 py-4 text-sm font-medium text-muted">
                   팀별 픽커 지정부터 해주세요.
                 </div>
               ) : null}
@@ -2312,7 +2312,7 @@ export function DraftAdminConsole({
               />
               <div className="mt-5 space-y-3">
                 {sortedCandidates.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+                  <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
                     아직 등록한 드래프트 인원이 없다.
                   </div>
                 ) : (
@@ -2344,26 +2344,26 @@ export function DraftAdminConsole({
           </div>
 
           {!selectedSessionDetail ? (
-            <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+            <div className="mt-5 rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
               드래프트를 먼저 선택해 달라.
             </div>
           ) : sortedTeams.length === 0 ? (
-            <div className="mt-5 rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
+            <div className="mt-5 rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
               순서를 만들려면 먼저 팀이 있어야 한다.
             </div>
           ) : (
             <>
               {!isPickerSetupReady ? (
-                <div className="mt-5 rounded-[20px] border border-dashed border-line bg-surface-muted px-4 py-4 text-sm font-medium text-muted">
+                <div className="mt-5 rounded-lg border border-dashed border-line bg-surface-muted px-4 py-4 text-sm font-medium text-muted">
                   팀별 픽커 지정부터 해주세요.
                 </div>
               ) : null}
-              <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-4 py-4">
+              <div className="mt-5 rounded-lg border border-line bg-surface-strong px-4 py-4">
                 <div className="grid gap-3">
                   <div className="grid gap-3 md:grid-cols-2">
                     <div
                       className={cn(
-                        "rounded-[20px] border px-4 py-4 text-sm text-muted",
+                        "rounded-lg border px-4 py-4 text-sm text-muted",
                         effectiveOrderGenerationMode === "basic"
                           ? "border-accent-soft bg-white"
                           : "border-line bg-surface",
@@ -2377,7 +2377,7 @@ export function DraftAdminConsole({
                     </div>
                     <div
                       className={cn(
-                        "rounded-[20px] border px-4 py-4 text-sm text-muted",
+                        "rounded-lg border px-4 py-4 text-sm text-muted",
                         effectiveOrderGenerationMode === "snake"
                           ? "border-accent-soft bg-white"
                           : "border-line bg-surface",
@@ -2436,7 +2436,7 @@ export function DraftAdminConsole({
 
               <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {(creationFlow ? stagedOrderPlan.length === 0 : sortedOrders.length === 0) ? (
-                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm text-muted sm:col-span-2 xl:col-span-3">
+                  <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted sm:col-span-2 xl:col-span-3">
                     {creationFlow
                       ? "픽 순서 생성 방식을 고르면 순서 미리보기가 나온다."
                       : "아직 등록한 드래프트 순서가 없다."}

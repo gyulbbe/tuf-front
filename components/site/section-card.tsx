@@ -15,7 +15,7 @@ export function SectionCard({
   return (
     <article
       className={cn(
-        "rounded-[24px] border border-line bg-surface-strong px-5 py-5",
+        "rounded-lg border border-line bg-surface-strong px-5 py-5",
         className,
       )}
       {...props}

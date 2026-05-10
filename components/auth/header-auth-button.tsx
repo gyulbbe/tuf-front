@@ -48,7 +48,7 @@ export function HeaderAuthButton() {
 
   if (status === "loading") {
     return (
-      <span className="inline-flex rounded-full border border-line px-4 py-2 text-sm text-muted/70">
+      <span className="inline-flex rounded-full border border-line-strong bg-white px-4 py-2 text-sm text-muted/70">
         확인 중...
       </span>
     );
@@ -65,8 +65,8 @@ export function HeaderAuthButton() {
           className={cn(
             "inline-flex rounded-full border px-4 py-2 text-sm transition-colors",
             isAccountPage
-              ? "border-accent-soft bg-surface-strong text-foreground"
-              : "border-line text-foreground hover:border-accent-soft hover:bg-surface-strong",
+              ? "border-accent bg-accent-soft text-accent-ink"
+              : "border-line-strong bg-white text-foreground hover:border-accent hover:bg-accent-soft hover:text-accent-ink",
           )}
         >
           {user.username}
@@ -94,7 +94,7 @@ export function HeaderAuthButton() {
             onClick={() => setOpen(false)}
           >
             <div
-              className="w-full max-w-md rounded-[28px] border border-line bg-surface p-6 shadow-[0_24px_80px_-40px_rgba(31,42,40,0.7)] backdrop-blur-xl"
+              className="w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-[0_16px_50px_rgba(23,33,43,0.12)]"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-4">

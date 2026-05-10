@@ -25,7 +25,7 @@ const actionLinkVariantClassNames: Record<ActionLinkVariant, string> = {
   danger:
     "border border-danger-ink/20 bg-danger-soft text-danger-ink hover:border-danger-ink/40",
   outline:
-    "border border-line text-muted hover:border-accent-soft hover:bg-surface-strong hover:text-foreground",
+    "border border-line-strong bg-white text-muted hover:border-accent hover:bg-accent-soft hover:text-accent-ink",
 };
 
 const actionLinkSizeClassNames: Record<ActionLinkSize, string> = {
@@ -43,7 +43,7 @@ export const SEARCH_TYPE_OPTIONS: Array<{
 ];
 
 export const SELECT_CLASS_NAME =
-  "w-full rounded-2xl border border-line bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
+  "w-full rounded-lg border border-line-strong bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
 
 export function getBoardAuthorLabel(authorUserId: string | null | undefined) {
   return authorUserId?.trim() || "GUEST";
@@ -120,7 +120,7 @@ export function BoardNotice({
     <p
       aria-live="polite"
       className={cn(
-        "rounded-2xl px-4 py-3 text-sm leading-7",
+        "rounded-lg px-4 py-3 text-sm leading-7",
         getNoticeClassName(notice.tone),
         className,
       )}
@@ -140,7 +140,7 @@ export function BoardEmptyState({
   return (
     <div
       className={cn(
-        "rounded-[24px] border border-dashed border-line px-4 py-10 text-center text-sm text-muted",
+        "rounded-lg border border-dashed border-line px-4 py-10 text-center text-sm text-muted",
         className,
       )}
     >

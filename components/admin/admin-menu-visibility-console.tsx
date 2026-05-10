@@ -194,7 +194,7 @@ export function AdminMenuVisibilityConsole() {
         {notice ? (
           <div
             className={cn(
-              "mt-5 rounded-[24px] px-4 py-4 text-sm",
+              "mt-5 rounded-lg px-4 py-4 text-sm",
               getNoticeClassName(notice.tone),
             )}
           >
@@ -203,7 +203,7 @@ export function AdminMenuVisibilityConsole() {
         ) : null}
 
         {loading ? (
-          <p className="mt-6 rounded-[24px] bg-surface-muted px-4 py-5 text-sm text-muted">
+          <p className="mt-6 rounded-lg bg-surface-muted px-4 py-5 text-sm text-muted">
             메뉴 노출 설정을 불러오는 중입니다.
           </p>
         ) : null}
@@ -217,7 +217,7 @@ export function AdminMenuVisibilityConsole() {
             return (
               <div
                 key={item.menuKey}
-                className="rounded-[28px] border border-line bg-surface-strong px-5 py-5"
+                className="rounded-lg border border-line bg-surface-strong px-5 py-5"
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>

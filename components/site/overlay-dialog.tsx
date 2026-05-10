@@ -67,7 +67,7 @@ export function OverlayDialog({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden rounded-[28px] border border-line bg-surface p-6 shadow-[0_24px_80px_-40px_rgba(31,42,40,0.7)] backdrop-blur-xl sm:max-h-[calc(100dvh-3rem)]",
+          "flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden rounded-lg border border-line bg-surface p-6 shadow-[0_16px_50px_rgba(23,33,43,0.12)] sm:max-h-[calc(100dvh-3rem)]",
           panelClassName || "max-w-lg",
         )}
         onClick={(event) => event.stopPropagation()}

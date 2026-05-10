@@ -61,14 +61,14 @@ const RPS_CHOICES: readonly { label: string; value: RpsChoice }[] = [
 ];
 
 const secondaryLinkClassName =
-  "inline-flex items-center justify-center rounded-full border border-line px-4 py-3 text-sm font-medium text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground";
+  "inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-4 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink";
 
 function buildNoticeClassName(tone: NoticeTone) {
   switch (tone) {
     case "danger":
       return "border-danger-ink/20 bg-danger-soft text-danger-ink";
     case "success":
-      return "border-emerald-300/40 bg-emerald-100 text-emerald-900";
+      return "border-success-ink/20 bg-success-soft text-success-ink";
     default:
       return "border-accent/20 bg-accent-soft text-accent-ink";
   }
@@ -228,7 +228,7 @@ function TeamPanel({
       className={cn(
         "p-5 sm:p-6",
         isCurrent && "border-accent/30 bg-accent-soft/40",
-        !isCurrent && isPending && "border-amber-300/40 bg-amber-50",
+        !isCurrent && isPending && "border-warning-ink/15 bg-warning-soft",
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -237,7 +237,7 @@ function TeamPanel({
         {isMine ? <ValueBadge>내 팀</ValueBadge> : null}
         {isCurrent ? <ValueBadge className="border-accent/20">지금 차례</ValueBadge> : null}
         {!isCurrent && isPending ? (
-          <ValueBadge className="border-amber-300/40 bg-amber-100 text-amber-900">
+          <ValueBadge className="border-warning-ink/20 bg-warning-soft text-warning-ink">
             다음 차례
           </ValueBadge>
         ) : null}
@@ -245,14 +245,14 @@ function TeamPanel({
 
       <div className="mt-5 space-y-3">
         {roster.length === 0 ? (
-          <div className="rounded-[22px] border border-dashed border-line px-4 py-5 text-sm text-muted">
+          <div className="rounded-lg border border-dashed border-line px-4 py-5 text-sm text-muted">
             아직 뽑은 선수가 없습니다.
           </div>
         ) : (
           roster.map((item) => (
             <div
               key={`${team.id}-${item.pickNo}`}
-              className="rounded-[22px] border border-line bg-surface-strong px-4 py-4"
+              className="rounded-lg border border-line bg-surface-strong px-4 py-4"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <ValueBadge>{item.pickNo}픽</ValueBadge>
@@ -644,7 +644,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
         ) : null}
 
         {actionMessage ? (
-          <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-5 py-4">
+          <div className="mt-5 rounded-lg border border-line bg-surface-strong px-5 py-4">
             <p className="text-sm text-foreground">{actionMessage}</p>
           </div>
         ) : null}
@@ -673,7 +673,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
       ) : null}
 
       {loading ? (
-        <div className="rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
+        <div className="rounded-lg border border-dashed border-line px-6 py-10 text-sm text-muted">
           드래프트 진행 화면을 불러오는 중입니다.
         </div>
       ) : snapshot ? (
@@ -686,7 +686,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
             </div>
 
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface-strong px-4 py-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-foreground">
                     {team1?.teamName ?? "1팀"}
@@ -702,7 +702,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                 ) : null}
               </div>
 
-              <div className="rounded-[22px] border border-line bg-surface-strong px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface-strong px-4 py-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-foreground">
                     {team2?.teamName ?? "2팀"}
@@ -728,7 +728,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                     key={choice.value}
                     variant={canSubmitRps ? "accent" : "outline"}
                     disabled={pendingAction !== null || !canSubmitRps}
-                    className="h-24 min-w-0 rounded-[24px] p-0 sm:h-28 sm:w-28"
+                    className="h-24 min-w-0 rounded-lg p-0 sm:h-28 sm:w-28"
                     title={choice.label}
                     aria-label={choice.label}
                     onClick={() => {
@@ -770,7 +770,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
             </div>
 
             {snapshot.availableCandidates.length === 0 ? (
-              <div className="mt-5 rounded-[24px] border border-dashed border-line px-6 py-8 text-sm text-muted">
+              <div className="mt-5 rounded-lg border border-dashed border-line px-6 py-8 text-sm text-muted">
                 {snapshot.session.status === "FINISHED"
                   ? "모든 후보 선택이 끝났습니다."
                   : "지금은 선택할 후보가 없습니다."}
@@ -783,7 +783,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                   return (
                     <div
                       key={candidate.candidateUserId}
-                      className="rounded-[22px] border border-line bg-surface-strong px-4 py-4"
+                      className="rounded-lg border border-line bg-surface-strong px-4 py-4"
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>

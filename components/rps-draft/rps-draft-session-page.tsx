@@ -32,7 +32,7 @@ import {
 } from "@/components/rps-draft/rps-draft-ui";
 
 const secondaryLinkClassName =
-  "inline-flex items-center justify-center rounded-full border border-line px-4 py-3 text-sm font-medium text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground";
+  "inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-4 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink";
 
 function sortTeams(teams: RpsDraftTeam[]) {
   return [...teams].sort((left, right) => left.displayOrder - right.displayOrder);
@@ -332,7 +332,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
         ) : null}
 
         {actionMessage ? (
-          <div className="mt-5 rounded-[24px] border border-line bg-surface-strong px-5 py-4">
+          <div className="mt-5 rounded-lg border border-line bg-surface-strong px-5 py-4">
             <p className="text-sm text-foreground">{actionMessage}</p>
           </div>
         ) : null}
@@ -345,14 +345,14 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
       ) : null}
 
       {loading ? (
-        <div className="rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
+        <div className="rounded-lg border border-dashed border-line px-6 py-10 text-sm text-muted">
           드래프트 정보를 불러오는 중입니다.
         </div>
       ) : session ? (
         <>
           {needsFallbackSetup ? (
-            <SurfaceCard className="border-amber-300/40 bg-amber-100 p-5">
-              <p className="text-sm font-medium text-amber-900">
+            <SurfaceCard className="border-warning-ink/20 bg-warning-soft p-5">
+              <p className="text-sm font-medium text-warning-ink">
                 이 드래프트는 예전 흐름으로 만들어져 팀장 또는 후보 정보가 비어 있습니다.
                 기본 경로는 생성 화면에서 팀장 2명과 후보를 모두 정하고 들어오는
                 방식이며, 아래 보정 UI는 기존 드래프트를 살리기 위한 예외 처리입니다.
@@ -448,10 +448,10 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                   disabledUserMessage="팀장이나 기존 후보와 중복되는 유저입니다."
                 />
 
-                <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
+                <div className="rounded-lg border border-line bg-surface px-4 py-4">
                   <div className="space-y-3">
                     {candidateUser ? (
-                      <div className="rounded-2xl bg-surface-muted px-4 py-3 text-sm text-foreground">
+                      <div className="rounded-lg bg-surface-muted px-4 py-3 text-sm text-foreground">
                         선택한 팀원: {candidateUser.userId}
                       </div>
                     ) : (
@@ -476,7 +476,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
             ) : null}
 
             {sortedCandidates.length === 0 ? (
-              <div className="mt-5 rounded-[24px] border border-dashed border-line px-6 py-8 text-sm text-muted">
+              <div className="mt-5 rounded-lg border border-dashed border-line px-6 py-8 text-sm text-muted">
                 아직 등록된 후보가 없습니다.
               </div>
             ) : (
@@ -484,7 +484,7 @@ export function RpsDraftSessionPage({ sessionId }: { sessionId: number }) {
                 {sortedCandidates.map((candidate) => (
                   <div
                     key={candidate.candidateUserId}
-                    className="rounded-[22px] border border-line bg-surface-strong px-4 py-4"
+                    className="rounded-lg border border-line bg-surface-strong px-4 py-4"
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>

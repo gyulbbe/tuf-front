@@ -22,7 +22,7 @@ type NoticeState = {
 };
 
 const SELECT_CLASS_NAME =
-  "w-full rounded-2xl border border-line bg-surface-strong px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
+  "w-full rounded-lg border border-line-strong bg-surface-strong px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-white disabled:cursor-not-allowed disabled:opacity-70";
 
 function readErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -287,7 +287,7 @@ export function DraftHistoryConsole() {
         {notice ? (
           <div
             className={cn(
-              "mt-3 rounded-2xl px-3 py-2 text-xs",
+              "mt-3 rounded-lg px-3 py-2 text-xs",
               getNoticeClassName(notice.tone),
             )}
           >
@@ -298,15 +298,15 @@ export function DraftHistoryConsole() {
 
       <SurfaceCard className="p-4">
         {loadingDetail ? (
-          <div className="rounded-2xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
+          <div className="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
             이력 불러오는 중
           </div>
         ) : !selectedSessionDetail ? (
-          <div className="rounded-2xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
+          <div className="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
             드래프트를 선택해.
           </div>
         ) : sortedPicks.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
+          <div className="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
             기록이 없다.
           </div>
         ) : (

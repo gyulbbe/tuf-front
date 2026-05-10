@@ -21,7 +21,7 @@ export function InfoList({
         <li
           key={item}
           className={cn(
-            "rounded-2xl bg-surface-muted px-4 py-3 text-foreground",
+            "rounded-lg bg-surface-muted px-4 py-3 text-foreground",
             itemClassName,
           )}
         >

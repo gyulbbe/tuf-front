@@ -43,7 +43,7 @@ function BoardCommentItem({
     <div className="space-y-2" style={{ marginLeft: `${comment.depth * 12}px` }}>
       <article
         className={cn(
-          "rounded-2xl border border-line bg-surface-strong px-4 py-3",
+          "rounded-lg border border-line bg-surface-strong px-4 py-3",
           comment.depth > 0 && "border-l-4 border-l-accent-soft",
         )}
       >

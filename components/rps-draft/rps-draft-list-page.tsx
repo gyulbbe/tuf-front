@@ -30,7 +30,7 @@ import {
 } from "@/components/rps-draft/rps-draft-ui";
 
 const secondaryLinkClassName =
-  "inline-flex items-center justify-center rounded-full border border-line px-4 py-3 text-sm font-medium text-muted transition-colors hover:border-accent-soft hover:bg-surface-strong hover:text-foreground";
+  "inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-4 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink";
 
 const primaryLinkClassName =
   "inline-flex items-center justify-center rounded-full bg-accent px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-ink";
@@ -351,17 +351,17 @@ export function RpsDraftListPage() {
         </div>
 
         {error ? (
-          <div className="mt-6 rounded-[24px] border border-danger-ink/20 bg-danger-soft px-5 py-4">
+          <div className="mt-6 rounded-lg border border-danger-ink/20 bg-danger-soft px-5 py-4">
             <p className="text-sm font-medium text-danger-ink">{error}</p>
           </div>
         ) : null}
 
         {loading ? (
-          <div className="mt-6 rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
+          <div className="mt-6 rounded-lg border border-dashed border-line px-6 py-10 text-sm text-muted">
             진행 가능한 드래프트를 불러오는 중입니다.
           </div>
         ) : activeSessions.length === 0 ? (
-          <div className="mt-6 rounded-[24px] border border-dashed border-line px-6 py-10 text-sm text-muted">
+          <div className="mt-6 rounded-lg border border-dashed border-line px-6 py-10 text-sm text-muted">
             아직 진행 가능한 드래프트가 없습니다.
           </div>
         ) : (
@@ -541,7 +541,7 @@ export function RpsDraftListPage() {
                 disabledUserMessage="팀장이거나 이미 후보 목록에 들어간 유저입니다."
               />
 
-              <div className="rounded-[22px] border border-line bg-white px-4 py-4">
+              <div className="rounded-lg border border-line bg-white px-4 py-4">
                 <div>
                   <div>
                     <p className="text-sm font-semibold text-foreground">선택한 팀원</p>
@@ -549,7 +549,7 @@ export function RpsDraftListPage() {
                 </div>
 
                 {form.candidates.length === 0 ? (
-                  <div className="mt-4 rounded-2xl border border-dashed border-line px-4 py-8 text-sm text-muted">
+                  <div className="mt-4 rounded-lg border border-dashed border-line px-4 py-8 text-sm text-muted">
                     아직 선택한 팀원이 없습니다.
                   </div>
                 ) : (
@@ -557,7 +557,7 @@ export function RpsDraftListPage() {
                     {form.candidates.map((candidate, index) => (
                       <div
                         key={candidate.id}
-                        className="rounded-2xl border border-line bg-white px-4 py-4"
+                        className="rounded-lg border border-line bg-white px-4 py-4"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>

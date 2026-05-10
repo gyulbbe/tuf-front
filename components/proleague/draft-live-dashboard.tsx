@@ -817,7 +817,7 @@ function PreviewCursor({
         top: `${position.y * 100}vh`,
       }}
     >
-      <div className="h-3.5 w-3.5 rounded-full border-2 border-white bg-accent shadow-[0_10px_25px_-18px_rgba(31,42,40,0.9)]" />
+      <div className="h-3.5 w-3.5 rounded-full border-2 border-white bg-accent shadow-[0_16px_50px_rgba(23,33,43,0.08)]" />
       <div className="mt-2 rounded-full bg-foreground px-2.5 py-1 text-[11px] font-semibold text-white">
         Picker #{actorUserId}
       </div>
@@ -855,7 +855,7 @@ function PreviewGhostCard({
     >
       <div
         className={cn(
-          "rounded-[20px] border px-4 py-4 shadow-[0_22px_60px_-40px_rgba(31,42,40,0.82)] backdrop-blur-sm",
+          "rounded-lg border px-4 py-4 shadow-[0_16px_50px_rgba(23,33,43,0.08)] backdrop-blur-sm",
           tone === "local"
             ? "border-accent/30 bg-white/92"
             : "border-line/80 bg-white/90",
@@ -894,9 +894,9 @@ function CompactTeamCard({
   return (
     <article
       className={cn(
-        "rounded-[22px] border px-4 py-4 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)]",
+        "rounded-lg border px-4 py-4 shadow-[0_16px_50px_rgba(23,33,43,0.08)]",
         isCurrentTeam
-          ? "border-accent/20 bg-[linear-gradient(180deg,rgba(220,229,222,0.65)_0%,rgba(255,255,255,0.95)_100%)]"
+          ? "border-accent/20 bg-[linear-gradient(180deg,rgba(217,238,247,0.72)_0%,rgba(255,255,255,0.95)_100%)]"
           : "border-line bg-surface-strong",
       )}
     >
@@ -970,7 +970,7 @@ function CompactCandidateCard({
   return (
     <article
       className={cn(
-        "rounded-[20px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.72)_100%)] px-4 py-4 shadow-[0_16px_40px_-34px_rgba(31,42,40,0.7)]",
+        "rounded-lg border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(238,243,247,0.86)_100%)] px-4 py-4 shadow-[0_16px_50px_rgba(23,33,43,0.08)]",
         canInteractPreview && "cursor-grab touch-none select-none",
         isDragging && "cursor-grabbing opacity-45",
       )}
@@ -1900,7 +1900,7 @@ export function DraftLiveDashboard({
             <div className="w-full max-w-sm space-y-3">
               {hideSessionPicker ? null : (
                 <select
-                  className="w-full rounded-[20px] border border-line bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent-soft focus:bg-white"
+                  className="w-full rounded-lg border border-line-strong bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-white"
                   value={selectedSessionId ?? ""}
                   onChange={(event) => {
                     const nextSessionId = event.target.value
@@ -1926,12 +1926,12 @@ export function DraftLiveDashboard({
           </div>
 
           <div
-            className="mt-7 rounded-[28px] border border-line/70 bg-white/70 px-6 py-5"
+            className="mt-7 rounded-lg border border-line/70 bg-white/70 px-6 py-5"
             aria-label={`남은 시간 ${remainingSeconds}초`}
           >
             <div className="flex items-center gap-5">
               <div className="relative h-16 w-16 shrink-0">
-                <div className="absolute bottom-1 left-1 h-12 w-12 rounded-full bg-foreground shadow-[inset_-10px_-10px_0_rgba(255,255,255,0.12),0_10px_24px_-14px_rgba(31,42,40,0.8)]" />
+                <div className="absolute bottom-1 left-1 h-12 w-12 rounded-full bg-foreground shadow-[inset_-10px_-10px_0_rgba(255,255,255,0.12),0_10px_24px_-14px_rgba(23,33,43,0.24)]" />
                 <div className="absolute left-11 top-2 h-5 w-3 rotate-45 rounded-full bg-foreground" />
                 <div className="absolute left-12 top-0 h-4 w-5 rounded-full bg-danger-ink" />
               </div>
@@ -1964,7 +1964,7 @@ export function DraftLiveDashboard({
           {notice ? (
             <div
               className={cn(
-                "mt-5 rounded-[20px] px-4 py-3 text-sm",
+                "mt-5 rounded-lg px-4 py-3 text-sm",
                 getToneClassName(notice.tone),
               )}
             >
@@ -1977,7 +1977,7 @@ export function DraftLiveDashboard({
               {activityLog.map((item) => (
                 <div
                   key={item.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-line bg-surface px-4 py-3"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-4 py-3"
                 >
                   <p className="text-sm font-semibold text-foreground">
                     {item.message}
@@ -2041,7 +2041,7 @@ export function DraftLiveDashboard({
                 </Button>
               </div>
 
-              <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface px-4 py-4">
                 <p className="text-sm font-semibold text-foreground">재개 시간</p>
                 <div className="mt-3 flex gap-2">
                   <Input
@@ -2087,7 +2087,7 @@ export function DraftLiveDashboard({
                 </div>
               </div>
 
-              <div className="rounded-[22px] border border-line bg-surface px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface px-4 py-4">
                 <p className="text-sm font-semibold text-foreground">현재 턴 연장</p>
                 <div className="mt-3 flex gap-2">
                   <Input
@@ -2181,13 +2181,13 @@ export function DraftLiveDashboard({
 
             {loadingSnapshot && !snapshot ? (
               <div className="mt-5 space-y-3">
-                <div className="h-20 rounded-[24px] bg-surface-muted" />
-                <div className="h-20 rounded-[24px] bg-surface-muted" />
+                <div className="h-20 rounded-lg bg-surface-muted" />
+                <div className="h-20 rounded-lg bg-surface-muted" />
               </div>
             ) : (
               <div className="mt-5 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                 {filteredCandidates.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm leading-7 text-muted md:col-span-2 2xl:col-span-3">
+                  <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm leading-7 text-muted md:col-span-2 2xl:col-span-3">
                     {snapshot && snapshot.availableCandidates.length === 0
                       ? "남아 있는 드래프트 인원이 없다."
                       : "검색 조건에 맞는 드래프트 인원이 없다."}
@@ -2245,7 +2245,7 @@ export function DraftLiveDashboard({
                   />
                 ))
               ) : (
-                <p className="rounded-[24px] border border-dashed border-line px-5 py-10 text-center text-sm leading-7 text-muted xl:col-span-2">
+                <p className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm leading-7 text-muted xl:col-span-2">
                   표시할 팀이 없습니다.
                 </p>
               )}

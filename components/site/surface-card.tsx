@@ -7,7 +7,7 @@ export function SurfaceCard({ className, ...props }: SurfaceCardProps) {
   return (
     <div
       className={cn(
-        "rounded-[30px] border border-line bg-surface p-6 shadow-[0_24px_60px_-48px_rgba(31,42,40,0.65)] backdrop-blur-xl sm:p-8",
+        "rounded-lg border border-line bg-surface p-6 shadow-[0_16px_50px_rgba(23,33,43,0.08)] sm:p-8",
         className,
       )}
       {...props}

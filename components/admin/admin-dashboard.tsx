@@ -95,7 +95,7 @@ export function AdminDashboard() {
           <Link
             key={tool.href}
             href={tool.href}
-            className="rounded-[28px] border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(236,239,232,0.86)_100%)] px-6 py-6 shadow-[0_18px_50px_-40px_rgba(31,42,40,0.7)] transition-colors hover:border-accent-soft hover:bg-white"
+            className="rounded-lg border border-line bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(238,243,247,0.92)_100%)] px-6 py-6 shadow-[0_16px_50px_rgba(23,33,43,0.08)] transition-colors hover:border-accent-soft hover:bg-white"
           >
             <p className="text-lg font-semibold text-foreground">{tool.title}</p>
             <p className="mt-3 text-sm leading-7 text-muted">{tool.description}</p>

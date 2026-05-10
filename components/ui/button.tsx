@@ -6,7 +6,7 @@ const variantClassNames = {
   danger:
     "border border-danger-ink/20 bg-danger-soft text-danger-ink hover:border-danger-ink/40",
   outline:
-    "border border-line text-muted hover:border-accent-soft hover:bg-surface-strong hover:text-foreground",
+    "border border-line-strong bg-white text-muted hover:border-accent hover:bg-accent-soft hover:text-accent-ink",
 } as const;
 
 const sizeClassNames = {
@@ -39,7 +39,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ref={ref}
       type={type}
       className={cn(
-        "inline-flex items-center justify-center rounded-full font-medium transition-colors",
+        "inline-flex items-center justify-center rounded-full font-semibold transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "disabled:cursor-not-allowed disabled:opacity-70",
         fullWidth && "w-full",

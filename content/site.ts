@@ -40,14 +40,14 @@ const externalSiteLinks = {
 export const siteConfig = {
   name: "Starcraft TuF Clan",
   description:
-    "채팅, 드래프트, 게임, 갤러리, 관리자 기능을 한 화면에서 관리하는 Starcraft TuF Clan 사이트입니다.",
+    "터프봇, 드래프트, 게임, 갤러리, 관리자 기능을 한 화면에서 관리하는 Starcraft TuF Clan 사이트입니다.",
 };
 
 export const siteMenuVisibilityItems: SiteMenuVisibilityMeta[] = [
   {
     menuKey: "chat",
-    label: "채팅",
-    description: "상단 채팅 탭 표시 여부를 관리합니다.",
+    label: "터프봇",
+    description: "상단 터프봇 탭 표시 여부를 관리합니다.",
   },
   {
     menuKey: "draft.proleague",
@@ -93,9 +93,9 @@ export const siteMenuVisibilityItems: SiteMenuVisibilityMeta[] = [
 
 export const siteTabs: SiteTab[] = [
   {
-    label: "채팅",
+    label: "터프봇",
     href: "/chat",
-    description: "채팅 기능과 자동 응답 흐름을 확인합니다.",
+    description: "터프봇 자동 응답 흐름을 확인합니다.",
     menuKey: "chat",
   },
   {
@@ -118,12 +118,6 @@ export const siteTabs: SiteTab[] = [
     ],
   },
   {
-    label: "게임",
-    href: "/game",
-    description: "게임 안내와 준비 중인 기능을 확인합니다.",
-    menuKey: "game",
-  },
-  {
     label: "토너먼트",
     href: "/tournament",
     description: "듀얼 토너먼트 조별 대진표를 확인합니다.",
@@ -133,6 +127,12 @@ export const siteTabs: SiteTab[] = [
     href: "/gallery",
     description: "게시물과 기록을 확인합니다.",
     menuKey: "gallery",
+  },
+  {
+    label: "게임",
+    href: "/game",
+    description: "게임 안내와 준비 중인 기능을 확인합니다.",
+    menuKey: "game",
   },
   {
     label: "관리자",

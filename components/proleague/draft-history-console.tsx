@@ -229,7 +229,6 @@ export function DraftHistoryConsole() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [deletingSelected, setDeletingSelected] = useState(false);
-  const [deletingDetail, setDeletingDetail] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
 
   const selectedCount = selectedIds.size;
@@ -451,46 +450,6 @@ export function DraftHistoryConsole() {
     }
   }
 
-  async function deleteSelectedDetail() {
-    if (!selectedSessionDetail) {
-      return;
-    }
-
-    const sessionId = selectedSessionDetail.id;
-    const sessionTitle = selectedSessionDetail.title;
-    setDeletingDetail(true);
-    setNotice(null);
-
-    try {
-      await deleteDraftSessions([sessionId]);
-      setSelectedSessionId(null);
-      setSelectedSessionDetail(null);
-      setSelectedIds((current) => {
-        const next = new Set(current);
-        next.delete(sessionId);
-        return next;
-      });
-
-      const shouldMoveToPreviousPage = currentItems.length <= 1 && page > 0;
-      const nextPage = shouldMoveToPreviousPage ? page - 1 : page;
-
-      setPage(nextPage);
-      await loadHistoryPage(nextPage);
-      setNotice({
-        tone: "neutral",
-        text: `${sessionTitle} 삭제되었습니다.`,
-      });
-    } catch (error) {
-      logDraftHistoryIssue("드래프트 상세 삭제", error, { sessionId });
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
-      });
-    } finally {
-      setDeletingDetail(false);
-    }
-  }
-
   function navigatePage(nextPage: number) {
     if (nextPage < 0 || nextPage === page || loadingList) {
       return;
@@ -684,7 +643,7 @@ export function DraftHistoryConsole() {
           </div>
         ) : (
           <div className="space-y-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
               <div className="min-w-0">
                 <div className="mb-3 flex flex-wrap gap-2">
                   <span className="rounded-full bg-success-soft px-3 py-1 text-xs font-semibold text-success-ink">
@@ -704,15 +663,6 @@ export function DraftHistoryConsole() {
                   {selectedSessionDetail.title}
                 </h2>
               </div>
-              <Button
-                disabled={deletingDetail}
-                variant="danger"
-                onClick={() => {
-                  void deleteSelectedDetail();
-                }}
-              >
-                {deletingDetail ? "삭제 중" : "삭제"}
-              </Button>
             </div>
 
             <Input

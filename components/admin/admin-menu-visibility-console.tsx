@@ -169,19 +169,10 @@ export function AdminMenuVisibilityConsole() {
   return (
     <div className="space-y-4">
       <SurfaceCard className="p-7 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-          Admin Menu
-        </p>
-        <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              메뉴 설정
-            </h1>
-            <p className="mt-4 max-w-3xl text-base leading-8 text-muted">
-              숨김은 메뉴에서만 적용되며 직접 URL 접근 권한은 기존 정책을 따릅니다.
-            </p>
-          </div>
-
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            메뉴 설정
+          </h1>
           <Button
             variant="accent"
             disabled={!hasChanges || loading || saving}
@@ -241,12 +232,6 @@ export function AdminMenuVisibilityConsole() {
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-3 text-sm leading-7 text-muted">
-                      {item.description}
-                    </p>
-                    <p className="mt-2 text-xs font-semibold text-muted">
-                      {item.menuKey}
-                    </p>
                   </div>
 
                   <Button

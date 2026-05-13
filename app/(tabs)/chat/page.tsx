@@ -3,7 +3,7 @@ import { TufBotChat } from "@/components/chat/tuf-bot-chat";
 import { SurfaceCard } from "@/components/site/surface-card";
 
 export const metadata: Metadata = {
-  title: "채팅",
+  title: "터프봇",
 };
 
 export default function ChatPage() {

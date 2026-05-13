@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdBlockNotice } from "@/components/site/ad-block-notice";
 import { AdSlot } from "@/components/site/ad-slot";
 import { HeaderAuthButton } from "@/components/auth/header-auth-button";
 import { SiteTabs } from "@/components/site/site-tabs";
@@ -18,7 +19,7 @@ export default function TabsLayout({
           </div>
 
           <Link
-            href="/gallery"
+            href="/"
             className="mx-auto inline-flex rounded-lg border border-transparent px-2 py-1 pr-24 text-center text-lg font-semibold text-foreground transition-colors hover:border-line sm:pr-0"
           >
             {siteConfig.name}
@@ -43,6 +44,8 @@ export default function TabsLayout({
           {siteConfig.name}
         </p>
       </footer>
+
+      <AdBlockNotice />
     </div>
   );
 }

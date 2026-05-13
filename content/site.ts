@@ -100,6 +100,7 @@ export const siteTabs: SiteTab[] = [
   },
   {
     label: "드래프트",
+    href: "/draft",
     description: "드래프트 화면과 운영 화면으로 이동합니다.",
     items: [
       {
@@ -121,6 +122,11 @@ export const siteTabs: SiteTab[] = [
     href: "/game",
     description: "게임 안내와 준비 중인 기능을 확인합니다.",
     menuKey: "game",
+  },
+  {
+    label: "토너먼트",
+    href: "/tournament",
+    description: "듀얼 토너먼트 조별 대진표를 확인합니다.",
   },
   {
     label: "TuF 갤러리",

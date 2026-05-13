@@ -8,26 +8,12 @@ import { Input } from "@/components/ui/input";
 import { getUserDetail, updateUserPassword, type UserDetail } from "@/lib/api/user";
 import { cn } from "@/lib/utils";
 
-type AccountTab = {
-  description: string;
-  id: string;
-  label: string;
-};
-
 type NoticeTone = "error" | "neutral" | "success";
 
 type NoticeState = {
   text: string;
   tone: NoticeTone;
 };
-
-const ACCOUNT_TABS: AccountTab[] = [
-  {
-    id: "account",
-    label: "계정",
-    description: "기본 정보와 비밀번호 변경",
-  },
-];
 
 const INITIAL_PASSWORD_FORM = {
   confirmPassword: "",
@@ -84,7 +70,6 @@ function validatePasswordForm(newPassword: string, confirmPassword: string) {
 
 export function AccountWorkspace() {
   const { status, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<AccountTab["id"]>("account");
   const [detail, setDetail] = useState<UserDetail | null>(null);
   const [detailNotice, setDetailNotice] = useState<NoticeState | null>(null);
   const [formNotice, setFormNotice] = useState<NoticeState | null>(null);
@@ -137,54 +122,17 @@ export function AccountWorkspace() {
     };
   }, [status, user?.username]);
 
-  const activeTabMeta =
-    ACCOUNT_TABS.find((tab) => tab.id === activeTab) ?? ACCOUNT_TABS[0];
-
   return (
     <div className="grid gap-4">
       <SurfaceCard className="p-7 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-          Account
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-          내 계정
-        </h1>
-        <p className="mt-4 max-w-3xl text-base leading-8 text-muted">
-          상단 우측 사용자 아이디를 눌렀을 때 들어오는 계정 전용 화면이다. 현재는
-          계정 탭만 두고, 이후 다른 탭을 같은 자리에서 확장할 수 있게 구성했다.
-        </p>
-
-        <div className="mt-8 grid gap-3 md:grid-cols-3">
-          {ACCOUNT_TABS.map((tab) => {
-            const isActive = tab.id === activeTab;
-
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "rounded-lg border px-5 py-4 text-left transition-colors",
-                  isActive
-                    ? "border-accent-soft bg-white text-foreground shadow-[0_16px_50px_rgba(23,33,43,0.08)]"
-                    : "border-line bg-surface-strong text-muted hover:border-accent-soft hover:bg-white hover:text-foreground",
-                )}
-              >
-                <p className="text-sm font-semibold">{tab.label}</p>
-                <p className="mt-2 text-sm leading-6">{tab.description}</p>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-8 rounded-lg border border-line bg-surface-strong p-5 sm:p-6">
+        <div className="rounded-lg border border-line bg-surface-strong p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold text-foreground">
-                {activeTabMeta.label}
+                계정
               </h2>
               <p className="mt-2 text-sm leading-7 text-muted">
-                {activeTabMeta.description}
+                기본 정보와 비밀번호 변경
               </p>
             </div>
 

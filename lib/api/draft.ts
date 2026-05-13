@@ -29,6 +29,17 @@ export type DraftSessionSummary = {
   deadlineAt: string | null;
   startedAt: string | null;
   endedAt: string | null;
+  pickedCount?: number | null;
+};
+
+export type DraftHistoryPage = {
+  items: DraftSessionSummary[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
 };
 
 export type DraftLiveRosterItem = {
@@ -222,6 +233,10 @@ export type DraftSessionRequest = {
   endedAt?: string | null;
 };
 
+export type DraftSessionDeleteRequest = {
+  sessionIds: number[];
+};
+
 export type DraftTeamRequest = {
   draftSessionId: number;
   teamName: string;
@@ -356,6 +371,14 @@ function readArray<T>(value: unknown, fallback: T[] = []) {
   return Array.isArray(value) ? (value as T[]) : fallback;
 }
 
+function readNumber(value: unknown, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function readBoolean(value: unknown, fallback = false) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
 function normalizeOwnerName(value: string | null | undefined) {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -371,6 +394,26 @@ function normalizeDraftSessionSummary(
     ...value,
     ownerName: normalizeOwnerName(value.ownerName),
     orderMode: normalizeDraftOrderMode(value.orderMode),
+    pickedCount:
+      typeof value.pickedCount === "number" && Number.isFinite(value.pickedCount)
+        ? value.pickedCount
+        : null,
+  };
+}
+
+function normalizeDraftHistoryPage(value: DraftHistoryPage): DraftHistoryPage {
+  const items = readArray<DraftSessionSummary>(value.items).map((session) =>
+    normalizeDraftSessionSummary(session),
+  );
+
+  return {
+    items,
+    page: readNumber(value.page, 0),
+    size: readNumber(value.size, items.length),
+    totalElements: readNumber(value.totalElements, items.length),
+    totalPages: readNumber(value.totalPages, items.length > 0 ? 1 : 0),
+    hasNext: readBoolean(value.hasNext),
+    hasPrevious: readBoolean(value.hasPrevious),
   };
 }
 
@@ -595,6 +638,29 @@ export async function listDraftSessions() {
   );
 }
 
+export async function listDraftSessionHistory(params?: {
+  keyword?: string;
+  page?: number;
+  size?: number;
+}) {
+  const keyword = params?.keyword?.trim();
+  const page = params?.page ?? 0;
+  const size = params?.size ?? 10;
+  const historyPage = await unwrapResponse(
+    apiClient.get<ApiEnvelope<DraftHistoryPage>>("/draft/sessions/history", {
+      params: {
+        page,
+        size,
+        ...(keyword ? { keyword } : {}),
+      },
+      validateStatus: () => true,
+    }),
+    "드래프트 이력 목록을 불러오지 못했습니다.",
+  );
+
+  return normalizeDraftHistoryPage(historyPage);
+}
+
 export async function getDraftSnapshot(sessionId: number) {
   const snapshot = await unwrapResponse(
     apiClient.get<ApiEnvelope<DraftLiveSnapshot>>(
@@ -757,13 +823,21 @@ export async function updateDraftSession(
   return normalizeDraftSessionDetail(detail);
 }
 
-export async function deleteDraftSession(sessionId: number) {
+export async function deleteDraftSessions(sessionIds: number[]) {
   return unwrapVoidResponse(
-    apiClient.delete<ApiEnvelope<null>>(`/draft/sessions/${sessionId}`, {
-      validateStatus: () => true,
-    }),
+    apiClient.post<ApiEnvelope<null>>(
+      "/draft/sessions/delete",
+      { sessionIds } satisfies DraftSessionDeleteRequest,
+      {
+        validateStatus: () => true,
+      },
+    ),
     "드래프트 세션을 삭제하지 못했습니다.",
   );
+}
+
+export async function deleteDraftSession(sessionId: number) {
+  return deleteDraftSessions([sessionId]);
 }
 
 export async function updateDraftTeam(teamId: number, payload: DraftTeamRequest) {

@@ -1,30 +1,31 @@
-import type { ReactNode } from "react";
+import type { Metadata } from "next";
 import { SurfaceCard } from "@/components/site/surface-card";
-import { requireServerAuth } from "@/lib/auth/server-auth";
+import { TournamentCreatePage } from "@/components/tournament/tournament-create-page";
 import { isAdminRole } from "@/lib/auth/roles";
+import { requireServerAuth } from "@/lib/auth/server-auth";
 
-export default async function AdminDraftLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  const session = await requireServerAuth("/admin/draft");
+export const metadata: Metadata = {
+  title: "대진표 등록",
+};
+
+export default async function AdminTournamentNewPage() {
+  const session = await requireServerAuth("/admin/tournament/new");
 
   if (!isAdminRole(session.user.role)) {
     return (
       <SurfaceCard className="p-7 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-          Admin Draft
+          Admin Tournament
         </p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
           접근 권한 없음
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-8 text-muted">
-          이 화면은 드래프트를 준비하고 운영하는 관리자 전용 공간이다.
+          토너먼트 대진표 등록은 관리자 권한이 있는 계정만 사용할 수 있습니다.
         </p>
       </SurfaceCard>
     );
   }
 
-  return <div className="space-y-4">{children}</div>;
+  return <TournamentCreatePage />;
 }

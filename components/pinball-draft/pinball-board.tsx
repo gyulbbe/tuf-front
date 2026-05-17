@@ -345,7 +345,10 @@ function shuffleCandidateOrder(
     orderedCandidates[nextIndex] = current;
   }
 
-  if (hasSameCandidateSet(candidates, previousOrderIds)) {
+  if (
+    previousOrderIds !== null &&
+    hasSameCandidateSet(candidates, previousOrderIds)
+  ) {
     return removeFixedSlots(orderedCandidates, previousOrderIds, random);
   }
 
@@ -360,6 +363,7 @@ function createBalls(
 ) {
   const orderedCandidates =
     !shouldShuffleAgainstPreviousOrder &&
+    previousOrderIds !== null &&
     hasSameCandidateSet(candidates, previousOrderIds)
       ? orderCandidatesByIds(candidates, previousOrderIds)
       : shuffleCandidateOrder(

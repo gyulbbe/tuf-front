@@ -316,7 +316,7 @@ export function ProleagueDraftListPage() {
     <>
       <SurfaceCard className="p-6 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="max-w-3xl">
+          <div className="max-w-4xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
               Draft
             </p>
@@ -325,9 +325,19 @@ export function ProleagueDraftListPage() {
             </h1>
           </div>
 
-          <Button variant="accent" onClick={handleOpenCreateDialog}>
-            드래프트 생성
-          </Button>
+          {isAuthenticated ? (
+            <Button variant="accent" onClick={handleOpenCreateDialog}>
+              드래프트 생성
+            </Button>
+          ) : status === "loading" ? (
+            <Button variant="outline" disabled>
+              로그인 확인 중...
+            </Button>
+          ) : (
+            <Link href={loginHref} className={primaryLinkClassName}>
+              로그인 후 생성
+            </Link>
+          )}
         </div>
 
         {error ? (
@@ -345,7 +355,7 @@ export function ProleagueDraftListPage() {
             아직 진행 가능한 프로리그 드래프트가 없습니다.
           </div>
         ) : (
-          <div className="mt-6 grid gap-3">
+          <div className="mt-6 grid gap-3 2xl:grid-cols-2">
             {activeSessions.map((session) => {
               const canManage = canManageOwnedResource({
                 ownerUserId: session.ownerUserId,
@@ -353,9 +363,7 @@ export function ProleagueDraftListPage() {
                 userPk: user?.userPk,
               });
               const ownerLabel =
-                session.ownerUserId === user?.userPk && user?.username
-                  ? user.username
-                  : "아이디 확인 필요";
+                session.ownerUserLoginId?.trim() || "아이디 확인 필요";
               const liveClassName = canManage
                 ? secondaryLinkClassName
                 : primaryLinkClassName;
@@ -427,7 +435,7 @@ export function ProleagueDraftListPage() {
         closeOnBackdropClick={false}
         closeOnEscape={false}
         title={editingSessionId ? "프로리그 드래프트 설정" : "드래프트 생성"}
-        panelClassName={editingSessionId ? "max-w-7xl" : "max-w-3xl"}
+        panelClassName={editingSessionId ? "max-w-[1400px]" : "max-w-3xl"}
       >
         {editingSessionId ? (
           <DraftAdminConsole

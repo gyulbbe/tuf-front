@@ -1,0 +1,1138 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>홈 세트 정보 표시 목업</title>
+    <style>
+      :root {
+        --bg: #f4f7fa;
+        --surface: #ffffff;
+        --soft: #eef4f8;
+        --line: #d7e0e8;
+        --ink: #17212b;
+        --muted: #647386;
+        --accent: #146c94;
+        --accent-soft: #dceff7;
+        --win: #087653;
+        --warning: #946200;
+        --danger: #ad3043;
+        --shadow: 0 18px 48px rgba(23, 33, 43, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: linear-gradient(180deg, #e9f0f5 0, var(--bg) 260px);
+        color: var(--ink);
+        font-family:
+          Pretendard,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .shell {
+        width: min(100% - 32px, 1480px);
+        margin: 0 auto;
+        padding: 26px 0 48px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 15px;
+        font-weight: 950;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 42px;
+        height: 42px;
+        place-items: center;
+        border-radius: 8px;
+        background: var(--ink);
+        color: #fff;
+        font-size: 12px;
+      }
+
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .nav a {
+        display: inline-flex;
+        min-height: 36px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.75);
+        padding: 0 14px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 850;
+      }
+
+      .nav a.active {
+        border-color: var(--ink);
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .case-switcher {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.74);
+        padding: 10px;
+        box-shadow: 0 12px 34px rgba(23, 33, 43, 0.06);
+      }
+
+      .case-button {
+        min-height: 36px;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        padding: 0 13px;
+        color: var(--muted);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .case-button.active {
+        border-color: var(--ink);
+        background: var(--ink);
+        color: #fff;
+      }
+
+      .preview-stage {
+        display: grid;
+        gap: 16px;
+      }
+
+      .dynamic-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+        gap: 16px;
+        align-items: start;
+      }
+
+      .dynamic-grid[data-layout="notice-only"] {
+        grid-template-columns: minmax(0, 920px);
+        justify-content: center;
+      }
+
+      .dynamic-grid[data-layout="leagues-only"] {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .dynamic-column {
+        display: grid;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .empty-primary {
+        padding: 28px;
+        text-align: center;
+      }
+
+      .empty-primary strong {
+        display: block;
+        font-size: 22px;
+      }
+
+      .empty-primary p {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .main-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+        gap: 16px;
+      }
+
+      .panel {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        border-bottom: 1px solid var(--line);
+        padding: 18px;
+      }
+
+      .eyebrow {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 950;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(25px, 3vw, 40px);
+        line-height: 1.14;
+      }
+
+      h2 {
+        font-size: 24px;
+        line-height: 1.2;
+      }
+
+      h3 {
+        font-size: 19px;
+        line-height: 1.35;
+      }
+
+      .chip,
+      .status {
+        display: inline-flex;
+        min-height: 30px;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+        border-radius: 999px;
+        padding: 0 12px;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .chip {
+        background: var(--accent-soft);
+        color: #0d4f73;
+      }
+
+      .status.live {
+        background: #d8f3e9;
+        color: var(--win);
+      }
+
+      .status.ready {
+        background: #fff1c9;
+        color: var(--warning);
+      }
+
+      .notice-body {
+        display: grid;
+        gap: 14px;
+        padding: 18px;
+      }
+
+      .notice-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .notice-body strong {
+        display: block;
+        border-left: 3px solid var(--accent);
+        padding-left: 13px;
+        font-size: 20px;
+        line-height: 1.45;
+      }
+
+      .live-list {
+        display: grid;
+        gap: 10px;
+        padding: 18px;
+      }
+
+      .live-item {
+        display: grid;
+        gap: 9px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 14px;
+      }
+
+      .live-item small {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 760;
+      }
+
+      .league-stack {
+        display: grid;
+        gap: 16px;
+      }
+
+      .schedule-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .schedule-card + .schedule-card {
+        margin-top: 12px;
+      }
+
+      .schedule-top {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: start;
+        padding: 16px;
+      }
+
+      .schedule-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .match-title {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        gap: 12px;
+        align-items: center;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        background: var(--soft);
+        padding: 12px 16px;
+      }
+
+      .team {
+        overflow: hidden;
+        font-size: 18px;
+        font-weight: 950;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .team.right {
+        text-align: right;
+      }
+
+      .match-title .versus {
+        color: var(--accent);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .set-list {
+        display: grid;
+        gap: 10px;
+        padding: 14px;
+      }
+
+      .set-row {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr) 164px;
+        gap: 12px;
+        align-items: stretch;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 10px;
+      }
+
+      .set-badge {
+        display: grid;
+        align-content: center;
+        gap: 3px;
+        border-radius: 8px;
+        background: var(--soft);
+        padding: 10px;
+        text-align: center;
+      }
+
+      .set-badge strong {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .set-badge span {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .players {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+        min-width: 0;
+      }
+
+      .side {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .side.right {
+        text-align: right;
+      }
+
+      .player {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .side.right .player {
+        justify-content: flex-end;
+      }
+
+      .player-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 15px;
+        font-weight: 920;
+      }
+
+      .pill {
+        display: inline-flex;
+        min-width: 24px;
+        height: 22px;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        padding: 0 7px;
+        font-size: 11px;
+        font-weight: 950;
+      }
+
+      .tier {
+        background: #17212b;
+        color: #fff;
+      }
+
+      .race.t {
+        background: #e3efff;
+        color: #2453a6;
+      }
+
+      .race.p {
+        background: #fff0bf;
+        color: #8a5d00;
+      }
+
+      .race.z {
+        background: #e1f5e8;
+        color: #087653;
+      }
+
+      .race.r {
+        background: #f1e7ff;
+        color: #6b34ad;
+      }
+
+      .vs {
+        color: var(--accent);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        font-weight: 950;
+      }
+
+      .map-box {
+        display: grid;
+        align-content: center;
+        gap: 4px;
+        border-radius: 8px;
+        background: #17212b;
+        padding: 10px;
+        color: #fff;
+        text-align: center;
+      }
+
+      .map-box span {
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .map-box strong {
+        overflow-wrap: anywhere;
+        font-size: 13px;
+        line-height: 1.3;
+      }
+
+      .compact-card {
+        display: grid;
+        gap: 10px;
+        padding: 16px;
+      }
+
+      .gallery-row {
+        display: grid;
+        gap: 4px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      .gallery-row p {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      @media (max-width: 1120px) {
+        .main-grid,
+        .dynamic-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .topbar,
+        .panel-head,
+        .schedule-top {
+          align-items: stretch;
+          grid-template-columns: 1fr;
+          flex-direction: column;
+        }
+
+        .set-row {
+          grid-template-columns: 1fr;
+        }
+
+        .players,
+        .match-title {
+          grid-template-columns: 1fr;
+        }
+
+        .team.right,
+        .side.right {
+          text-align: left;
+        }
+
+        .side.right .player {
+          justify-content: flex-start;
+        }
+
+        .vs,
+        .match-title .versus {
+          text-align: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/">
+          <span class="brand-mark">TuF</span>
+          <span>홈 세트 정보 표시 목업</span>
+        </a>
+        <nav class="nav" aria-label="샘플 메뉴">
+          <a class="active" href="/">홈</a>
+          <a href="/chat">터프봇</a>
+          <a href="/draft">드래프트</a>
+          <a href="/tournament">토너먼트</a>
+          <a href="/gallery">갤러리</a>
+        </nav>
+      </header>
+
+      <section class="case-switcher" aria-label="섹션 존재 여부 케이스 선택">
+        <button class="case-button active" type="button" data-case="all">전체 있음</button>
+        <button class="case-button" type="button" data-case="notice">공지 1개만</button>
+        <button class="case-button" type="button" data-case="proleague">프로리그 1개만</button>
+        <button class="case-button" type="button" data-case="personal">개인리그 1개만</button>
+        <button class="case-button" type="button" data-case="notice-proleague">공지 + 프로리그</button>
+        <button class="case-button" type="button" data-case="notice-personal">공지 + 개인리그</button>
+        <button class="case-button" type="button" data-case="proleague-personal">프로리그 + 개인리그</button>
+        <button class="case-button" type="button" data-case="none">전부 없음</button>
+      </section>
+
+      <div class="main-grid">
+        <aside class="league-stack">
+          <section class="panel" data-section="notice" aria-labelledby="notice-title">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">Notice</span>
+                <h1 id="notice-title">공지</h1>
+              </div>
+              <span class="chip">고정 공지</span>
+            </div>
+            <div class="notice-body">
+              <div class="notice-meta">
+                <span>Blackmagic</span>
+                <span>2026.05.17 21:00</span>
+              </div>
+              <strong>오늘 프로리그 3라운드는 21:00에 시작합니다.</strong>
+              <p>
+                출전자는 경기 시작 10분 전까지 대기방에 접속해 주세요. 맵과
+                세트 순서는 아래 대진표 기준으로 진행합니다.
+              </p>
+            </div>
+          </section>
+
+          <section class="panel" data-section="live" aria-labelledby="live-title">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">Live</span>
+                <h2 id="live-title">진행 중</h2>
+              </div>
+              <span class="chip">드래프트 · 토너먼트</span>
+            </div>
+            <div class="live-list">
+              <a class="live-item" href="/proleague/draft">
+                <span class="status live">드래프트 진행중</span>
+                <h3>프로리그 시즌 1 출전 순서 드래프트</h3>
+                <small>4팀 · 24명 · 마지막 갱신 20:42</small>
+              </a>
+              <a class="live-item" href="/tournament">
+                <span class="status ready">토너먼트 준비중</span>
+                <h3>개인리그 8강 A조</h3>
+                <small>8명 · 싱글 엘리미네이션 · 22:00 시작</small>
+              </a>
+            </div>
+          </section>
+
+          <section class="panel" data-section="gallery" aria-labelledby="gallery-title">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">Board</span>
+                <h2 id="gallery-title">최근 갤러리</h2>
+              </div>
+            </div>
+            <div class="compact-card">
+              <a class="gallery-row" href="/gallery">
+                <h3>프로리그 2라운드 리뷰</h3>
+                <p>에이스 결정전과 팀플 조합 분석</p>
+              </a>
+              <a class="gallery-row" href="/gallery">
+                <h3>신규 맵 밸런스 의견</h3>
+                <p>맵별 종족 체감 난이도 정리</p>
+              </a>
+            </div>
+          </section>
+        </aside>
+
+        <section class="league-stack" aria-label="리그 일정">
+          <article class="panel" data-section="proleague" aria-labelledby="proleague-title">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">Proleague</span>
+                <h2 id="proleague-title">프로리그</h2>
+              </div>
+              <span class="status live">오늘 21:00</span>
+            </div>
+
+            <div class="schedule-card">
+              <div class="schedule-top">
+                <div>
+                  <h3>TuF 프로리그 시즌 1 · 3라운드</h3>
+                  <div class="schedule-meta">
+                    <span>BO7</span>
+                    <span>팀플 포함</span>
+                    <span>운영진 Blackmagic</span>
+                  </div>
+                </div>
+                <span class="chip">세트 정보 공개</span>
+              </div>
+
+              <div class="match-title">
+                <span class="team">Alpha Team</span>
+                <span class="versus">VS</span>
+                <span class="team right">Bravo Team</span>
+              </div>
+
+              <div class="set-list">
+                <div class="set-row">
+                  <div class="set-badge">
+                    <strong>1세트</strong>
+                    <span>1:1</span>
+                  </div>
+                  <div class="players">
+                    <div class="side">
+                      <div class="player">
+                        <span class="player-name">alpha_snow</span>
+                        <span class="pill tier">S</span>
+                        <span class="pill race p">P</span>
+                      </div>
+                    </div>
+                    <span class="vs">VS</span>
+                    <div class="side right">
+                      <div class="player">
+                        <span class="player-name">bravo_mind</span>
+                        <span class="pill tier">A+</span>
+                        <span class="pill race t">T</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="map-box">
+                    <span>MAP</span>
+                    <strong>Neo Dark Origin</strong>
+                  </div>
+                </div>
+
+                <div class="set-row">
+                  <div class="set-badge">
+                    <strong>2세트</strong>
+                    <span>1:1</span>
+                  </div>
+                  <div class="players">
+                    <div class="side">
+                      <div class="player">
+                        <span class="player-name">alpha_rain</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race z">Z</span>
+                      </div>
+                    </div>
+                    <span class="vs">VS</span>
+                    <div class="side right">
+                      <div class="player">
+                        <span class="player-name">bravo_flash</span>
+                        <span class="pill tier">S</span>
+                        <span class="pill race t">T</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="map-box">
+                    <span>MAP</span>
+                    <strong>Polypoid</strong>
+                  </div>
+                </div>
+
+                <div class="set-row">
+                  <div class="set-badge">
+                    <strong>3세트</strong>
+                    <span>2:2 팀플</span>
+                  </div>
+                  <div class="players">
+                    <div class="side">
+                      <div class="player">
+                        <span class="player-name">alpha_zero</span>
+                        <span class="pill tier">B+</span>
+                        <span class="pill race z">Z</span>
+                      </div>
+                      <div class="player">
+                        <span class="player-name">alpha_bisu</span>
+                        <span class="pill tier">S</span>
+                        <span class="pill race p">P</span>
+                      </div>
+                    </div>
+                    <span class="vs">VS</span>
+                    <div class="side right">
+                      <div class="player">
+                        <span class="player-name">bravo_best</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race p">P</span>
+                      </div>
+                      <div class="player">
+                        <span class="player-name">bravo_hero</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race z">Z</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="map-box">
+                    <span>MAP</span>
+                    <strong>Fighting Spirit</strong>
+                  </div>
+                </div>
+
+                <div class="set-row">
+                  <div class="set-badge">
+                    <strong>4세트</strong>
+                    <span>3:3 팀플</span>
+                  </div>
+                  <div class="players">
+                    <div class="side">
+                      <div class="player">
+                        <span class="player-name">alpha_light</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race t">T</span>
+                      </div>
+                      <div class="player">
+                        <span class="player-name">alpha_royal</span>
+                        <span class="pill tier">B</span>
+                        <span class="pill race t">T</span>
+                      </div>
+                      <div class="player">
+                        <span class="player-name">alpha_queen</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race z">Z</span>
+                      </div>
+                    </div>
+                    <span class="vs">VS</span>
+                    <div class="side right">
+                      <div class="player">
+                        <span class="player-name">bravo_soulkey</span>
+                        <span class="pill tier">S</span>
+                        <span class="pill race z">Z</span>
+                      </div>
+                      <div class="player">
+                        <span class="player-name">bravo_free</span>
+                        <span class="pill tier">B</span>
+                        <span class="pill race p">P</span>
+                      </div>
+                      <div class="player">
+                        <span class="player-name">bravo_sea</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race t">T</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="map-box">
+                    <span>MAP</span>
+                    <strong>Hunters</strong>
+                  </div>
+                </div>
+
+                <div class="set-row">
+                  <div class="set-badge">
+                    <strong>ACE</strong>
+                    <span>1:1</span>
+                  </div>
+                  <div class="players">
+                    <div class="side">
+                      <div class="player">
+                        <span class="player-name">출전 대기</span>
+                        <span class="pill tier">미정</span>
+                        <span class="pill race r">R</span>
+                      </div>
+                    </div>
+                    <span class="vs">VS</span>
+                    <div class="side right">
+                      <div class="player">
+                        <span class="player-name">출전 대기</span>
+                        <span class="pill tier">미정</span>
+                        <span class="pill race r">R</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="map-box">
+                    <span>MAP</span>
+                    <strong>Neo Arkanoid</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel" data-section="personal" aria-labelledby="personal-title">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">Personal League</span>
+                <h2 id="personal-title">개인리그</h2>
+              </div>
+              <span class="status ready">내일 20:00</span>
+            </div>
+
+            <div class="schedule-card">
+              <div class="schedule-top">
+                <div>
+                  <h3>TuF 개인리그 8강 A매치</h3>
+                  <div class="schedule-meta">
+                    <span>BO5</span>
+                    <span>개인전</span>
+                    <span>승자 4강 진출</span>
+                  </div>
+                </div>
+                <span class="chip">맵 순서 확정</span>
+              </div>
+
+              <div class="match-title">
+                <span class="team">main_charlie</span>
+                <span class="versus">VS</span>
+                <span class="team right">main_delta</span>
+              </div>
+
+              <div class="set-list">
+                <div class="set-row">
+                  <div class="set-badge">
+                    <strong>1세트</strong>
+                    <span>1:1</span>
+                  </div>
+                  <div class="players">
+                    <div class="side">
+                      <div class="player">
+                        <span class="player-name">main_charlie</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race t">T</span>
+                      </div>
+                    </div>
+                    <span class="vs">VS</span>
+                    <div class="side right">
+                      <div class="player">
+                        <span class="player-name">main_delta</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race z">Z</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="map-box">
+                    <span>MAP</span>
+                    <strong>Circuit Breakers</strong>
+                  </div>
+                </div>
+
+                <div class="set-row">
+                  <div class="set-badge">
+                    <strong>2세트</strong>
+                    <span>1:1</span>
+                  </div>
+                  <div class="players">
+                    <div class="side">
+                      <div class="player">
+                        <span class="player-name">main_charlie</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race t">T</span>
+                      </div>
+                    </div>
+                    <span class="vs">VS</span>
+                    <div class="side right">
+                      <div class="player">
+                        <span class="player-name">main_delta</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race z">Z</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="map-box">
+                    <span>MAP</span>
+                    <strong>La Mancha</strong>
+                  </div>
+                </div>
+
+                <div class="set-row">
+                  <div class="set-badge">
+                    <strong>3세트</strong>
+                    <span>1:1</span>
+                  </div>
+                  <div class="players">
+                    <div class="side">
+                      <div class="player">
+                        <span class="player-name">main_charlie</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race t">T</span>
+                      </div>
+                    </div>
+                    <span class="vs">VS</span>
+                    <div class="side right">
+                      <div class="player">
+                        <span class="player-name">main_delta</span>
+                        <span class="pill tier">A</span>
+                        <span class="pill race z">Z</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="map-box">
+                    <span>MAP</span>
+                    <strong>Polypoid</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const CASES = {
+        all: {
+          notice: true,
+          proleague: true,
+          personal: true,
+        },
+        notice: {
+          notice: true,
+          proleague: false,
+          personal: false,
+        },
+        proleague: {
+          notice: false,
+          proleague: true,
+          personal: false,
+        },
+        personal: {
+          notice: false,
+          proleague: false,
+          personal: true,
+        },
+        "notice-proleague": {
+          notice: true,
+          proleague: true,
+          personal: false,
+        },
+        "notice-personal": {
+          notice: true,
+          proleague: false,
+          personal: true,
+        },
+        "proleague-personal": {
+          notice: false,
+          proleague: true,
+          personal: true,
+        },
+        none: {
+          notice: false,
+          proleague: false,
+          personal: false,
+        },
+      };
+
+      const originalGrid = document.querySelector(".main-grid");
+      const buttons = Array.from(document.querySelectorAll("[data-case]"));
+      const sections = {
+        notice: document.querySelector('[data-section="notice"]'),
+        live: document.querySelector('[data-section="live"]'),
+        gallery: document.querySelector('[data-section="gallery"]'),
+        proleague: document.querySelector('[data-section="proleague"]'),
+        personal: document.querySelector('[data-section="personal"]'),
+      };
+
+      const previewStage = document.createElement("div");
+      previewStage.className = "preview-stage";
+
+      const dynamicGrid = document.createElement("div");
+      dynamicGrid.className = "dynamic-grid";
+      dynamicGrid.setAttribute("aria-label", "공지와 리그 일정 조합 미리보기");
+
+      const leftColumn = document.createElement("div");
+      leftColumn.className = "dynamic-column";
+
+      const rightColumn = document.createElement("div");
+      rightColumn.className = "dynamic-column";
+
+      const emptyPanel = document.createElement("section");
+      emptyPanel.className = "panel empty-primary";
+      emptyPanel.innerHTML = `
+        <strong>오늘 표시할 공지/리그 일정이 없습니다.</strong>
+        <p>LIVE 영역은 유지하고, 공지와 리그 일정 영역만 빈 상태로 정리되는 케이스입니다.</p>
+      `;
+
+      if (originalGrid && sections.live) {
+        originalGrid.replaceWith(previewStage);
+        previewStage.append(sections.live, dynamicGrid, emptyPanel);
+      }
+
+      if (sections.gallery) {
+        sections.gallery.remove();
+      }
+
+      function getLayout(config) {
+        const hasLeague = config.proleague || config.personal;
+
+        if (config.notice && !hasLeague) {
+          return "notice-only";
+        }
+
+        if (!config.notice && hasLeague) {
+          return "leagues-only";
+        }
+
+        return "mixed";
+      }
+
+      function setCase(caseKey) {
+        const config = CASES[caseKey] || CASES.all;
+        const hasPrimaryContent = config.notice || config.proleague || config.personal;
+
+        leftColumn.replaceChildren();
+        rightColumn.replaceChildren();
+        dynamicGrid.replaceChildren();
+
+        if (config.notice && sections.notice) {
+          leftColumn.append(sections.notice);
+        }
+
+        if (config.proleague && sections.proleague) {
+          rightColumn.append(sections.proleague);
+        }
+
+        if (config.personal && sections.personal) {
+          rightColumn.append(sections.personal);
+        }
+
+        if (config.notice) {
+          dynamicGrid.append(leftColumn);
+        }
+
+        if (config.proleague || config.personal) {
+          dynamicGrid.append(rightColumn);
+        }
+
+        dynamicGrid.dataset.layout = getLayout(config);
+        dynamicGrid.hidden = !hasPrimaryContent;
+        emptyPanel.hidden = hasPrimaryContent;
+
+        buttons.forEach((button) => {
+          const isActive = button.dataset.case === caseKey;
+          button.classList.toggle("active", isActive);
+          button.setAttribute("aria-pressed", String(isActive));
+        });
+
+        if (window.location.hash.slice(1) !== caseKey) {
+          history.replaceState(null, "", `#${caseKey}`);
+        }
+      }
+
+      buttons.forEach((button) => {
+        button.addEventListener("click", () => setCase(button.dataset.case));
+      });
+
+      const initialCase = CASES[window.location.hash.slice(1)]
+        ? window.location.hash.slice(1)
+        : "all";
+
+      setCase(initialCase);
+    </script>
+  </body>
+</html>

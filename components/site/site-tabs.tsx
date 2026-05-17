@@ -17,9 +17,15 @@ type SiteTabsProps = {
 };
 
 type MenuVisibilityRecord = Record<string, boolean>;
+type TabTone = "primary" | "utility";
 
 const ALWAYS_VISIBLE_MENU_KEYS = new Set(["admin", "admin.menuVisibility"]);
 const MENU_VISIBILITY_CHANGED_EVENT = "site-menu-visibility-changed";
+const HOME_TAB: SiteTab = {
+  label: "홈",
+  href: "/",
+  description: "메인 화면으로 이동합니다.",
+};
 
 function isPathActive(pathname: string, href?: string) {
   if (!href) {
@@ -45,26 +51,48 @@ function findBestMatchingSubTab(
     return null;
   }
 
-  return items
-    .filter((item) => !item.external && isPathActive(pathname, item.href))
-    .sort((left, right) => (right.href?.length ?? 0) - (left.href?.length ?? 0))[0] ?? null;
+  return (
+    items
+      .filter((item) => !item.external && isPathActive(pathname, item.href))
+      .sort(
+        (left, right) => (right.href?.length ?? 0) - (left.href?.length ?? 0),
+      )[0] ?? null
+  );
 }
 
-function buildTabClassName(isActive: boolean) {
+function getDisplayLabel(label: string) {
+  return label === "TuF 갤러리" ? "갤러리" : label;
+}
+
+function isUtilityTab(tab: SiteTab) {
+  return tab.external || tab.menuKey === "game" || tab.menuKey === "admin";
+}
+
+function buildTabClassName(isActive: boolean, tone: TabTone) {
   return cn(
-    "rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+    "inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-sm font-semibold transition-colors",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background",
     isActive
-      ? "bg-accent text-white"
-      : "border border-line-strong bg-white text-muted hover:border-accent hover:bg-accent-soft hover:text-accent-ink",
+      ? "bg-foreground !text-white shadow-[0_8px_18px_rgba(23,33,43,0.16)]"
+      : tone === "primary"
+        ? "text-foreground hover:bg-white hover:text-accent-ink"
+        : "border border-line bg-white text-foreground hover:border-accent hover:bg-accent-soft hover:text-accent-ink",
+  );
+}
+
+function buildUnavailableClassName(tone: TabTone) {
+  return cn(
+    "inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-full border border-dashed border-line-strong px-3.5 text-sm font-semibold text-muted/80",
+    tone === "primary" ? "bg-transparent" : "bg-white",
   );
 }
 
 function buildSubTabClassName(isActive: boolean) {
   return cn(
-    "block rounded-lg px-4 py-3 text-sm transition-colors",
+    "grid gap-1 rounded-lg border px-3 py-2.5 text-left transition-colors",
     isActive
-      ? "bg-accent text-white"
-      : "text-foreground hover:bg-surface-muted",
+      ? "border-accent bg-accent !text-white"
+      : "border-transparent text-foreground hover:border-line hover:bg-surface-muted",
   );
 }
 
@@ -73,20 +101,19 @@ function TabLink({
   label,
   description,
   className,
+  unavailableClassName,
   onClick,
 }: {
   href?: string;
   label: string;
   description: string;
   className: string;
+  unavailableClassName: string;
   onClick?: () => void;
 }) {
   if (!href) {
     return (
-      <span
-        title={`${description} URL 미연결`}
-        className="rounded-full border border-dashed border-line-strong bg-white px-4 py-2 text-sm text-muted/80"
-      >
+      <span title={`${description} URL 미연결`} className={unavailableClassName}>
         {label}
       </span>
     );
@@ -99,51 +126,24 @@ function TabLink({
   );
 }
 
-function TabTrigger({
-  label,
-  description,
-  className,
-  isOpen,
-  onClick,
-}: {
-  label: string;
-  description: string;
-  className: string;
-  isOpen: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      title={description}
-      aria-label={`${label} 메뉴`}
-      aria-haspopup="menu"
-      aria-expanded={isOpen}
-      className={className}
-      onClick={onClick}
-    >
-      {label}
-    </button>
-  );
-}
-
 function ExternalTabLink({
   href,
   label,
   description,
   className,
+  unavailableClassName,
+  onClick,
 }: {
   href?: string;
   label: string;
   description: string;
   className: string;
+  unavailableClassName: string;
+  onClick?: () => void;
 }) {
   if (!href) {
     return (
-      <span
-        title={`${description} URL 미연결`}
-        className="rounded-full border border-dashed border-line-strong bg-white px-4 py-2 text-sm text-muted/80"
-      >
+      <span title={`${description} URL 미연결`} className={unavailableClassName}>
         {label}
       </span>
     );
@@ -156,6 +156,7 @@ function ExternalTabLink({
       rel="noreferrer noopener"
       title={description}
       className={className}
+      onClick={onClick}
     >
       {label}
     </a>
@@ -169,18 +170,31 @@ function SubTabItem({
 }: {
   item: SiteSubTab;
   isActive: boolean;
-  onClick: () => void;
+  onClick?: () => void;
 }) {
   const className = buildSubTabClassName(isActive);
+  const content = (
+    <>
+      <b className="text-sm font-semibold">{getDisplayLabel(item.label)}</b>
+      <span
+        className={cn(
+          "text-xs leading-5",
+          isActive ? "text-white/80" : "text-muted",
+        )}
+      >
+        {item.description}
+      </span>
+    </>
+  );
 
   if (item.external) {
     if (!item.href) {
       return (
         <span
           title={`${item.description} URL 미연결`}
-          className="block rounded-lg border border-dashed border-line-strong bg-white px-4 py-3 text-sm text-muted/80"
+          className="grid gap-1 rounded-lg border border-dashed border-line-strong bg-white px-3 py-2.5 text-left text-muted/80"
         >
-          {item.label}
+          {content}
         </span>
       );
     }
@@ -194,7 +208,7 @@ function SubTabItem({
         className={className}
         onClick={onClick}
       >
-        {item.label}
+        {content}
       </a>
     );
   }
@@ -206,8 +220,119 @@ function SubTabItem({
       className={className}
       onClick={onClick}
     >
-      {item.label}
+      {content}
     </Link>
+  );
+}
+
+function MegaMenuPanel({
+  tab,
+  activeSubTab,
+  tone,
+  onNavigate,
+}: {
+  tab: SiteTab;
+  activeSubTab: SiteSubTab | null;
+  tone: TabTone;
+  onNavigate: () => void;
+}) {
+  return (
+    <div
+      role="menu"
+      aria-label={`${getDisplayLabel(tab.label)} 하위 메뉴`}
+      className={cn(
+        "hidden pt-2 group-hover/menu:block group-focus-within/menu:block group-open/menu:block",
+        "lg:absolute lg:top-full lg:z-[120] lg:w-[min(560px,calc(100vw-2rem))]",
+        tone === "utility" ? "lg:right-0" : "lg:left-0",
+      )}
+    >
+      <div className="rounded-lg border border-line bg-surface p-3 shadow-[0_18px_56px_rgba(23,33,43,0.12)]">
+        <div className="mb-2 border-b border-line pb-3">
+          <p className="text-sm font-bold text-foreground">
+            {getDisplayLabel(tab.label)}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted">{tab.description}</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {tab.items?.map((item) => (
+            <SubTabItem
+              key={item.href ?? item.label}
+              item={item}
+              isActive={!item.external && activeSubTab?.href === item.href}
+              onClick={onNavigate}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function closeSiblingMenus(currentMenu: HTMLDetailsElement) {
+  if (!currentMenu.open) {
+    return;
+  }
+
+  currentMenu
+    .closest("[data-site-menu-root]")
+    ?.querySelectorAll<HTMLDetailsElement>("[data-site-menu]")
+    .forEach((menu) => {
+      if (menu !== currentMenu) {
+        menu.open = false;
+      }
+    });
+}
+
+function closeMenus(root: HTMLElement | null) {
+  root
+    ?.querySelectorAll<HTMLDetailsElement>("[data-site-menu]")
+    .forEach((menu) => {
+      menu.open = false;
+    });
+}
+
+function MenuTab({
+  tab,
+  tone,
+  pathname,
+  onNavigate,
+}: {
+  tab: SiteTab;
+  tone: TabTone;
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const activeSubTab = findBestMatchingSubTab(pathname, tab.items);
+  const isCurrentTabActive =
+    !tab.external && (isPathActive(pathname, tab.href) || Boolean(activeSubTab));
+  const label = getDisplayLabel(tab.label);
+  const tabClassName = buildTabClassName(isCurrentTabActive, tone);
+
+  return (
+    <details
+      className="group/menu relative z-30"
+      data-site-menu
+      onToggle={(event) => closeSiblingMenus(event.currentTarget)}
+    >
+      <summary
+        title={tab.description}
+        className={cn(
+          tabClassName,
+          "cursor-pointer list-none gap-2 group-open/menu:bg-foreground group-open/menu:!text-white [&::-webkit-details-marker]:hidden",
+        )}
+      >
+        <span>{label}</span>
+        <span aria-hidden="true" className="text-xs">
+          ▾
+        </span>
+      </summary>
+      <MegaMenuPanel
+        tab={tab}
+        activeSubTab={activeSubTab}
+        tone={tone}
+        onNavigate={onNavigate}
+      />
+    </details>
   );
 }
 
@@ -255,16 +380,13 @@ function filterVisibleTabs(
 export function SiteTabs({ tabs }: SiteTabsProps) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [openMenuState, setOpenMenuState] = useState<{
-    key: string | null;
-    pathname: string | null;
-  }>({ key: null, pathname: null });
   const [menuVisibility, setMenuVisibility] = useState<MenuVisibilityRecord>({});
-  const navRef = useRef<HTMLElement | null>(null);
+  const menuRootRef = useRef<HTMLDivElement | null>(null);
   const canSeeAdminTab = isAdminRole(user?.role);
   const visibleTabs = filterVisibleTabs(tabs, canSeeAdminTab, menuVisibility);
-  const openMenuKey =
-    openMenuState.pathname === pathname ? openMenuState.key : null;
+  const menuTabs = [HOME_TAB, ...visibleTabs];
+  const primaryTabs = menuTabs.filter((tab) => !isUtilityTab(tab));
+  const utilityTabs = menuTabs.filter(isUtilityTab);
 
   useEffect(() => {
     let cancelled = false;
@@ -314,159 +436,84 @@ export function SiteTabs({ tabs }: SiteTabsProps) {
   }, []);
 
   useEffect(() => {
-    if (!openMenuKey) {
-      return;
-    }
+    closeMenus(menuRootRef.current);
+  }, [pathname]);
 
-    function handlePointerDown(event: PointerEvent) {
-      if (navRef.current?.contains(event.target as Node)) {
-        return;
-      }
-
-      setOpenMenuState({ key: null, pathname });
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [openMenuKey, pathname]);
-
-  function updateOpenMenuKey(
-    nextKeyOrUpdater: string | null | ((current: string | null) => string | null),
-  ) {
-    setOpenMenuState((current) => {
-      const currentKey = current.pathname === pathname ? current.key : null;
-      const nextKey =
-        typeof nextKeyOrUpdater === "function"
-          ? nextKeyOrUpdater(currentKey)
-          : nextKeyOrUpdater;
-
-      return {
-        key: nextKey,
-        pathname,
-      };
-    });
+  function handleNavigate() {
+    closeMenus(menuRootRef.current);
   }
 
-  function closeMenus() {
-    updateOpenMenuKey(null);
+  function renderTab(tab: SiteTab, tone: TabTone) {
+    const hasItems = Boolean(tab.items?.length);
+    const activeSubTab = findBestMatchingSubTab(pathname, tab.items);
+    const isCurrentTabActive =
+      !tab.external &&
+      (isPathActive(pathname, tab.href) || Boolean(activeSubTab));
+    const label = getDisplayLabel(tab.label);
+    const tabClassName = buildTabClassName(isCurrentTabActive, tone);
+    const unavailableClassName = buildUnavailableClassName(tone);
+
+    if (hasItems) {
+      return (
+        <MenuTab
+          key={tab.href ?? tab.label}
+          tab={tab}
+          tone={tone}
+          pathname={pathname}
+          onNavigate={handleNavigate}
+        />
+      );
+    }
+
+    if (tab.external) {
+      return (
+        <ExternalTabLink
+          key={tab.href ?? tab.label}
+          href={tab.href}
+          label={label}
+          description={tab.description}
+          className={tabClassName}
+          unavailableClassName={unavailableClassName}
+          onClick={handleNavigate}
+        />
+      );
+    }
+
+    return (
+      <TabLink
+        key={tab.href ?? tab.label}
+        href={tab.href}
+        label={label}
+        description={tab.description}
+        className={tabClassName}
+        unavailableClassName={unavailableClassName}
+        onClick={handleNavigate}
+      />
+    );
   }
 
   return (
-    <nav ref={navRef} className="flex flex-wrap gap-2" aria-label="Primary tabs">
-      {visibleTabs.map((tab) => {
-        const menuKey = tab.href ?? tab.label;
-        const hasItems = Boolean(tab.items?.length);
-        const activeSubTab = findBestMatchingSubTab(pathname, tab.items);
-        const isCurrentTabActive =
-          !tab.external &&
-          (isPathActive(pathname, tab.href) ||
-            Boolean(activeSubTab));
-        const isMenuOpen = hasItems && openMenuKey === menuKey;
-        const tabClassName = buildTabClassName(isCurrentTabActive);
+    <div
+      ref={menuRootRef}
+      className="relative z-20 grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start"
+      data-site-menu-root
+    >
+      <nav
+        className="relative z-20 min-w-0 rounded-lg border border-white/25 bg-white/75 p-1 shadow-[0_12px_34px_rgba(0,0,0,0.12)] backdrop-blur-md"
+        aria-label="주요 메뉴"
+      >
+        <div className="flex flex-wrap items-center gap-1">
+          {primaryTabs.map((tab) => renderTab(tab, "primary"))}
+        </div>
+      </nav>
 
-        if (tab.external) {
-          return (
-            <ExternalTabLink
-              key={tab.label}
-              href={tab.href}
-              label={tab.label}
-              description={tab.description}
-              className={tabClassName}
-            />
-          );
-        }
-
-        if (!hasItems) {
-          return (
-            <TabLink
-              key={menuKey}
-              href={tab.href}
-              label={tab.label}
-              description={tab.description}
-              className={tabClassName}
-              onClick={closeMenus}
-            />
-          );
-        }
-
-        return (
-          <div
-            key={menuKey}
-            className="relative flex flex-col"
-            onMouseEnter={() => {
-              if (hasItems) {
-                updateOpenMenuKey(menuKey);
-              }
-            }}
-            onMouseLeave={() => {
-              if (hasItems) {
-                updateOpenMenuKey((current) => (current === menuKey ? null : current));
-              }
-            }}
-          >
-            <div className="flex items-center gap-2">
-              {tab.href ? (
-                <TabLink
-                  href={tab.href}
-                  label={tab.label}
-                  description={tab.description}
-                  className={tabClassName}
-                  onClick={closeMenus}
-                />
-              ) : (
-                <TabTrigger
-                  label={tab.label}
-                  description={tab.description}
-                  className={tabClassName}
-                  isOpen={isMenuOpen}
-                  onClick={() => {
-                    updateOpenMenuKey((current) => (current === menuKey ? null : menuKey));
-                  }}
-                />
-              )}
-
-              {tab.href ? (
-                <button
-                  type="button"
-                  aria-label={`${tab.label} 하위 메뉴`}
-                  aria-expanded={isMenuOpen}
-                  className={cn(
-                    "rounded-full border border-line-strong bg-white px-3 py-2 text-xs text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink sm:hidden",
-                    isMenuOpen && "border-accent bg-accent-soft text-accent-ink",
-                  )}
-                  onClick={() => {
-                    updateOpenMenuKey((current) => (current === menuKey ? null : menuKey));
-                  }}
-                >
-                  메뉴
-                </button>
-              ) : null}
-            </div>
-
-            <div
-              className={cn(
-                isMenuOpen ? "block pt-2" : "hidden pt-2",
-                "sm:absolute sm:left-0 sm:top-full sm:z-30 sm:min-w-56",
-              )}
-            >
-              <div className="rounded-lg border border-line bg-surface p-2 shadow-[0_16px_50px_rgba(23,33,43,0.12)]">
-                <div className="space-y-1">
-                  {tab.items?.map((item) => (
-                    <SubTabItem
-                      key={item.href ?? item.label}
-                      item={item}
-                      isActive={!item.external && activeSubTab?.href === item.href}
-                      onClick={closeMenus}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
+      {utilityTabs.length > 0 ? (
+        <nav className="relative z-20 min-w-0" aria-label="유틸 메뉴">
+          <div className="flex flex-wrap items-center gap-1 xl:justify-end">
+            {utilityTabs.map((tab) => renderTab(tab, "utility"))}
           </div>
-        );
-      })}
-    </nav>
+        </nav>
+      ) : null}
+    </div>
   );
 }

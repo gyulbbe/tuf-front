@@ -92,7 +92,7 @@ export function BoardListPage({ initialQuery }: BoardListPageProps) {
   const activeKeyword = queryKeyword.trim();
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
           터프 갤러리
@@ -105,7 +105,7 @@ export function BoardListPage({ initialQuery }: BoardListPageProps) {
       {notice ? <BoardNotice notice={notice} /> : null}
 
       <SurfaceCard className="overflow-hidden p-0">
-        <div className="hidden grid-cols-[minmax(0,1fr)_120px_160px] gap-3 border-b border-line bg-surface-muted px-5 py-4 text-sm font-semibold text-foreground md:grid">
+        <div className="hidden grid-cols-[minmax(0,1fr)_160px_190px] gap-3 border-b border-line bg-surface-muted px-5 py-4 text-sm font-semibold text-foreground md:grid">
           <span>제목</span>
           <span className="text-center">작성자</span>
           <span className="text-right">작성일</span>
@@ -123,7 +123,7 @@ export function BoardListPage({ initialQuery }: BoardListPageProps) {
                   href={`/gallery/${board.id}`}
                   className="block px-5 py-4 transition-colors hover:bg-surface-muted/50"
                 >
-                  <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_120px_160px] md:gap-3">
+                  <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_160px_190px] md:gap-3">
                     <span className="truncate text-base font-medium text-foreground">
                       {board.title}
                     </span>

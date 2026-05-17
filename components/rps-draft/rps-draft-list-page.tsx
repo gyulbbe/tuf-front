@@ -332,7 +332,7 @@ export function RpsDraftListPage() {
     <>
       <SurfaceCard className="p-6 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="max-w-3xl">
+          <div className="max-w-4xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
               Draft
             </p>
@@ -345,9 +345,24 @@ export function RpsDraftListPage() {
             </p>
           </div>
 
-          <Button variant="accent" onClick={handleOpenCreateDialog}>
-            드래프트 생성
-          </Button>
+          {isAuthenticated ? (
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <Link href="/draft/pinball" className={secondaryLinkClassName}>
+                핀볼 생성
+              </Link>
+              <Button variant="accent" onClick={handleOpenCreateDialog}>
+                가위바위보 생성
+              </Button>
+            </div>
+          ) : status === "loading" ? (
+            <Button variant="outline" disabled>
+              로그인 확인 중...
+            </Button>
+          ) : (
+            <Link href={loginHref} className={primaryLinkClassName}>
+              로그인 후 생성
+            </Link>
+          )}
         </div>
 
         {error ? (
@@ -365,7 +380,7 @@ export function RpsDraftListPage() {
             아직 진행 가능한 드래프트가 없습니다.
           </div>
         ) : (
-          <div className="mt-6 grid gap-3">
+          <div className="mt-6 grid gap-3 2xl:grid-cols-2">
             {activeSessions.map((session) => {
               const canManage = canManageOwnedResource({
                 ownerUserId: session.ownerUserId,
@@ -430,7 +445,7 @@ export function RpsDraftListPage() {
         closeOnEscape={false}
         title="드래프트 생성"
         description="제목, 팀장 2명, 후보 목록을 여기서 모두 정합니다. 생성이 끝나면 바로 진행 화면으로 이동합니다."
-        panelClassName="max-w-6xl bg-white backdrop-blur-none"
+        panelClassName="max-w-[1400px] bg-white backdrop-blur-none"
       >
         <form
           className="grid gap-5 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]"

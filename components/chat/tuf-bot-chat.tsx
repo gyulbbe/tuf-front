@@ -199,7 +199,7 @@ export function TufBotChat() {
         {messages.map((message) => {
           const isAssistant = message.role === "assistant";
           const bubbleClassName = cn(
-            "max-w-[88%] rounded-lg px-4 py-3 shadow-[0_16px_50px_rgba(23,33,43,0.08)]",
+            "max-w-[88%] rounded-lg px-4 py-3 shadow-[0_16px_50px_rgba(23,33,43,0.08)] lg:max-w-[64%]",
             isAssistant
               ? message.state === "error"
                 ? "border border-danger-ink/20 bg-danger-soft text-danger-ink"

@@ -928,7 +928,7 @@ export function TournamentCreatePage() {
 
   return (
     <form
-      className="relative left-1/2 w-[calc(100vw-1.25rem)] max-w-[1760px] -translate-x-1/2 space-y-4 sm:w-[calc(100vw-2rem)]"
+      className="relative left-1/2 w-[calc(100vw-1.25rem)] max-w-[1600px] -translate-x-1/2 space-y-4 sm:w-[calc(100vw-2rem)]"
       onSubmit={handleSubmit}
     >
       <SurfaceCard className="p-6 sm:p-8">

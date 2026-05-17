@@ -98,7 +98,7 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
 
   if (isLoading) {
     return (
-      <div className="mx-auto w-full max-w-6xl">
+      <div className="w-full">
         <SurfaceCard className="p-7 sm:p-8">
           <BoardEmptyState text="게시글을 불러오는 중이야." />
         </SurfaceCard>
@@ -108,7 +108,7 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
 
   if (!board) {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-4">
+      <div className="w-full space-y-4">
         {notice ? <BoardNotice notice={notice} /> : null}
         <SurfaceCard className="p-7 sm:p-8">
           <BoardEmptyState text="게시글을 찾지 못했어." />
@@ -121,7 +121,7 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4">
+    <div className="w-full space-y-4">
       {notice ? <BoardNotice notice={notice} /> : null}
 
       <SurfaceCard className="p-7 sm:p-8">
@@ -133,7 +133,7 @@ export function BoardDetailPage({ boardId }: BoardDetailPageProps) {
           <span>{formatBoardDateTime(board.regDate)}</span>
           <span>댓글 {board.commentCount}개</span>
         </div>
-        <div className="mt-8 whitespace-pre-wrap text-base leading-8 text-foreground">
+        <div className="mt-8 max-w-5xl whitespace-pre-wrap text-base leading-8 text-foreground">
           {board.text}
         </div>
       </SurfaceCard>

@@ -4,8 +4,12 @@ export type SiteMenuVisibilityKey =
   | "draft.content"
   | "game"
   | "gallery"
+  | "admin.proleague"
+  | "admin.proleagueHistory"
   | "admin.draftHistory"
   | "admin.users"
+  | "admin.homeSchedules"
+  | "admin.maps"
   | "external.recordManager"
   | "external.betting";
 
@@ -41,6 +45,11 @@ export const siteConfig = {
   name: "Starcraft TuF Clan",
   description:
     "터프봇, 드래프트, 게임, 갤러리, 관리자 기능을 한 화면에서 관리하는 Starcraft TuF Clan 사이트입니다.",
+  brand: {
+    headerBackgroundSrc: "/brand/tuf-logo.png",
+    shortName: "TuF",
+    tagline: "Clan command center",
+  },
 };
 
 export const siteMenuVisibilityItems: SiteMenuVisibilityMeta[] = [
@@ -70,6 +79,16 @@ export const siteMenuVisibilityItems: SiteMenuVisibilityMeta[] = [
     description: "상단 TuF 갤러리 탭 표시 여부를 관리합니다.",
   },
   {
+    menuKey: "admin.proleague",
+    label: "프로리그 등록",
+    description: "관리자 메뉴의 프로리그 등록 항목 표시 여부를 관리합니다.",
+  },
+  {
+    menuKey: "admin.proleagueHistory",
+    label: "프로리그 이력",
+    description: "관리자 메뉴의 프로리그 이력 항목 표시 여부를 관리합니다.",
+  },
+  {
     menuKey: "admin.draftHistory",
     label: "드래프트 이력",
     description: "관리자 메뉴의 드래프트 이력 항목 표시 여부를 관리합니다.",
@@ -78,6 +97,16 @@ export const siteMenuVisibilityItems: SiteMenuVisibilityMeta[] = [
     menuKey: "admin.users",
     label: "사용자 관리",
     description: "관리자 메뉴의 사용자 관리 항목 표시 여부를 관리합니다.",
+  },
+  {
+    menuKey: "admin.homeSchedules",
+    label: "일정 관리",
+    description: "관리자 메뉴의 일정 관리 항목 표시 여부를 관리합니다.",
+  },
+  {
+    menuKey: "admin.maps",
+    label: "맵 관리",
+    description: "관리자 메뉴의 맵 관리 항목 표시 여부를 관리합니다.",
   },
   {
     menuKey: "external.recordManager",
@@ -142,6 +171,20 @@ export const siteTabs: SiteTab[] = [
     menuKey: "admin",
     items: [
       {
+        label: "프로리그 등록",
+        href: "/admin/proleague",
+        description: "프로리그 기본 정보와 드래프트 생성을 등록합니다.",
+        requiresAdmin: true,
+        menuKey: "admin.proleague",
+      },
+      {
+        label: "프로리그 이력",
+        href: "/admin/proleague/history",
+        description: "종료된 프로리그 결과와 팀 구성을 확인하고 삭제합니다.",
+        requiresAdmin: true,
+        menuKey: "admin.proleagueHistory",
+      },
+      {
         label: "드래프트 이력",
         href: "/admin/draft/history",
         description: "종료된 드래프트 기록을 확인합니다.",
@@ -154,6 +197,20 @@ export const siteTabs: SiteTab[] = [
         description: "사용자 조회, 등록, 수정, 상태 변경을 관리합니다.",
         requiresAdmin: true,
         menuKey: "admin.users",
+      },
+      {
+        label: "일정 관리",
+        href: "/admin/home/schedules",
+        description: "메인화면에 표시할 일정을 등록하고 수정합니다.",
+        requiresAdmin: true,
+        menuKey: "admin.homeSchedules",
+      },
+      {
+        label: "맵 관리",
+        href: "/admin/maps",
+        description: "일정 세트 대진에서 사용할 맵을 등록하고 수정합니다.",
+        requiresAdmin: true,
+        menuKey: "admin.maps",
       },
       {
         label: "메뉴 설정",

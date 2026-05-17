@@ -159,7 +159,7 @@ export function AccountWorkspace() {
               계정 정보를 불러오는 중입니다.
             </div>
           ) : detail ? (
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <div className="rounded-lg border border-line bg-surface-muted/60 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                   ID

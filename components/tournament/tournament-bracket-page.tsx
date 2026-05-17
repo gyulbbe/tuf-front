@@ -93,7 +93,7 @@ export function TournamentBracketPage({
   }, [tournamentId]);
 
   return (
-    <div className="relative left-1/2 w-[calc(100vw-1.25rem)] max-w-[1480px] -translate-x-1/2 sm:w-[calc(100vw-2rem)]">
+    <div className="relative left-1/2 w-[calc(100vw-1.25rem)] max-w-[1600px] -translate-x-1/2 sm:w-[calc(100vw-2rem)]">
       {loading ? (
         <SurfaceCard className="p-6 sm:p-8">
           <h1 className="text-2xl font-semibold text-foreground sm:text-3xl">

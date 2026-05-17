@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import Link from "next/link";
 import {
   startTransition,
   type PointerEvent as ReactPointerEvent,
@@ -32,6 +33,8 @@ import {
 import { subscribeToDraftSession } from "@/lib/draft/live-events";
 import { useAuth } from "@/components/auth/auth-provider";
 import type { AuthUser } from "@/lib/auth/auth-types";
+import { buildLoginHref } from "@/lib/auth/auth-navigation";
+import { proleagueDraftLivePath } from "@/lib/proleague-draft/routes";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1017,7 +1020,7 @@ export function DraftLiveDashboard({
   sessionId = null,
   variant = "generic",
 }: DraftLiveDashboardProps) {
-  const { user } = useAuth();
+  const { isAuthenticated, status, user } = useAuth();
   const fixedSessionId = typeof sessionId === "number" ? sessionId : null;
   const [sessions, setSessions] = useState<DraftSessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(
@@ -1034,7 +1037,6 @@ export function DraftLiveDashboard({
     );
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
-  const [resumeSeconds, setResumeSeconds] = useState("30");
   const [extendSeconds, setExtendSeconds] = useState("30");
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("disconnected");
@@ -1063,6 +1065,12 @@ export function DraftLiveDashboard({
       : variant === "proleague"
         ? "프로리그 드래프트"
         : "드래프트 라이브";
+  const loginHref = buildLoginHref({
+    redirectTo:
+      selectedSessionId !== null
+        ? proleagueDraftLivePath(selectedSessionId)
+        : "/proleague/draft",
+  });
   const scopedAuxiliaryState =
     auxiliaryState.sessionId === selectedSessionId
       ? auxiliaryState
@@ -1895,6 +1903,14 @@ export function DraftLiveDashboard({
                   ? `${currentPickerDisplayId ?? "픽커 미지정"} 차례`
                   : "진행 중인 차례 없음"}
               </h2>
+              {!isAuthenticated && status !== "loading" ? (
+                <p className="mt-3 text-sm text-muted">
+                  <Link href={loginHref} className="font-semibold text-accent">
+                    로그인
+                  </Link>
+                  하면 팀장 권한으로 참여할 수 있습니다.
+                </p>
+              ) : null}
             </div>
 
             <div className="w-full max-w-sm space-y-3">
@@ -2002,7 +2018,7 @@ export function DraftLiveDashboard({
                   disabled={
                     !canAdminControl ||
                     isBusy ||
-                    snapshot.session.status !== "READY"
+                    !["READY", "PAUSED"].includes(snapshot.session.status)
                   }
                   onClick={() => {
                     const sessionId = selectedSessionId;
@@ -2011,12 +2027,25 @@ export function DraftLiveDashboard({
                       return;
                     }
 
+                    if (snapshot.session.status === "PAUSED") {
+                      void runSnapshotAction("resume", () =>
+                        resumeDraftSession(sessionId),
+                      );
+                      return;
+                    }
+
                     void runSnapshotAction("start", () =>
                       startDraftSession(sessionId),
                     );
                   }}
                 >
-                  {pendingAction === "start" ? "시작 중" : "시작"}
+                  {pendingAction === "resume"
+                    ? "이어 진행 중"
+                    : pendingAction === "start"
+                      ? "시작 중"
+                      : snapshot.session.status === "PAUSED"
+                        ? "이어 진행"
+                        : "시작"}
                 </Button>
 
                 <Button
@@ -2039,52 +2068,6 @@ export function DraftLiveDashboard({
                 >
                   {pendingAction === "pause" ? "정지 중" : "일시정지"}
                 </Button>
-              </div>
-
-              <div className="rounded-lg border border-line bg-surface px-4 py-4">
-                <p className="text-sm font-semibold text-foreground">재개 시간</p>
-                <div className="mt-3 flex gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    value={resumeSeconds}
-                    onChange={(event) => setResumeSeconds(event.target.value)}
-                    placeholder="기본 30"
-                  />
-                  <Button
-                    variant="accent"
-                    disabled={
-                      !canAdminControl ||
-                      isBusy ||
-                      snapshot.session.status !== "PAUSED"
-                    }
-                    onClick={() => {
-                      const sessionId = selectedSessionId;
-
-                      if (sessionId === null) {
-                        return;
-                      }
-
-                      try {
-                        const seconds = parsePositiveSeconds(
-                          resumeSeconds,
-                          snapshot.session.pickTimeSeconds,
-                        );
-
-                        void runSnapshotAction("resume", () =>
-                          resumeDraftSession(sessionId, seconds),
-                        );
-                      } catch (error) {
-                        setNotice({
-                          tone: "error",
-                          text: readErrorMessage(error),
-                        });
-                      }
-                    }}
-                  >
-                    {pendingAction === "resume" ? "재개 중" : "재개"}
-                  </Button>
-                </div>
               </div>
 
               <div className="rounded-lg border border-line bg-surface px-4 py-4">

@@ -76,8 +76,8 @@ function formatDate(value: string | null | undefined) {
 
 function getGridClassName(canManage: boolean) {
   return canManage
-    ? "md:grid-cols-[44px_minmax(0,1fr)_110px_120px_120px_150px]"
-    : "md:grid-cols-[minmax(0,1fr)_110px_120px_150px]";
+    ? "md:grid-cols-[44px_minmax(0,1fr)_130px_130px_140px_190px]"
+    : "md:grid-cols-[minmax(0,1fr)_130px_130px_190px]";
 }
 
 function TournamentRow({
@@ -291,7 +291,7 @@ export function TournamentListPage() {
     tournamentPage.totalPages > 0 ? tournamentPage.page + 1 : 0;
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase text-accent">
@@ -318,7 +318,7 @@ export function TournamentListPage() {
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder="토너먼트명 검색"
-            className="lg:max-w-md"
+            className="lg:max-w-xl"
           />
           {canManageTournament ? (
             <Button

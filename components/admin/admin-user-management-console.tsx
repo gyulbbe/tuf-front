@@ -1,6 +1,12 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import {
+  startTransition,
+  type CSSProperties,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -214,10 +220,46 @@ export function AdminUserManagementConsole() {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [rightColumnHeight, setRightColumnHeight] = useState<number | null>(null);
   const preferredSelectedUserIdRef = useRef<number | null>(null);
+  const rightColumnRef = useRef<HTMLDivElement | null>(null);
 
   const selectedUser =
     users.find((user) => user.id === selectedUserId) ?? null;
+  const managementLayoutStyle = rightColumnHeight
+    ? ({
+        "--admin-user-right-column-height": `${rightColumnHeight}px`,
+      } as CSSProperties)
+    : undefined;
+
+  useEffect(() => {
+    const rightColumn = rightColumnRef.current;
+
+    if (!rightColumn) {
+      return;
+    }
+
+    const updateRightColumnHeight = () => {
+      setRightColumnHeight(Math.ceil(rightColumn.getBoundingClientRect().height));
+    };
+
+    updateRightColumnHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateRightColumnHeight);
+
+      return () => {
+        window.removeEventListener("resize", updateRightColumnHeight);
+      };
+    }
+
+    const observer = new ResizeObserver(updateRightColumnHeight);
+    observer.observe(rightColumn);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -511,8 +553,11 @@ export function AdminUserManagementConsole() {
         ) : null}
       </SurfaceCard>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
-        <div className="space-y-4">
+      <div
+        className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(440px,0.8fr)]"
+        style={managementLayoutStyle}
+      >
+        <div className="flex min-h-0 flex-col gap-4 xl:h-[var(--admin-user-right-column-height)]">
           <SurfaceCard className="p-6">
             <form
               className="space-y-4"
@@ -582,7 +627,7 @@ export function AdminUserManagementConsole() {
             </form>
           </SurfaceCard>
 
-          <SurfaceCard className="p-6">
+          <SurfaceCard className="flex min-h-0 flex-1 flex-col p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-foreground">사용자 목록</p>
@@ -603,7 +648,7 @@ export function AdminUserManagementConsole() {
               </Button>
             </div>
 
-            <div className="mt-5 space-y-3">
+            <div className="mt-5 flex min-h-0 flex-1 flex-col">
               {loadingUsers ? (
                 <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
                   사용자 목록을 불러오는 중이다.
@@ -613,7 +658,7 @@ export function AdminUserManagementConsole() {
                   조건에 맞는 사용자가 없다.
                 </div>
               ) : (
-                <div className="max-h-[36rem] space-y-2 overflow-y-auto pr-1">
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                   {users.map((user) => {
                     const isSelected = user.id === selectedUserId;
 
@@ -659,10 +704,10 @@ export function AdminUserManagementConsole() {
 
                         <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
                           <span className="rounded-full bg-surface-muted px-3 py-1">
-                            종족 {user.race || "-"}
+                            {user.race || "-"}
                           </span>
                           <span className="rounded-full bg-surface-muted px-3 py-1">
-                            이름 {user.name || "-"}
+                            {user.name || "-"}
                           </span>
                           <span className="rounded-full bg-surface-muted px-3 py-1">
                             티어 {user.tier || "-"}
@@ -680,7 +725,7 @@ export function AdminUserManagementConsole() {
           </SurfaceCard>
         </div>
 
-        <div className="space-y-4">
+        <div ref={rightColumnRef} className="space-y-4">
           <SurfaceCard className="p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -725,7 +770,7 @@ export function AdminUserManagementConsole() {
                 />
               </label>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                 <label className="block">
                   <span className="mb-2 block text-sm font-medium text-foreground">
                     이름
@@ -808,14 +853,6 @@ export function AdminUserManagementConsole() {
                   <span
                     className={cn(
                       "rounded-full px-3 py-1 text-xs font-semibold",
-                      getRoleBadgeClassName(selectedUser.userType),
-                    )}
-                  >
-                    {getRoleLabel(selectedUser.userType)}
-                  </span>
-                  <span
-                    className={cn(
-                      "rounded-full px-3 py-1 text-xs font-semibold",
                       getStatusBadgeClassName(selectedUser.status),
                     )}
                   >
@@ -847,7 +884,7 @@ export function AdminUserManagementConsole() {
                   />
                 </label>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-foreground">
                       이름

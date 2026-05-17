@@ -143,7 +143,7 @@ export function BoardFormPage({ boardId, mode }: BoardFormPageProps) {
   }, [boardId, isEditMode]);
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
           {isEditMode ? "글 수정" : "글쓰기"}
@@ -169,7 +169,7 @@ export function BoardFormPage({ boardId, mode }: BoardFormPageProps) {
           </div>
         ) : (
           <form
-            className="space-y-4"
+            className="max-w-5xl space-y-4"
             onSubmit={async (event) => {
               event.preventDefault();
 

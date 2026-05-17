@@ -64,7 +64,7 @@ export function TournamentProgressPage({
   }, [tournamentId]);
 
   return (
-    <div className="relative left-1/2 w-[calc(100vw-1.25rem)] max-w-[1680px] -translate-x-1/2 space-y-4 sm:w-[calc(100vw-2rem)]">
+    <div className="relative left-1/2 w-[calc(100vw-1.25rem)] max-w-[1600px] -translate-x-1/2 space-y-4 sm:w-[calc(100vw-2rem)]">
       <SurfaceCard className="p-5 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>

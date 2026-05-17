@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProleagueDraftLivePage } from "@/components/proleague/proleague-draft-live-page";
-import { requireServerAuth } from "@/lib/auth/server-auth";
 
 export const metadata: Metadata = {
   title: "프로리그 드래프트 라이브",
@@ -22,8 +21,6 @@ export default async function ProleagueDraftLiveRoute({
   if (!Number.isInteger(sessionId) || sessionId < 1) {
     notFound();
   }
-
-  await requireServerAuth(`/proleague/draft/${sessionId}/live`);
 
   return <ProleagueDraftLivePage sessionId={sessionId} />;
 }

@@ -1,5 +1,9 @@
 import axios from "axios";
 import { apiClient } from "@/lib/api/client";
+import {
+  searchDraftUsers,
+  type DraftUserSearchResult,
+} from "@/lib/api/draft-users";
 
 type ApiEnvelope<T> = {
   status?: number;
@@ -188,12 +192,7 @@ export type RpsDraftPickRequest = {
   candidateUserId: number;
 };
 
-export type RpsDraftUserSearchResult = {
-  id: number;
-  userId: string;
-  tier: string | null;
-  race: string | null;
-};
+export type RpsDraftUserSearchResult = DraftUserSearchResult;
 
 export type RpsDraftApiErrorInfo = {
   fallback: string;
@@ -637,16 +636,7 @@ export async function pickRpsDraftCandidate(
 }
 
 export async function searchRpsDraftUsers(keyword: string, limit = 8) {
-  return unwrapResponse(
-    apiClient.get<ApiEnvelope<RpsDraftUserSearchResult[]>>("/user/draft-search", {
-      params: {
-        keyword,
-        limit,
-      },
-      validateStatus: () => true,
-    }),
-    "유저 검색 결과를 불러오지 못했습니다.",
-  );
+  return searchDraftUsers(keyword, limit);
 }
 
 export function buildRpsDraftWebSocketUrl() {

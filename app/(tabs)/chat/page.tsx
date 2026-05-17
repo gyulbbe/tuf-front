@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function ChatPage() {
   return (
-    <SurfaceCard className="h-[clamp(540px,calc(100svh-22rem),760px)] overflow-hidden p-0">
+    <SurfaceCard className="h-[clamp(620px,calc(100svh-20rem),880px)] overflow-hidden p-0">
       <TufBotChat />
     </SurfaceCard>
   );

@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { RpsDraftListPage } from "@/components/rps-draft/rps-draft-list-page";
+import { requireServerAuth } from "@/lib/auth/server-auth";
 
 export const metadata: Metadata = {
-  title: "팀배/컨텐츠 드래프트",
+  title: "가위바위보 드래프트",
 };
 
-export default function DraftRpsPage() {
-  redirect("/draft");
+export default async function DraftRpsPage() {
+  await requireServerAuth("/draft/rps");
+
+  return <RpsDraftListPage />;
 }

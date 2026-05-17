@@ -48,7 +48,7 @@ export function HeaderAuthButton() {
 
   if (status === "loading") {
     return (
-      <span className="inline-flex rounded-full border border-line-strong bg-white px-4 py-2 text-sm text-muted/70">
+      <span className="inline-flex min-h-9 items-center rounded-full border border-line bg-white px-3 text-sm font-semibold text-muted/70">
         확인 중...
       </span>
     );
@@ -59,20 +59,22 @@ export function HeaderAuthButton() {
     const isAccountPage = pathname === "/me" || pathname.startsWith("/me/");
 
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
         <Link
           href="/me"
           className={cn(
-            "inline-flex rounded-full border px-4 py-2 text-sm transition-colors",
+            "inline-flex min-h-9 max-w-60 items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-full border px-3 text-sm font-semibold transition-colors sm:max-w-72",
             isAccountPage
-              ? "border-accent bg-accent-soft text-accent-ink"
-              : "border-line-strong bg-white text-foreground hover:border-accent hover:bg-accent-soft hover:text-accent-ink",
+              ? "border-foreground bg-foreground text-white"
+              : "border-line bg-white text-foreground hover:border-accent hover:bg-accent-soft hover:text-accent-ink",
           )}
         >
           {user.username}
           {roleBadge ? ` · ${roleBadge}` : ""}
         </Link>
         <Button
+          size="sm"
+          className="min-h-9 px-3 py-0"
           onClick={() => {
             logout();
             startTransition(() => {
@@ -126,7 +128,9 @@ export function HeaderAuthButton() {
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>로그인</Button>
+      <Button size="sm" className="min-h-9 px-4 py-0" onClick={() => setOpen(true)}>
+        로그인
+      </Button>
 
       {modal}
     </>

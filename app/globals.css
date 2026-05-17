@@ -1,4 +1,14 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
 @import "tailwindcss";
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono:vf@latest/latin-wght-normal.woff2")
+    format("woff2-variations");
+}
 
 :root {
   --background: #f5f7fa;
@@ -12,12 +22,12 @@
   --accent: #146c94;
   --accent-ink: #0d4f73;
   --accent-soft: #d9eef7;
-  --success-soft: #e0f1e9;
-  --success-ink: #267550;
+  --success-soft: #dcf7ec;
+  --success-ink: #0f9f72;
   --danger-soft: #f8e5e5;
   --danger-ink: #b34040;
-  --warning-soft: #f8edcf;
-  --warning-ink: #8a6500;
+  --warning-soft: #fff0c9;
+  --warning-ink: #9a6a03;
 }
 
 @theme inline {
@@ -45,6 +55,7 @@
     "Malgun Gothic",
     sans-serif;
   --font-mono:
+    "JetBrains Mono",
     "SFMono-Regular",
     Consolas,
     "Liberation Mono",
@@ -86,5 +97,5 @@ select {
 ::selection {
   background: rgba(20, 108, 148, 0.18);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), sans-serif;
+  font-family: var(--font-sans);
 }

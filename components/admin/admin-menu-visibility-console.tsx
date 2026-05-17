@@ -199,7 +199,7 @@ export function AdminMenuVisibilityConsole() {
           </p>
         ) : null}
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <div className="mt-6 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           {siteMenuVisibilityItems.map((item) => {
             const visible = draftVisibility[item.menuKey] !== false;
             const changed =

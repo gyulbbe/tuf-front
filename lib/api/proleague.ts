@@ -50,7 +50,7 @@ export type AdminProleagueCreateRequest = {
   leagueName: string;
   seasonName: string;
   description: string;
-  status: "READY";
+  status: AdminProleagueStatus;
   leagueType: "PROLEAGUE";
   startDate: string | null;
   endDate: string | null;

@@ -137,13 +137,14 @@ export function LeagueAdminRegistrationPage({
       return;
     }
 
+    const targetLeagueId = leagueId;
     let cancelled = false;
 
     async function loadLeague() {
       setLoading(true);
       setLoadError(null);
       try {
-        const nextDetail = await getAdminLeague(leagueId);
+        const nextDetail = await getAdminLeague(targetLeagueId);
         if (cancelled) {
           return;
         }

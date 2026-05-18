@@ -14,7 +14,6 @@ import {
   createAdminUser,
   listAdminUsers,
   updateAdminUser,
-  updateAdminUserRole,
   updateAdminUserStatus,
   type AdminUserCreateRequest,
   type AdminUserListStatus,
@@ -428,11 +427,12 @@ export function AdminUserManagementConsole() {
         name: editForm.name.trim(),
         race: editForm.race,
         tier: editForm.tier.trim(),
+        role: roleForm,
       });
 
       setNotice({
         tone: "success",
-        text: `사용자 ${updatedUser.userId} 정보를 수정했습니다.`,
+        text: `사용자 ${updatedUser.userId} 정보와 권한을 수정했습니다.`,
       });
       applyUserUpdate(updatedUser);
     } catch (error) {
@@ -469,44 +469,6 @@ export function AdminUserManagementConsole() {
           nextStatus === "ACTIVE"
             ? `사용자 ${updatedUser.userId}를 재활성화했습니다.`
             : `사용자 ${updatedUser.userId}를 비활성화했습니다.`,
-      });
-      applyUserUpdate(updatedUser);
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        text: readErrorMessage(error),
-      });
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function handleUpdateUserRole() {
-    if (!selectedUser) {
-      setNotice({
-        tone: "error",
-        text: "권한을 변경할 사용자를 먼저 선택해 주세요.",
-      });
-      return;
-    }
-
-    if (selectedUser.userType === roleForm) {
-      setNotice({
-        tone: "neutral",
-        text: "이미 선택한 권한으로 설정되어 있습니다.",
-      });
-      return;
-    }
-
-    setPendingAction("update-role");
-    setNotice(null);
-
-    try {
-      const updatedUser = await updateAdminUserRole(selectedUser.id, roleForm);
-
-      setNotice({
-        tone: "success",
-        text: `사용자 ${updatedUser.userId} 권한을 ${getRoleLabel(updatedUser.userType)}로 변경했습니다.`,
       });
       applyUserUpdate(updatedUser);
     } catch (error) {
@@ -961,23 +923,10 @@ export function AdminUserManagementConsole() {
                     </select>
                   </label>
 
-                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="mt-4">
                     <p className="text-xs leading-6 text-muted">
-                      현재 권한은 {getRoleLabel(selectedUser.userType)}입니다.
+                      현재 권한은 {getRoleLabel(selectedUser.userType)}입니다. 사용자 수정 버튼을 누르면 권한도 함께 저장됩니다.
                     </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={
-                        pendingAction !== null || selectedUser.userType === roleForm
-                      }
-                      onClick={() => {
-                        void handleUpdateUserRole();
-                      }}
-                    >
-                      {pendingAction === "update-role" ? "권한 변경 중..." : "권한 변경"}
-                    </Button>
                   </div>
                 </div>
 

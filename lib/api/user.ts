@@ -55,6 +55,7 @@ export type AdminUserUpdateRequest = {
   name: string;
   race: string;
   tier: string;
+  role?: AdminUserRole;
 };
 
 export type AdminUserRoleUpdateRequest = {

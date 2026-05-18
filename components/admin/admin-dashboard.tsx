@@ -21,8 +21,8 @@ type AdminTool = {
 const adminTools: AdminTool[] = [
   {
     href: "/admin/league",
-    title: "리그 등록",
-    description: "프로리그, 개인리그, 끝장전, 종족 최강전 등을 등록합니다.",
+    title: "리그 관리",
+    description: "프로리그, 개인리그, 끝장전, 종족 최강전 등을 관리합니다.",
     menuKey: "admin.league",
   },
   {

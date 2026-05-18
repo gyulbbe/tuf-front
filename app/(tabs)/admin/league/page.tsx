@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LeagueAdminManagementPage } from "@/components/league/league-admin-management-page";
 import { LeagueAdminRegistrationPage } from "@/components/league/league-admin-registration-page";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { isAdminRole } from "@/lib/auth/roles";
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 
 type AdminLeaguePageProps = {
   searchParams?: Promise<{
+    mode?: string;
     type?: string;
   }>;
 };
@@ -46,9 +48,10 @@ export default async function AdminLeaguePage({
     );
   }
 
-  return (
-    <LeagueAdminRegistrationPage
-      initialType={parseLeagueType(resolvedSearchParams.type)}
-    />
-  );
+  const initialType = parseLeagueType(resolvedSearchParams.type);
+  if (resolvedSearchParams.mode === "create") {
+    return <LeagueAdminRegistrationPage initialType={initialType} />;
+  }
+
+  return <LeagueAdminManagementPage initialType={initialType ?? "PROLEAGUE"} />;
 }

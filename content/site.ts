@@ -81,8 +81,8 @@ export const siteMenuVisibilityItems: SiteMenuVisibilityMeta[] = [
   },
   {
     menuKey: "admin.league",
-    label: "리그 등록",
-    description: "관리자 메뉴의 리그 등록 항목 표시 여부를 관리합니다.",
+    label: "리그 관리",
+    description: "관리자 메뉴의 리그 관리 항목 표시 여부를 관리합니다.",
   },
   {
     menuKey: "admin.proleagueHistory",
@@ -172,9 +172,9 @@ export const siteTabs: SiteTab[] = [
     menuKey: "admin",
     items: [
       {
-        label: "리그 등록",
+        label: "리그 관리",
         href: "/admin/league",
-        description: "프로리그, 개인리그, 끝장전, 종족 최강전 등을 등록합니다.",
+        description: "프로리그, 개인리그, 끝장전, 종족 최강전 등을 관리합니다.",
         requiresAdmin: true,
         menuKey: "admin.league",
       },

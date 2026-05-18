@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import { RpsDraftUserSearch } from "@/components/rps-draft/rps-draft-user-search";
+import { DraftUserSearch } from "@/components/draft/draft-user-search";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,9 +17,12 @@ import {
   type TournamentCreateGroupRequest,
   type TournamentCreateSlotRequest,
 } from "@/lib/api/tournament";
-import type { RpsDraftUserSearchResult } from "@/lib/api/rps-draft";
+import type { DraftUserSearchResult } from "@/lib/api/draft-users";
 import {
-  TOURNAMENT_BEST_OF_OPTIONS,
+  DEFAULT_TOURNAMENT_BEST_OF,
+  isValidTournamentBestOf,
+  MIN_TOURNAMENT_BEST_OF,
+  normalizeTournamentBestOf,
   type TournamentBestOf,
   type TournamentBracketType,
 } from "@/lib/tournament/create-types";
@@ -31,6 +34,7 @@ type BuilderParticipant = {
   participantName: string;
   displayName: string;
   detail: string | null;
+  race: string | null;
   source: "USER" | "EXTERNAL";
 };
 
@@ -45,6 +49,9 @@ type DualGroupState = {
   groupName: string;
   slots: [string | null, string | null, string | null, string | null];
 };
+
+type RaceSurvivalRace = "TERRAN" | "ZERG" | "PROTOSS";
+type RaceSurvivalGroupState = Record<RaceSurvivalRace, string[]>;
 
 type SlotReference =
   | {
@@ -93,7 +100,12 @@ type ParticipantPoolProps = {
 };
 
 const DRAG_MIME_TYPE = "application/x-tuf-tournament-builder";
-const DEFAULT_BEST_OF: TournamentBestOf = 3;
+const DEFAULT_BEST_OF: TournamentBestOf = DEFAULT_TOURNAMENT_BEST_OF;
+const RACE_SURVIVAL_RACES: RaceSurvivalRace[] = [
+  "TERRAN",
+  "ZERG",
+  "PROTOSS",
+];
 
 let localIdSeed = 0;
 
@@ -138,6 +150,14 @@ function createInitialDualGroups(): DualGroupState[] {
   return [createDualGroup(0)];
 }
 
+function createInitialRaceSurvivalGroups(): RaceSurvivalGroupState {
+  return {
+    TERRAN: [],
+    ZERG: [],
+    PROTOSS: [],
+  };
+}
+
 function cloneSingleMatches(matches: SingleMatchState[]) {
   return matches.map((match) => ({
     ...match,
@@ -155,6 +175,17 @@ function cloneDualGroups(groups: DualGroupState[]) {
       string | null,
     ],
   }));
+}
+
+function removeParticipantFromRaceSurvivalGroups(
+  groups: RaceSurvivalGroupState,
+  participantId: string,
+): RaceSurvivalGroupState {
+  return {
+    TERRAN: groups.TERRAN.filter((id) => id !== participantId),
+    ZERG: groups.ZERG.filter((id) => id !== participantId),
+    PROTOSS: groups.PROTOSS.filter((id) => id !== participantId),
+  };
 }
 
 function removeParticipantFromSingleMatches(
@@ -227,7 +258,7 @@ function writeDragData(event: DragEvent, data: DragData) {
   event.dataTransfer.setData(DRAG_MIME_TYPE, JSON.stringify(data));
 }
 
-function buildUserParticipant(user: RpsDraftUserSearchResult): BuilderParticipant {
+function buildUserParticipant(user: DraftUserSearchResult): BuilderParticipant {
   const detail = [user.race, user.tier].filter(Boolean).join(" · ");
 
   return {
@@ -236,6 +267,7 @@ function buildUserParticipant(user: RpsDraftUserSearchResult): BuilderParticipan
     participantName: user.userId,
     displayName: user.userId,
     detail: detail || null,
+    race: user.race ?? null,
     source: "USER",
   };
 }
@@ -256,6 +288,21 @@ function buildSlotRequest(
     userId: null,
     participantName: participant.participantName,
   };
+}
+
+function getBracketTypeLabel(bracketType: TournamentBracketType) {
+  switch (bracketType) {
+    case "SINGLE_ELIMINATION":
+      return "싱글 엘리미네이션";
+    case "DUAL_GROUP":
+      return "듀얼 조별전";
+    case "ULTIMATE_BATTLE":
+      return "끝장전";
+    case "RACE_SURVIVAL":
+      return "종족 최강전";
+    default:
+      return "토너먼트";
+  }
 }
 
 function getParticipantTone(participantId: string) {
@@ -480,6 +527,8 @@ export function TournamentCreatePage() {
   const [dualGroups, setDualGroups] = useState<DualGroupState[]>(
     createInitialDualGroups,
   );
+  const [raceSurvivalGroups, setRaceSurvivalGroups] =
+    useState<RaceSurvivalGroupState>(createInitialRaceSurvivalGroups);
   const [selectedParticipantId, setSelectedParticipantId] = useState<
     string | null
   >(null);
@@ -520,15 +569,31 @@ export function TournamentCreatePage() {
       });
     }
 
+    if (bracketType === "ULTIMATE_BATTLE") {
+      participants.forEach((participant) => assignedIds.add(participant.id));
+    }
+
+    if (bracketType === "RACE_SURVIVAL") {
+      RACE_SURVIVAL_RACES.forEach((race) => {
+        raceSurvivalGroups[race].forEach((participantId) => {
+          assignedIds.add(participantId);
+        });
+      });
+    }
+
     return assignedIds;
-  }, [bracketType, dualGroups, singleMatches]);
+  }, [bracketType, dualGroups, participants, raceSurvivalGroups, singleMatches]);
   const assignedSlotCount = assignedParticipantIds.size;
   const totalSlotCount =
     bracketType === "SINGLE_ELIMINATION"
       ? singleMatches.length * 2
       : bracketType === "DUAL_GROUP"
         ? dualGroups.length * 4
-        : 0;
+        : bracketType === "ULTIMATE_BATTLE"
+          ? 2
+          : bracketType === "RACE_SURVIVAL"
+            ? Math.max(3, assignedSlotCount)
+            : 0;
   const byeCount = Math.max(0, totalSlotCount - assignedSlotCount);
   const validationMessage = getValidationMessage();
   const canSubmit = Boolean(bracketType) && !validationMessage && !creating;
@@ -542,8 +607,27 @@ export function TournamentCreatePage() {
       return "대회명을 입력해주세요.";
     }
 
-    if (!TOURNAMENT_BEST_OF_OPTIONS.includes(bestOf)) {
-      return "경기 기본 세트 수를 다시 선택해주세요.";
+    if (!isValidTournamentBestOf(bestOf)) {
+      return "BO는 1 이상의 홀수여야 합니다.";
+    }
+
+    if (bracketType === "ULTIMATE_BATTLE") {
+      return participants.length === 2
+        ? null
+        : "끝장전은 선수 2명을 등록해야 합니다.";
+    }
+
+    if (bracketType === "RACE_SURVIVAL") {
+      const complete = RACE_SURVIVAL_RACES.every(
+        (race) => raceSurvivalGroups[race].length > 0,
+      );
+      if (!complete) {
+        return "종족 최강전은 TERRAN, ZERG, PROTOSS 팀에 각각 1명 이상 배치해야 합니다.";
+      }
+      if (assignedSlotCount !== participants.length) {
+        return "추가한 선수는 모두 종족 팀에 배치해야 합니다.";
+      }
+      return null;
     }
 
     if (bracketType === "SINGLE_ELIMINATION" && singleMatches.length === 0) {
@@ -574,13 +658,24 @@ export function TournamentCreatePage() {
   function handleSelectBracketType(nextBracketType: TournamentBracketType) {
     setSubmitError(null);
     setBracketType(nextBracketType);
+    setBestOf(
+      nextBracketType === "ULTIMATE_BATTLE"
+        ? 9
+        : nextBracketType === "RACE_SURVIVAL"
+          ? 1
+          : DEFAULT_BEST_OF,
+    );
 
     if (nextBracketType === "SINGLE_ELIMINATION") {
       setSingleMatches(createInitialSingleMatches());
+    } else if (nextBracketType === "DUAL_GROUP") {
+      setDualGroups(createInitialDualGroups());
     } else {
+      setSingleMatches(createInitialSingleMatches());
       setDualGroups(createInitialDualGroups());
     }
 
+    setRaceSurvivalGroups(createInitialRaceSurvivalGroups());
     setSelectedParticipantId(null);
   }
 
@@ -589,11 +684,16 @@ export function TournamentCreatePage() {
     setBracketType(null);
     setSingleMatches(createInitialSingleMatches());
     setDualGroups(createInitialDualGroups());
+    setRaceSurvivalGroups(createInitialRaceSurvivalGroups());
     setSelectedParticipantId(null);
   }
 
-  function handleAddUser(user: RpsDraftUserSearchResult) {
+  function handleAddUser(user: DraftUserSearchResult) {
     setSubmitError(null);
+    if (bracketType === "ULTIMATE_BATTLE" && participants.length >= 2) {
+      setSubmitError("끝장전은 선수 2명까지만 등록할 수 있습니다.");
+      return;
+    }
     setParticipants((current) => {
       if (current.some((participant) => participant.userId === user.id)) {
         return current;
@@ -614,6 +714,9 @@ export function TournamentCreatePage() {
       removeParticipantFromDualGroups(next, participantId);
       return next;
     });
+    setRaceSurvivalGroups((current) =>
+      removeParticipantFromRaceSurvivalGroups(current, participantId),
+    );
   }
 
   function handleRemoveParticipant(participantId: string) {
@@ -624,6 +727,31 @@ export function TournamentCreatePage() {
     setSelectedParticipantId((current) =>
       current === participantId ? null : current,
     );
+    setSubmitError(null);
+  }
+
+  function handleAssignRaceSurvivalParticipant(race: RaceSurvivalRace) {
+    if (!selectedParticipantId || !participantsById.has(selectedParticipantId)) {
+      return;
+    }
+
+    const participantId = selectedParticipantId;
+    setRaceSurvivalGroups((current) => {
+      const next = removeParticipantFromRaceSurvivalGroups(current, participantId);
+      return {
+        ...next,
+        [race]: [...next[race], participantId],
+      };
+    });
+    setSelectedParticipantId(null);
+    setSubmitError(null);
+  }
+
+  function handleRemoveRaceSurvivalParticipant(participantId: string) {
+    setRaceSurvivalGroups((current) =>
+      removeParticipantFromRaceSurvivalGroups(current, participantId),
+    );
+    setSelectedParticipantId(participantId);
     setSubmitError(null);
   }
 
@@ -856,6 +984,29 @@ export function TournamentCreatePage() {
   }
 
   function buildGroupsPayload(): TournamentCreateGroupRequest[] {
+    if (bracketType === "ULTIMATE_BATTLE") {
+      return [
+        {
+          groupCode: "MAIN",
+          groupName: "Ultimate Battle",
+          slots: participants.map((participant, index) =>
+            buildSlotRequest(index + 1, participant),
+          ),
+        },
+      ];
+    }
+
+    if (bracketType === "RACE_SURVIVAL") {
+      return RACE_SURVIVAL_RACES.map((race) => ({
+        groupCode: race,
+        groupName: race,
+        slots: raceSurvivalGroups[race].flatMap((participantId, index) => {
+          const participant = participantsById.get(participantId);
+          return participant ? [buildSlotRequest(index + 1, participant)] : [];
+        }),
+      }));
+    }
+
     if (bracketType === "SINGLE_ELIMINATION") {
       return [
         {
@@ -910,7 +1061,7 @@ export function TournamentCreatePage() {
       const createdTournament = await createTournament({
         title: title.trim(),
         bracketType,
-        bestOf,
+        bestOf: normalizeTournamentBestOf(bestOf),
         groups: buildGroupsPayload(),
       });
 
@@ -978,6 +1129,32 @@ export function TournamentCreatePage() {
                 조를 4슬롯 단위로 추가하고 빈 칸은 부전승으로 처리합니다.
               </span>
             </button>
+
+            <button
+              type="button"
+              className="rounded-lg border border-line-strong bg-surface-strong px-5 py-6 text-left transition-colors hover:border-accent hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              onClick={() => handleSelectBracketType("ULTIMATE_BATTLE")}
+            >
+              <span className="text-lg font-semibold text-foreground">
+                끝장전 만들기
+              </span>
+              <span className="mt-2 block text-sm leading-6 text-muted">
+                두 선수가 정해진 총 판수를 모두 진행합니다.
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="rounded-lg border border-line-strong bg-surface-strong px-5 py-6 text-left transition-colors hover:border-accent hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              onClick={() => handleSelectBracketType("RACE_SURVIVAL")}
+            >
+              <span className="text-lg font-semibold text-foreground">
+                종족 최강전 만들기
+              </span>
+              <span className="mt-2 block text-sm leading-6 text-muted">
+                테란, 저그, 토스 대표가 승자연전으로 진행합니다.
+              </span>
+            </button>
           </div>
         </SurfaceCard>
       ) : (
@@ -999,28 +1176,36 @@ export function TournamentCreatePage() {
               />
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <label className="grid gap-2 text-sm font-semibold text-foreground">
-                경기 기본 세트 수
-                <select
-                  value={bestOf}
-                  onChange={(event) => {
-                    setBestOf(Number(event.target.value) as TournamentBestOf);
-                    setSubmitError(null);
-                  }}
-                  disabled={creating}
-                  className="w-full rounded-lg border border-line-strong bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-white disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {TOURNAMENT_BEST_OF_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      Bo{option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            {bracketType === "RACE_SURVIVAL" ? (
+              <div className="rounded-lg border border-line bg-surface-strong px-4 py-3 text-sm leading-6 text-muted">
+                종족 최강전은 1판 승부로 진행됩니다.
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                <label className="grid gap-2 text-sm font-semibold text-foreground">
+                  {bracketType === "ULTIMATE_BATTLE"
+                    ? "총 판수"
+                    : "경기 기본 세트 수"}
+                  <Input
+                    type="number"
+                    min={MIN_TOURNAMENT_BEST_OF}
+                    step={2}
+                    value={bestOf}
+                    onBlur={(event) => {
+                      setBestOf(normalizeTournamentBestOf(Number(event.target.value)));
+                      setSubmitError(null);
+                    }}
+                    onChange={(event) => {
+                      setBestOf(Number(event.target.value) as TournamentBestOf);
+                      setSubmitError(null);
+                    }}
+                    disabled={creating}
+                  />
+                </label>
+              </div>
+            )}
 
-            <RpsDraftUserSearch
+            <DraftUserSearch
               clearOnSelect
               label="내부 유저 검색"
               placeholder="닉네임 또는 아이디"
@@ -1053,9 +1238,7 @@ export function TournamentCreatePage() {
                 <div className="flex items-center justify-between gap-3">
                   <dt className="text-muted">방식</dt>
                   <dd className="font-semibold text-foreground">
-                    {bracketType === "SINGLE_ELIMINATION"
-                      ? "싱글 엘리미네이션"
-                      : "듀얼 조별전"}
+                    {getBracketTypeLabel(bracketType)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
@@ -1114,7 +1297,7 @@ export function TournamentCreatePage() {
                 onRemoveMatch={handleRemoveSingleMatch}
                 onSlotClick={handleSlotClick}
               />
-            ) : (
+            ) : bracketType === "DUAL_GROUP" ? (
               <DualBuilderBoard
                 bestOf={bestOf}
                 groups={dualGroups}
@@ -1126,11 +1309,170 @@ export function TournamentCreatePage() {
                 onRemoveGroup={handleRemoveDualGroup}
                 onSlotClick={handleSlotClick}
               />
+            ) : (
+              <SpecialBuilderBoard
+                bestOf={bestOf}
+                bracketType={bracketType}
+                onAssignRaceSurvivalParticipant={handleAssignRaceSurvivalParticipant}
+                onRemoveRaceSurvivalParticipant={handleRemoveRaceSurvivalParticipant}
+                participants={participants}
+                participantsById={participantsById}
+                raceSurvivalGroups={raceSurvivalGroups}
+                selectedParticipantId={selectedParticipantId}
+              />
             )}
           </SurfaceCard>
         </div>
       )}
     </form>
+  );
+}
+
+function SpecialBuilderBoard({
+  bestOf,
+  bracketType,
+  onAssignRaceSurvivalParticipant,
+  onRemoveRaceSurvivalParticipant,
+  participants,
+  participantsById,
+  raceSurvivalGroups,
+  selectedParticipantId,
+}: {
+  bestOf: TournamentBestOf;
+  bracketType: "ULTIMATE_BATTLE" | "RACE_SURVIVAL";
+  onAssignRaceSurvivalParticipant?: (race: RaceSurvivalRace) => void;
+  onRemoveRaceSurvivalParticipant?: (participantId: string) => void;
+  participants: BuilderParticipant[];
+  participantsById?: Map<string, BuilderParticipant>;
+  raceSurvivalGroups?: RaceSurvivalGroupState;
+  selectedParticipantId?: string | null;
+}) {
+  const selectedParticipant =
+    selectedParticipantId && participantsById
+      ? participantsById.get(selectedParticipantId) ?? null
+      : null;
+
+  return (
+    <div className="space-y-5 p-5 sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
+            {getBracketTypeLabel(bracketType)}
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-foreground">
+            자동 배치 미리보기
+          </h2>
+        </div>
+        <span className="rounded-full bg-surface px-4 py-2 text-sm font-semibold text-muted">
+          {bracketType === "ULTIMATE_BATTLE" ? `${bestOf}판` : "1판 승자연전"}
+        </span>
+      </div>
+
+      {bracketType === "ULTIMATE_BATTLE" ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {[0, 1].map((index) => {
+            const participant = participants[index] ?? null;
+            return (
+              <div
+                key={index}
+                className="rounded-lg border border-line bg-surface-strong p-4"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                  Player {index + 1}
+                </p>
+                <p className="mt-3 text-lg font-semibold text-foreground">
+                  {participant?.displayName ?? "선수를 추가해주세요"}
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  {participant?.detail ?? "-"}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-3">
+          {RACE_SURVIVAL_RACES.map((race) => {
+            const assignedParticipants =
+              raceSurvivalGroups?.[race]
+                .map((participantId) => participantsById?.get(participantId))
+                .filter(
+                  (participant): participant is BuilderParticipant =>
+                    Boolean(participant),
+                ) ?? [];
+            const selectedAlreadyAssigned = selectedParticipant
+              ? assignedParticipants.some(
+                  (participant) => participant.id === selectedParticipant.id,
+                )
+              : false;
+
+            return (
+              <div key={race} className="rounded-lg border border-line bg-surface-strong p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-foreground">{race}</p>
+                  <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-muted">
+                    {assignedParticipants.length}명
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="mt-4 w-full rounded-full border border-line-strong bg-white px-3 py-2 text-xs font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line-strong disabled:hover:bg-white disabled:hover:text-muted"
+                  disabled={
+                    !selectedParticipant ||
+                    selectedAlreadyAssigned ||
+                    !onAssignRaceSurvivalParticipant
+                  }
+                  onClick={() => onAssignRaceSurvivalParticipant?.(race)}
+                >
+                  {selectedParticipant
+                    ? `${selectedParticipant.displayName} 배치`
+                    : "참가자 풀에서 선수 선택"}
+                </button>
+                <div className="mt-4 space-y-2">
+                  {assignedParticipants.map((participant, index) => (
+                    <div
+                      key={participant.id}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-line bg-surface px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {index + 1}. {participant.displayName}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-muted">
+                          {participant.detail ?? "-"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-md border border-line px-2.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-danger-ink/30 hover:bg-danger-soft hover:text-danger-ink"
+                        onClick={() =>
+                          onRemoveRaceSurvivalParticipant?.(participant.id)
+                        }
+                      >
+                        해제
+                      </button>
+                    </div>
+                  ))}
+                  {assignedParticipants.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-line bg-surface px-3 py-2">
+                      <p className="text-sm font-semibold text-muted">
+                        대표를 1명 이상 배치해주세요.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="rounded-lg border border-line bg-surface px-4 py-3 text-sm leading-6 text-muted">
+        {bracketType === "RACE_SURVIVAL"
+          ? "종족 최강전은 실제 유저 종족과 관계없이 원하는 팀에 배치할 수 있습니다. 중복 선수만 막습니다."
+          : "선수 검색에서 선택한 순서가 그대로 시드와 슬롯 순서가 됩니다."}
+      </p>
+    </div>
   );
 }
 

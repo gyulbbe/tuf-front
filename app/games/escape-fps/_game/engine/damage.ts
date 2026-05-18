@@ -10,10 +10,10 @@ const ENEMY_HIT_RADIUS = 0.4;
 const DECORATION_HIT_RADIUS = 0.38;
 const SHOT_STEP = 0.06;
 const HURT_FLASH_MS = 120;
-const FLAME_RANGE = 7.5;
-const FLAME_HALF_ANGLE_COS = Math.cos((38 * Math.PI) / 180);
+const FLAME_RANGE = 4.5;
+const FLAME_HALF_ANGLE_COS = Math.cos((52 * Math.PI) / 180);
 const WEAPON_DAMAGE: Record<WeaponId, number> = {
-  flamethrower: 30,
+  flamethrower: 72,
   machinegun: 8,
   rifle: 60,
 };

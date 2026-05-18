@@ -822,7 +822,7 @@ function PreviewCursor({
     >
       <div className="h-3.5 w-3.5 rounded-full border-2 border-white bg-accent shadow-[0_16px_50px_rgba(23,33,43,0.08)]" />
       <div className="mt-2 rounded-full bg-foreground px-2.5 py-1 text-[11px] font-semibold text-white">
-        Picker #{actorUserId}
+        드래프트 진행자 #{actorUserId}
       </div>
     </div>
   );
@@ -909,7 +909,7 @@ function CompactTeamCard({
       </div>
 
       <p className="mt-2 text-[11px] text-muted">
-        픽커 : {pickerDisplayId}
+        드래프트 진행자 : {pickerDisplayId}
       </p>
 
       <div className="mt-3 space-y-1.5">
@@ -1900,7 +1900,7 @@ export function DraftLiveDashboard({
               </div>
               <h2 className="mt-4 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
                 {snapshot?.currentTurn
-                  ? `${currentPickerDisplayId ?? "픽커 미지정"} 차례`
+                  ? `${currentPickerDisplayId ?? "드래프트 진행자 미지정"} 차례`
                   : "진행 중인 차례 없음"}
               </h2>
               {!isAuthenticated && status !== "loading" ? (
@@ -2258,7 +2258,7 @@ export function DraftLiveDashboard({
               position={preview.cursorPosition}
             />
             <PreviewGhostCard
-              actorLabel={`Picker #${preview.actorUserId}`}
+              actorLabel={`드래프트 진행자 #${preview.actorUserId}`}
               candidateName={
                 candidate?.candidateName ?? `Candidate #${preview.candidateUserId}`
               }

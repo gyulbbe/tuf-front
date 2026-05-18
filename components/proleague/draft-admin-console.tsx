@@ -1652,7 +1652,7 @@ export function DraftAdminConsole({
     const team = selectedSessionDetail?.teams.find((item) => item.id === teamId);
 
     if (!team) {
-      handleActionError("픽커 지정", new Error("팀 정보를 찾지 못했다."), {
+      handleActionError("드래프트 진행자 지정", new Error("팀 정보를 찾지 못했다."), {
         sessionId: selectedSessionId,
         teamId,
       });
@@ -1667,7 +1667,7 @@ export function DraftAdminConsole({
       const pickerUserId = selectedUser.id;
 
       if (team.pickerUserId === pickerUserId) {
-        handleActionInfo("픽커 지정", "이미 이 유저가 현재 팀의 픽커다.", {
+        handleActionInfo("드래프트 진행자 지정", "이미 이 유저가 현재 팀의 드래프트 진행자다.", {
           pickerUserId,
           sessionId: selectedSessionId,
           teamId,
@@ -1676,7 +1676,7 @@ export function DraftAdminConsole({
       }
 
       if (registeredCandidateUserIds.includes(pickerUserId)) {
-        throw new Error("드래프트 인원으로 등록된 유저는 픽커로 지정할 수 없다.");
+        throw new Error("드래프트 인원으로 등록된 유저는 드래프트 진행자로 지정할 수 없다.");
       }
 
       if (
@@ -1684,7 +1684,7 @@ export function DraftAdminConsole({
           (item) => item.id !== teamId && item.pickerUserId === pickerUserId,
         )
       ) {
-        throw new Error("이미 다른 팀에 지정된 픽커다.");
+        throw new Error("이미 다른 팀에 지정된 드래프트 진행자다.");
       }
 
       const detail = await assignDraftPicker(teamId, pickerUserId);
@@ -1698,11 +1698,11 @@ export function DraftAdminConsole({
       });
       setNotice({
         tone: "success",
-        text: "픽커를 지정했다.",
+        text: "드래프트 진행자를 지정했다.",
       });
     } catch (error) {
       updateLookup(teamId, previousLookup);
-      handleActionError("픽커 지정", error, {
+      handleActionError("드래프트 진행자 지정", error, {
         pickerUserId: requestedPickerUserId,
         sessionId: selectedSessionId,
         teamId,
@@ -1720,7 +1720,7 @@ export function DraftAdminConsole({
     if (!isPickerSetupReady) {
       setNotice({
         tone: "error",
-        text: "팀별 픽커 지정이 모두 끝나야 드래프트 인원을 등록할 수 있다.",
+        text: "팀별 드래프트 진행자 지정이 모두 끝나야 드래프트 인원을 등록할 수 있다.",
       });
       return;
     }
@@ -1729,7 +1729,7 @@ export function DraftAdminConsole({
       setCandidateForm(EMPTY_CANDIDATE_FORM);
       setNotice({
         tone: "error",
-        text: "픽커이거나 이미 등록된 드래프트 인원은 추가할 수 없다.",
+        text: "드래프트 진행자이거나 이미 등록된 드래프트 인원은 추가할 수 없다.",
       });
       return;
     }
@@ -1773,7 +1773,7 @@ export function DraftAdminConsole({
     if (!isPickerSetupReady) {
       setNotice({
         tone: "error",
-        text: "팀별 픽커 지정이 모두 끝나야 드래프트 인원을 수정할 수 있다.",
+        text: "팀별 드래프트 진행자 지정이 모두 끝나야 드래프트 인원을 수정할 수 있다.",
       });
       return;
     }
@@ -1808,7 +1808,7 @@ export function DraftAdminConsole({
     if (!isPickerSetupReady) {
       setNotice({
         tone: "error",
-        text: "팀별 픽커 지정이 모두 끝나야 픽 순서 생성 방식을 정할 수 있다.",
+        text: "팀별 드래프트 진행자 지정이 모두 끝나야 픽 순서 생성 방식을 정할 수 있다.",
       });
       return { ok: false as const };
     }
@@ -2236,7 +2236,7 @@ export function DraftAdminConsole({
         <SurfaceCard className="relative z-20 overflow-visible p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-foreground">팀별 픽커 지정</p>
+              <p className="text-sm font-semibold text-foreground">팀별 드래프트 진행자 지정</p>
             </div>
           </div>
 
@@ -2247,7 +2247,7 @@ export function DraftAdminConsole({
               </div>
             ) : sortedTeams.length === 0 ? (
               <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center text-sm text-muted">
-                픽커를 지정하려면 먼저 팀이 있어야 한다.
+                드래프트 진행자를 지정하려면 먼저 팀이 있어야 한다.
               </div>
             ) : (
               <div className="relative z-10 grid gap-3 overflow-visible md:grid-cols-2">
@@ -2299,7 +2299,7 @@ export function DraftAdminConsole({
             <>
               {!isPickerSetupReady ? (
                 <div className="mt-5 rounded-lg border border-dashed border-line bg-surface-muted px-4 py-4 text-sm font-medium text-muted">
-                  팀별 픽커 지정부터 해주세요.
+                  팀별 드래프트 진행자 지정부터 해주세요.
                 </div>
               ) : null}
               <CandidateComposerClean
@@ -2355,7 +2355,7 @@ export function DraftAdminConsole({
             <>
               {!isPickerSetupReady ? (
                 <div className="mt-5 rounded-lg border border-dashed border-line bg-surface-muted px-4 py-4 text-sm font-medium text-muted">
-                  팀별 픽커 지정부터 해주세요.
+                  팀별 드래프트 진행자 지정부터 해주세요.
                 </div>
               ) : null}
               <div className="mt-5 rounded-lg border border-line bg-surface-strong px-4 py-4">

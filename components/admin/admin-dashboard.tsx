@@ -20,10 +20,10 @@ type AdminTool = {
 
 const adminTools: AdminTool[] = [
   {
-    href: "/admin/proleague",
-    title: "프로리그 등록",
-    description: "프로리그 기본 정보와 드래프트 생성을 등록합니다.",
-    menuKey: "admin.proleague",
+    href: "/admin/league",
+    title: "리그 등록",
+    description: "프로리그, 개인리그, 끝장전, 종족 최강전 등을 등록합니다.",
+    menuKey: "admin.league",
   },
   {
     href: "/admin/proleague/history",
@@ -46,13 +46,13 @@ const adminTools: AdminTool[] = [
   {
     href: "/admin/home/schedules",
     title: "일정 관리",
-    description: "메인화면에 표시할 일정을 등록하고 수정합니다.",
+    description: "메인 화면에 표시할 일정을 등록하고 수정합니다.",
     menuKey: "admin.homeSchedules",
   },
   {
     href: "/admin/maps",
     title: "맵 관리",
-    description: "일정 세트 대진에서 사용할 맵을 등록하고 수정합니다.",
+    description: "일정 세트 대진에 사용할 맵을 등록하고 수정합니다.",
     menuKey: "admin.maps",
   },
   {
@@ -111,7 +111,7 @@ export function AdminDashboard() {
         관리자 작업 공간
       </h1>
       <p className="mt-4 max-w-2xl text-base leading-8 text-muted">
-        드래프트 종료 이력, 사용자 관리, 일정 관리, 메뉴 설정을 관리자 전용 화면에서 처리합니다.
+        리그 등록, 드래프트 종료 이력, 사용자 관리, 일정 관리, 메뉴 설정을 처리합니다.
       </p>
 
       <div className="mt-8 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">

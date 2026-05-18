@@ -777,7 +777,7 @@ export async function assignDraftPicker(teamId: number, pickerUserId: number) {
         validateStatus: () => true,
       },
     ),
-    "픽커를 지정하지 못했습니다.",
+    "드래프트 진행자를 지정하지 못했습니다.",
   );
 
   return normalizeDraftSessionDetail(detail);

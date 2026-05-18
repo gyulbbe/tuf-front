@@ -20,7 +20,7 @@ export const WEAPONS: Record<WeaponId, WeaponConfig> = {
     hudColor: "#c0392b",
     id: "flamethrower",
     name: "화염방사기",
-    range: 7.5,
+    range: 4.5,
     scopeMode: false,
     zoomFactor: 1,
   },

@@ -8,7 +8,7 @@ const LOS_STEP = 0.1;
 const ENEMY_COLLISION_RADIUS = 0.2;
 const DEAD_REMOVE_MS = 5000;
 const BOMBER_SPLASH_RADIUS = 1.5;
-const RANGED_SHOT_DURATION_MS = 740;
+const RANGED_SHOT_DURATION_MS = 1200;
 const RANGED_PROJECTILE_KEYS: Partial<Record<Enemy["type"], string>> = {
   broodmother: "muzzle-posin5-0",
   burrower: "muzzle-posin2-0",

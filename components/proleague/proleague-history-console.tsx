@@ -238,6 +238,13 @@ export function ProleagueHistoryConsole() {
   }, [selectedLeagueId]);
 
   function selectLeague(leagueId: number) {
+    if (selectedLeagueId === leagueId) {
+      setSelectedLeagueId(null);
+      setSelectedDetail(null);
+      setLoadingDetail(false);
+      return;
+    }
+
     setSelectedDetail(null);
     setSelectedLeagueId(leagueId);
   }
@@ -277,6 +284,7 @@ export function ProleagueHistoryConsole() {
     setPage(0);
     setSelectedLeagueId(null);
     setSelectedDetail(null);
+    setLoadingDetail(false);
   }
 
   function updateToDate(value: string) {
@@ -284,6 +292,7 @@ export function ProleagueHistoryConsole() {
     setPage(0);
     setSelectedLeagueId(null);
     setSelectedDetail(null);
+    setLoadingDetail(false);
   }
 
   function navigatePage(nextPage: number) {
@@ -294,6 +303,7 @@ export function ProleagueHistoryConsole() {
     setPage(nextPage);
     setSelectedLeagueId(null);
     setSelectedDetail(null);
+    setLoadingDetail(false);
   }
 
   async function deleteSelectedLeagues() {
@@ -312,6 +322,7 @@ export function ProleagueHistoryConsole() {
       if (selectedLeagueId !== null && ids.includes(selectedLeagueId)) {
         setSelectedLeagueId(null);
         setSelectedDetail(null);
+        setLoadingDetail(false);
       }
 
       const shouldMoveToPreviousPage = ids.length >= currentItems.length && page > 0;

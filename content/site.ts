@@ -4,7 +4,7 @@ export type SiteMenuVisibilityKey =
   | "draft.content"
   | "game"
   | "gallery"
-  | "admin.proleague"
+  | "admin.league"
   | "admin.proleagueHistory"
   | "admin.draftHistory"
   | "admin.users"
@@ -39,6 +39,7 @@ export type SiteMenuVisibilityMeta = {
 const externalSiteLinks = {
   recordManagerUrl: "https://tufelo.vercel.app/",
   bettingUrl: "https://tufpl.vercel.app/",
+  naverCafeUrl: "https://cafe.naver.com/taiscateam",
 };
 
 export const siteConfig = {
@@ -79,9 +80,9 @@ export const siteMenuVisibilityItems: SiteMenuVisibilityMeta[] = [
     description: "상단 TuF 갤러리 탭 표시 여부를 관리합니다.",
   },
   {
-    menuKey: "admin.proleague",
-    label: "프로리그 등록",
-    description: "관리자 메뉴의 프로리그 등록 항목 표시 여부를 관리합니다.",
+    menuKey: "admin.league",
+    label: "리그 등록",
+    description: "관리자 메뉴의 리그 등록 항목 표시 여부를 관리합니다.",
   },
   {
     menuKey: "admin.proleagueHistory",
@@ -171,11 +172,11 @@ export const siteTabs: SiteTab[] = [
     menuKey: "admin",
     items: [
       {
-        label: "프로리그 등록",
-        href: "/admin/proleague",
-        description: "프로리그 기본 정보와 드래프트 생성을 등록합니다.",
+        label: "리그 등록",
+        href: "/admin/league",
+        description: "프로리그, 개인리그, 끝장전, 종족 최강전 등을 등록합니다.",
         requiresAdmin: true,
-        menuKey: "admin.proleague",
+        menuKey: "admin.league",
       },
       {
         label: "프로리그 이력",
@@ -234,5 +235,11 @@ export const siteTabs: SiteTab[] = [
     description: "배팅 사이트로 이동합니다.",
     external: true,
     menuKey: "external.betting",
+  },
+  {
+    label: "네이버 카페",
+    href: externalSiteLinks.naverCafeUrl,
+    description: "TuF 클랜 네이버 카페로 이동합니다.",
+    external: true,
   },
 ];

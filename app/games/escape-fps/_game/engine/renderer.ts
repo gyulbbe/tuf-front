@@ -575,30 +575,39 @@ function renderEnemyShot(
         : "rgba(255,80,65,0.88)";
   const headX = start.x + (end.x - start.x) * progress;
   const headY = start.y + (end.y - start.y) * progress;
-  const tailProgress = Math.max(0, progress - 0.18);
+  const tailProgress = Math.max(0, progress - 0.28);
   const tailX = start.x + (end.x - start.x) * tailProgress;
   const tailY = start.y + (end.y - start.y) * tailProgress;
-  const radius = 8 + Math.sin(progress * Math.PI) * 8;
+  const radius = 13 + Math.sin(progress * Math.PI) * 12;
 
   context.save();
   context.globalCompositeOperation = "lighter";
   context.globalAlpha = Math.max(0, 1 - progress * 0.15);
-  context.strokeStyle = "rgba(255,255,255,0.3)";
-  context.lineWidth = 12;
+  context.strokeStyle = "rgba(255,255,255,0.5)";
+  context.lineWidth = 20;
   context.beginPath();
   context.moveTo(tailX, tailY);
   context.lineTo(headX, headY);
   context.stroke();
   context.strokeStyle = color;
-  context.lineWidth = 6;
+  context.lineWidth = 10;
   context.beginPath();
   context.moveTo(tailX, tailY);
   context.lineTo(headX, headY);
   context.stroke();
 
   if (projectileImage) {
-    const imageSize = radius * 3.2;
+    const imageSize = radius * 4.4;
     const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    const glow = context.createRadialGradient(headX, headY, 0, headX, headY, imageSize * 0.7);
+
+    glow.addColorStop(0, "rgba(255,255,255,0.75)");
+    glow.addColorStop(0.42, color);
+    glow.addColorStop(1, "rgba(255,255,255,0)");
+    context.fillStyle = glow;
+    context.beginPath();
+    context.arc(headX, headY, imageSize * 0.7, 0, Math.PI * 2);
+    context.fill();
 
     context.translate(headX, headY);
     context.rotate(angle);
@@ -615,7 +624,7 @@ function renderEnemyShot(
 
   const gradient = context.createRadialGradient(headX, headY, 0, headX, headY, radius);
 
-  gradient.addColorStop(0, "rgba(255,255,255,0.95)");
+  gradient.addColorStop(0, "rgba(255,255,255,1)");
   gradient.addColorStop(0.35, color);
   gradient.addColorStop(1, "rgba(255,255,255,0)");
   context.fillStyle = gradient;
@@ -661,25 +670,25 @@ function renderFlamethrowerCone(
   const { canvas } = context;
   const centerX = canvas.width / 2;
   const bottomY = canvas.height;
-  const flameTopY = canvas.height * 0.34;
+  const flameTopY = canvas.height * 0.48;
   const time = options.now * 0.018;
   const leftJitter = Math.sin(time) * 5 + Math.cos(time * 1.7) * 3;
   const rightJitter = Math.cos(time * 1.3) * 5 + Math.sin(time * 2.1) * 3;
   const tipJitter = Math.sin(time * 2.6) * 5;
   const gradient = context.createLinearGradient(centerX, bottomY, centerX, flameTopY);
 
-  gradient.addColorStop(0, "rgba(170, 18, 8, 0.18)");
-  gradient.addColorStop(0.32, "rgba(255, 58, 12, 0.68)");
-  gradient.addColorStop(0.66, "rgba(255, 194, 42, 0.58)");
-  gradient.addColorStop(1, "rgba(255, 255, 230, 0.34)");
+  gradient.addColorStop(0, "rgba(170, 18, 8, 0.24)");
+  gradient.addColorStop(0.32, "rgba(255, 54, 10, 0.78)");
+  gradient.addColorStop(0.66, "rgba(255, 194, 42, 0.66)");
+  gradient.addColorStop(1, "rgba(255, 255, 230, 0.46)");
 
   context.save();
   context.globalCompositeOperation = "lighter";
   context.fillStyle = gradient;
   context.beginPath();
-  context.moveTo(centerX - canvas.width * 0.27 + leftJitter, bottomY);
+  context.moveTo(centerX - canvas.width * 0.36 + leftJitter, bottomY);
   context.lineTo(centerX + tipJitter, flameTopY);
-  context.lineTo(centerX + canvas.width * 0.27 + rightJitter, bottomY);
+  context.lineTo(centerX + canvas.width * 0.36 + rightJitter, bottomY);
   context.closePath();
   context.fill();
 
@@ -687,7 +696,7 @@ function renderFlamethrowerCone(
     const seed = options.now * 0.001 + index * 13;
     const t = (Math.sin(seed) + 1) / 2;
     const spread = (Math.cos(seed * 1.7) + 1) / 2 - 0.5;
-    const x = centerX + spread * canvas.width * 0.42 * (1 - t * 0.35);
+    const x = centerX + spread * canvas.width * 0.56 * (1 - t * 0.35);
     const y = bottomY - t * (bottomY - flameTopY);
     const radius = 1.5 + ((Math.sin(seed * 2.3) + 1) / 2) * 3.5;
 

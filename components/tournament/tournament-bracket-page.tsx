@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DuelTournamentBoard } from "@/components/tournament/duel-tournament-board";
-import { TournamentScoreSubmissionPanel } from "@/components/tournament/tournament-score-submission-panel";
+import { RaceSurvivalProgressBoard } from "@/components/tournament/tournament-progress-page";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { getTournament } from "@/lib/api/tournament";
 import type {
@@ -50,10 +50,6 @@ export function TournamentBracketPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
-  const selectedMatch =
-    tournament?.groups
-      .flatMap((group) => group.matches)
-      .find((match) => match.id === selectedMatchId) ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -122,7 +118,16 @@ export function TournamentBracketPage({
       {!loading && !error && tournament ? (
         <>
           <TournamentHeader tournament={tournament} />
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+          {tournament.bracketType === "RACE_SURVIVAL" ? (
+            <RaceSurvivalProgressBoard
+              onMatchSelect={(match: TournamentMatch) =>
+                setSelectedMatchId(match.id)
+              }
+              readOnly
+              selectedMatchId={selectedMatchId}
+              tournament={tournament}
+            />
+          ) : (
             <DuelTournamentBoard
               onMatchSelect={(match: TournamentMatch) =>
                 setSelectedMatchId(match.id)
@@ -130,15 +135,7 @@ export function TournamentBracketPage({
               selectedMatchId={selectedMatchId}
               tournament={tournament}
             />
-            <TournamentScoreSubmissionPanel
-              key={selectedMatch?.id ?? "no-match"}
-              mode="public"
-              selectedMatch={selectedMatch}
-              tournament={tournament}
-              tournamentId={tournamentId}
-              onTournamentChange={setTournament}
-            />
-          </div>
+          )}
         </>
       ) : null}
     </div>

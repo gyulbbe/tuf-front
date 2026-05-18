@@ -1,6 +1,10 @@
 export type TournamentStatus = "LIVE" | "FINISHED";
 
-export type TournamentBracketType = "SINGLE_ELIMINATION" | "DUAL_GROUP";
+export type TournamentBracketType =
+  | "SINGLE_ELIMINATION"
+  | "DUAL_GROUP"
+  | "ULTIMATE_BATTLE"
+  | "RACE_SURVIVAL";
 
 export type TournamentMatchStatus =
   | "PENDING"
@@ -43,6 +47,7 @@ export type TournamentParticipant = {
   displayName: string;
   seedLabel: string;
   color: string;
+  status?: string | null;
 };
 
 export type TournamentMatchSlot = {
@@ -63,9 +68,13 @@ export type TournamentMatch = {
   displayName: string;
   bestOf: number;
   status: TournamentMatchStatus;
+  mapId: number | null;
+  mapName: string | null;
+  scheduledAt: string | null;
   slots: TournamentMatchSlot[];
   layoutCol: number;
   layoutRow: number;
+  displayOrder: number;
 };
 
 export type TournamentResultSlot = {
@@ -93,6 +102,7 @@ export type TournamentGroup = {
   groupCode: TournamentGroupCode;
   groupName: string;
   description: string;
+  participants: TournamentParticipant[];
   matches: TournamentMatch[];
   resultSlots: TournamentResultSlot[];
   connectors?: TournamentParticipantConnector[];

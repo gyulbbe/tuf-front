@@ -18,10 +18,19 @@ export type AdminProleagueStatus = "READY" | "LIVE" | "FINISHED" | "CANCELLED";
 
 export type AdminProleagueDraftOrderMode = "BASIC" | "SNAKE";
 
-export type AdminProleagueDraftTeamRequest = {
+export type AdminProleagueTeamRequest = {
   teamName: string;
   leaderUserId: string;
   viceLeaderUserId: string;
+  pickerUserId?: string | null;
+  displayOrder: number;
+  members?: AdminProleagueTeamMemberRequest[];
+};
+
+export type AdminProleagueDraftTeamRequest = AdminProleagueTeamRequest;
+
+export type AdminProleagueTeamMemberRequest = {
+  userId: string;
   displayOrder: number;
 };
 
@@ -33,7 +42,7 @@ export type AdminProleagueDraftCreateRequest = {
   teamCount: number;
   pickTimeSeconds: number;
   orderMode: AdminProleagueDraftOrderMode;
-  teams: AdminProleagueDraftTeamRequest[];
+  teams?: AdminProleagueDraftTeamRequest[];
   candidates: AdminProleagueDraftCandidateRequest[];
 };
 
@@ -42,9 +51,11 @@ export type AdminProleagueCreateRequest = {
   seasonName: string;
   description: string;
   status: "READY";
-  startDate: string;
-  endDate: string;
+  leagueType: "PROLEAGUE";
+  startDate: string | null;
+  endDate: string | null;
   createDraft: boolean;
+  teams: AdminProleagueTeamRequest[];
   draft?: AdminProleagueDraftCreateRequest | null;
 };
 
@@ -56,15 +67,45 @@ export type AdminProleagueDetail = {
   seasonName: string;
   description: string | null;
   status: AdminProleagueStatus;
+  leagueType: string;
   startDate: string | null;
   endDate: string | null;
   draftSessionId: number | null;
   draftStatus: string | null;
+  draftOrderMode: AdminProleagueDraftOrderMode | null;
+  draftTeamCount: number | null;
+  draftPickTimeSeconds: number | null;
   canEditDraft: boolean;
-  teams: unknown[];
-  candidates: unknown[];
+  teams: AdminProleagueTeam[];
+  candidates: AdminProleagueCandidate[];
   regDate: string | null;
   updateDate: string | null;
+};
+
+export type AdminProleagueTeam = {
+  id: number | null;
+  teamName: string;
+  leaderUserId: string | null;
+  viceLeaderUserId: string | null;
+  pickerUserId: string | null;
+  displayOrder: number;
+  draftTeamId: number | null;
+  members: AdminProleagueTeamMember[];
+};
+
+export type AdminProleagueTeamMember = {
+  id: number | null;
+  userId: string | null;
+  race: string | null;
+  source: string | null;
+  status: string | null;
+  displayOrder: number;
+};
+
+export type AdminProleagueCandidate = {
+  userId: string | null;
+  race: string | null;
+  status: string | null;
 };
 
 export type ProleagueHistorySummary = {
@@ -286,6 +327,50 @@ function readStatus(value: unknown): AdminProleagueStatus {
     : "READY";
 }
 
+function readOrderMode(value: unknown): AdminProleagueDraftOrderMode | null {
+  return value === "BASIC" || value === "SNAKE" ? value : null;
+}
+
+function normalizeAdminProleagueTeam(value: unknown): AdminProleagueTeam {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    id: readNumber(raw.id),
+    teamName: readString(raw.teamName),
+    leaderUserId: readNullableString(raw.leaderUserId),
+    viceLeaderUserId: readNullableString(raw.viceLeaderUserId),
+    pickerUserId: readNullableString(raw.pickerUserId),
+    displayOrder: readNumberWithFallback(raw.displayOrder, 1),
+    draftTeamId: readNumber(raw.draftTeamId),
+    members: Array.isArray(raw.members)
+      ? raw.members.map(normalizeAdminProleagueTeamMember)
+      : [],
+  };
+}
+
+function normalizeAdminProleagueTeamMember(value: unknown): AdminProleagueTeamMember {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    id: readNumber(raw.id),
+    userId: readNullableString(raw.userId),
+    race: readNullableString(raw.race),
+    source: readNullableString(raw.source),
+    status: readNullableString(raw.status),
+    displayOrder: readNumberWithFallback(raw.displayOrder, 1),
+  };
+}
+
+function normalizeAdminProleagueCandidate(value: unknown): AdminProleagueCandidate {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    userId: readNullableString(raw.userId),
+    race: readNullableString(raw.race),
+    status: readNullableString(raw.status),
+  };
+}
+
 function normalizeAdminProleague(value: unknown): AdminProleagueDetail {
   const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const id = readNumber(raw.id);
@@ -300,13 +385,19 @@ function normalizeAdminProleague(value: unknown): AdminProleagueDetail {
     seasonName: readString(raw.seasonName, "시즌"),
     description: readNullableString(raw.description),
     status: readStatus(raw.status),
+    leagueType: readString(raw.leagueType, "PROLEAGUE"),
     startDate: readNullableString(raw.startDate),
     endDate: readNullableString(raw.endDate),
     draftSessionId: readNumber(raw.draftSessionId),
     draftStatus: readNullableString(raw.draftStatus),
+    draftOrderMode: readOrderMode(raw.draftOrderMode),
+    draftTeamCount: readNumber(raw.draftTeamCount),
+    draftPickTimeSeconds: readNumber(raw.draftPickTimeSeconds),
     canEditDraft: readBoolean(raw.canEditDraft),
-    teams: Array.isArray(raw.teams) ? raw.teams : [],
-    candidates: Array.isArray(raw.candidates) ? raw.candidates : [],
+    teams: Array.isArray(raw.teams) ? raw.teams.map(normalizeAdminProleagueTeam) : [],
+    candidates: Array.isArray(raw.candidates)
+      ? raw.candidates.map(normalizeAdminProleagueCandidate)
+      : [],
     regDate: readNullableString(raw.regDate),
     updateDate: readNullableString(raw.updateDate),
   };

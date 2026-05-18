@@ -673,12 +673,26 @@ export function AdminHomeScheduleConsole() {
                   schedules.map((schedule) => (
                     <div
                       key={schedule.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${schedule.title} 수정`}
+                      onClick={() => handleEdit(schedule)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          handleEdit(schedule);
+                        }
+                      }}
                       className={cn(
-                        "grid grid-cols-[48px_120px_120px_minmax(150px,1fr)_minmax(200px,1.2fr)_120px_minmax(170px,1fr)_90px_110px_150px] gap-3 border-t border-line px-5 py-4 text-sm first:border-t-0",
+                        "grid cursor-pointer grid-cols-[48px_120px_120px_minmax(150px,1fr)_minmax(200px,1.2fr)_120px_minmax(170px,1fr)_90px_110px_150px] gap-3 border-t border-line px-5 py-4 text-sm transition-colors first:border-t-0 hover:bg-accent-soft/25 focus-visible:bg-accent-soft/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
                         editingScheduleId === schedule.id && "bg-accent-soft/40",
                       )}
                     >
-                      <label className="flex items-center justify-center">
+                      <label
+                        className="flex items-center justify-center"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
                         <input
                           type="checkbox"
                           className="h-4 w-4 rounded border-line-strong text-accent focus:ring-accent"
@@ -712,15 +726,28 @@ export function AdminHomeScheduleConsole() {
                           {statusLabels[schedule.status]}
                         </span>
                       </span>
-                      <span className="flex justify-end gap-2">
-                        <Button size="sm" onClick={() => handleEdit(schedule)}>
+                      <span
+                        className="flex justify-end gap-2"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
+                        <Button
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleEdit(schedule);
+                          }}
+                        >
                           수정
                         </Button>
                         <Button
                           size="sm"
                           variant="danger"
                           disabled={deletingId === schedule.id}
-                          onClick={() => void handleSingleDelete(schedule.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleSingleDelete(schedule.id);
+                          }}
                         >
                           {deletingId === schedule.id ? "삭제 중" : "삭제"}
                         </Button>

@@ -32,6 +32,7 @@ type TournamentScoreSubmissionPanelProps = {
   selectedMatch: TournamentMatch | null;
   tournament: Tournament;
   tournamentId: string;
+  onSubmissionsChange?: () => void;
   onTournamentChange: (tournament: Tournament) => void;
 };
 
@@ -394,6 +395,7 @@ export function TournamentScoreSubmissionPanel({
   selectedMatch,
   tournament,
   tournamentId,
+  onSubmissionsChange,
   onTournamentChange,
 }: TournamentScoreSubmissionPanelProps) {
   const { user } = useAuth();
@@ -441,8 +443,14 @@ export function TournamentScoreSubmissionPanel({
       )
     : null;
   const presets = useMemo(
-    () => buildScorePresets(selectedMatch?.bestOf ?? 3),
-    [selectedMatch?.bestOf],
+    () =>
+      buildScorePresets(
+        selectedMatch?.bestOf ?? 3,
+        tournament.bracketType === "ULTIMATE_BATTLE"
+          ? "ULTIMATE_BATTLE"
+          : "BEST_OF",
+      ),
+    [selectedMatch?.bestOf, tournament.bracketType],
   );
   const selectedPresetIndex = selectedMatch
     ? clampScorePresetIndex(
@@ -520,6 +528,7 @@ export function TournamentScoreSubmissionPanel({
       match.id,
     );
     setSubmissions(nextSubmissions);
+    onSubmissionsChange?.();
   }
 
   async function submitScore() {
@@ -572,6 +581,7 @@ export function TournamentScoreSubmissionPanel({
           item.id === submission.id ? { ...item, status: "APPROVED" } : item,
         ),
       );
+      onSubmissionsChange?.();
     } catch (error) {
       setSubmissionError(
         error instanceof Error

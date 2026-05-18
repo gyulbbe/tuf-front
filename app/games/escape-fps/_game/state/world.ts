@@ -295,6 +295,7 @@ function createDecorations(floor: number, size: number): Decoration[] {
       { floor, hp: 12, id: "f4-growth-2", kind: "growth", scale: 0.58, x: 20.5, y: 8.5 },
       { floor, hp: 12, id: "f4-cocoon-2", kind: "cocoon", scale: 0.78, x: 28.5, y: 10.5 },
       { floor, hp: 12, id: "f4-growth-3", kind: "growth", scale: 0.62, x: 7.5, y: size - 5.5 },
+      { dropHealth: 65, floor, hp: 8, id: "f4-health-barrel-2", kind: "barrel", scale: 0.38, x: size - 11.5, y: size - 6.5 },
       { floor, hp: 12, id: "f4-cocoon-3", kind: "cocoon", scale: 0.82, x: size - 6.5, y: size - 9.5 },
       { floor, hp: 12, id: "f4-growth-4", kind: "growth", scale: 0.6, x: size - 9.5, y: size - 5.5 },
     ];
@@ -307,6 +308,7 @@ function createDecorations(floor: number, size: number): Decoration[] {
     { floor, hp: 12, id: "f5-egg-2", kind: "egg", scale: 0.7, x: 22.5, y: 8.5 },
     { floor, hp: 12, id: "f5-pillar-2", kind: "nest-pillar", scale: 1, x: 28.5, y: 9.5 },
     { floor, hp: 12, id: "f5-egg-3", kind: "egg", scale: 0.72, x: size - 18.5, y: Math.floor(size * 0.5) + 8.5 },
+    { dropHealth: 65, floor, hp: 8, id: "f5-health-barrel-2", kind: "barrel", scale: 0.38, x: size - 14.5, y: Math.floor(size * 0.5) + 9.5 },
     { floor, hp: 12, id: "f5-pillar-3", kind: "nest-pillar", scale: 1.05, x: size - 12.5, y: Math.floor(size * 0.5) + 11.5 },
     { floor, hp: 12, id: "f5-egg-4", kind: "egg", scale: 0.75, x: size - 8.5, y: size - 8.5 },
     { floor, hp: 12, id: "f5-pillar-4", kind: "nest-pillar", scale: 1.1, x: size - 4.5, y: size - 7.5 },

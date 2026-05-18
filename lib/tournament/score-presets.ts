@@ -1,10 +1,21 @@
 export type TournamentScorePreset = [number, number];
+export type TournamentScorePresetMode = "BEST_OF" | "ULTIMATE_BATTLE";
 
 export function getRequiredWins(bestOf: number) {
   return Math.floor(bestOf / 2) + 1;
 }
 
-export function buildScorePresets(bestOf: number): TournamentScorePreset[] {
+export function buildScorePresets(
+  bestOf: number,
+  mode: TournamentScorePresetMode = "BEST_OF",
+): TournamentScorePreset[] {
+  if (mode === "ULTIMATE_BATTLE") {
+    return Array.from(
+      { length: bestOf + 1 },
+      (_, index) => [bestOf - index, index] as TournamentScorePreset,
+    ).filter(([left, right]) => left !== right);
+  }
+
   const requiredWins = getRequiredWins(bestOf);
   const firstWins = Array.from(
     { length: requiredWins },

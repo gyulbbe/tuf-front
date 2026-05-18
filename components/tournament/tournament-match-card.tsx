@@ -6,6 +6,7 @@ import type {
 import { cn } from "@/lib/utils";
 
 type TournamentMatchCardProps = {
+  hasPendingApproval?: boolean;
   match: TournamentMatch;
   hoveredParticipantId: string | null;
   isSelected?: boolean;
@@ -219,6 +220,7 @@ function TournamentPlayerRow({
 }
 
 export function TournamentMatchCard({
+  hasPendingApproval = false,
   match,
   hoveredParticipantId,
   isSelected = false,
@@ -228,7 +230,7 @@ export function TournamentMatchCard({
   previewScores,
   previewWinnerSlotNo,
 }: TournamentMatchCardProps) {
-  const statusLabel = getMatchStatusLabel(match);
+  const statusLabel = hasPendingApproval ? "승인 대기" : getMatchStatusLabel(match);
   const showMatchKeyBadge = !isSingleEliminationMatch(match);
 
   function handleSelect() {
@@ -247,6 +249,8 @@ export function TournamentMatchCard({
           "shadow-[0_0_0_1px_rgba(38,117,80,0.12),0_10px_24px_rgba(23,33,43,0.08)]",
         onSelect &&
           "cursor-pointer transition-transform hover:-translate-y-0.5 hover:border-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        hasPendingApproval &&
+          "border-yellow-300 shadow-[0_0_0_2px_rgba(250,204,21,0.42),0_0_24px_rgba(250,204,21,0.78)]",
         isSelected && "ring-2 ring-accent ring-offset-2 ring-offset-background",
       )}
       aria-label={`${
@@ -284,7 +288,9 @@ export function TournamentMatchCard({
           <span
             className={cn(
               "rounded-full px-1.5 py-0.5 text-[9px] font-black",
-              getMatchStatusClassName(match),
+              hasPendingApproval
+                ? "animate-pulse bg-yellow-300 px-2 text-yellow-950 ring-2 ring-yellow-100 ring-offset-1 ring-offset-white shadow-[0_0_10px_rgba(250,204,21,0.95),0_0_24px_rgba(250,204,21,0.8)]"
+                : getMatchStatusClassName(match),
             )}
           >
             {statusLabel}

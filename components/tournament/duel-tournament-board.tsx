@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 type DuelTournamentBoardProps = {
   matchPreviews?: Record<string, TournamentMatchPreview>;
   onMatchSelect?: (match: TournamentMatch) => void;
+  pendingApprovalMatchIds?: ReadonlySet<string>;
   selectedMatchId?: string | null;
   tournament: Tournament;
 };
@@ -35,6 +36,7 @@ type TournamentBoardViewportProps = {
   initialScale: number;
   matchPreviews?: Record<string, TournamentMatchPreview>;
   onMatchSelect?: (match: TournamentMatch) => void;
+  pendingApprovalMatchIds?: ReadonlySet<string>;
   selectedMatchId?: string | null;
   tournament: Tournament;
 };
@@ -43,6 +45,7 @@ type DuelGroupPanelProps = {
   group: TournamentGroup;
   matchPreviews?: Record<string, TournamentMatchPreview>;
   onMatchSelect?: (match: TournamentMatch) => void;
+  pendingApprovalMatchIds?: ReadonlySet<string>;
   selectedMatchId?: string | null;
 };
 
@@ -565,6 +568,7 @@ function DuelGroupPanel({
   group,
   matchPreviews,
   onMatchSelect,
+  pendingApprovalMatchIds,
   selectedMatchId,
 }: DuelGroupPanelProps) {
   const [hoveredParticipantId, setHoveredParticipantId] = useState<string | null>(
@@ -632,6 +636,7 @@ function DuelGroupPanel({
             }}
           >
             <TournamentMatchCard
+              hasPendingApproval={pendingApprovalMatchIds?.has(match.id) ?? false}
               match={match}
               hoveredParticipantId={hoveredParticipantId}
               isSelected={selectedMatchId === match.id}
@@ -659,6 +664,7 @@ function TournamentBoardViewport({
   initialScale,
   matchPreviews,
   onMatchSelect,
+  pendingApprovalMatchIds,
   selectedMatchId,
   tournament,
 }: TournamentBoardViewportProps) {
@@ -880,6 +886,7 @@ function TournamentBoardViewport({
               group={group}
               matchPreviews={matchPreviews}
               onMatchSelect={onMatchSelect}
+              pendingApprovalMatchIds={pendingApprovalMatchIds}
               selectedMatchId={selectedMatchId}
             />
           ))}
@@ -892,6 +899,7 @@ function TournamentBoardViewport({
 export function DuelTournamentBoard({
   matchPreviews,
   onMatchSelect,
+  pendingApprovalMatchIds,
   selectedMatchId,
   tournament,
 }: DuelTournamentBoardProps) {
@@ -909,6 +917,7 @@ export function DuelTournamentBoard({
       initialScale={initialScale}
       matchPreviews={matchPreviews}
       onMatchSelect={onMatchSelect}
+      pendingApprovalMatchIds={pendingApprovalMatchIds}
       selectedMatchId={selectedMatchId}
       tournament={tournament}
     />

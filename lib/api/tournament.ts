@@ -142,6 +142,14 @@ function readNumber(value: unknown, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function readNullableNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  return null;
+}
+
 function readBoolean(value: unknown) {
   if (typeof value === "boolean") {
     return value;
@@ -180,6 +188,8 @@ function normalizeBracketType(value: unknown): TournamentBracketType | null {
   switch (value) {
     case "SINGLE_ELIMINATION":
     case "DUAL_GROUP":
+    case "ULTIMATE_BATTLE":
+    case "RACE_SURVIVAL":
       return value;
     default:
       return null;
@@ -320,6 +330,7 @@ function normalizeParticipant(
       raw.color,
       participantColors[fallbackIndex % participantColors.length],
     ),
+    status: readStringOrNull(raw.status),
   };
 }
 
@@ -491,11 +502,15 @@ function normalizeMatch(
     ),
     bestOf: readNumber(raw.bestOf, 3),
     status: normalizeMatchStatus(raw.status),
+    mapId: readNullableNumber(raw.mapId),
+    mapName: readStringOrNull(raw.mapName),
+    scheduledAt: readStringOrNull(raw.scheduledAt),
     slots: readArray(raw.slots)
       .map((slot, slotIndex) =>
         normalizeMatchSlot(slot, slotIndex, participantById),
       )
       .sort((left, right) => left.slotNo - right.slotNo),
+    displayOrder: readNumber(raw.displayOrder, index + 1),
     ...layout,
   };
 }
@@ -587,6 +602,16 @@ function normalizeGroup(value: unknown, index: number): TournamentGroup {
   const fallbackGroupCode = index === 0 ? "A" : "B";
   const groupCode = normalizeGroupCode(raw.groupCode, fallbackGroupCode);
   const participantById = new Map<string, TournamentParticipant>();
+  const participants = readArray(raw.participants)
+    .map((participant, participantIndex) =>
+      normalizeParticipant(participant, participantIndex),
+    )
+    .filter((participant): participant is TournamentParticipant =>
+      Boolean(participant),
+    );
+  participants.forEach((participant) => {
+    participantById.set(participant.id, participant);
+  });
   const matches = readArray(raw.matches)
     .map((match, matchIndex) =>
       normalizeMatch(match, matchIndex, groupCode, participantById),
@@ -618,6 +643,7 @@ function normalizeGroup(value: unknown, index: number): TournamentGroup {
         ? "승자전 승자는 1위 진출, 최종전 승자는 2위 진출"
         : "최종전 승자는 2위 진출",
     ),
+    participants,
     matches,
     resultSlots,
     connectors: connectors.length > 0 ? connectors : undefined,
@@ -916,6 +942,47 @@ export async function createTournament(payload: TournamentCreateRequest) {
       validateStatus: () => true,
     }),
     "토너먼트를 등록하지 못했습니다.",
+  );
+
+  return normalizeTournament(tournament);
+}
+
+export async function updateTournamentMatchMap(
+  tournamentId: string,
+  matchId: string,
+  mapId: number | null,
+) {
+  const tournament = await unwrapPayload<unknown>(
+    apiClient.put<ApiEnvelope<unknown> | unknown>(
+      `${endpoint}/${tournamentId}/matches/${matchId}/map`,
+      { mapId },
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "경기 맵을 저장하지 못했습니다.",
+  );
+
+  return normalizeTournament(tournament);
+}
+
+export async function updateTournamentMatchParticipants(
+  tournamentId: string,
+  matchId: string,
+  payload: {
+    slot1ParticipantId: number | null;
+    slot2ParticipantId: number | null;
+  },
+) {
+  const tournament = await unwrapPayload<unknown>(
+    apiClient.put<ApiEnvelope<unknown> | unknown>(
+      `${endpoint}/${tournamentId}/matches/${matchId}/participants`,
+      payload,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "경기 선수를 저장하지 못했습니다.",
   );
 
   return normalizeTournament(tournament);

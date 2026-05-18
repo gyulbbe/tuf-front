@@ -26,6 +26,8 @@ const statusLabels: Record<TournamentStatus, string> = {
 const bracketTypeLabels: Record<TournamentBracketType, string> = {
   SINGLE_ELIMINATION: "싱글 엘리미네이션",
   DUAL_GROUP: "듀얼 조별전",
+  ULTIMATE_BATTLE: "끝장전",
+  RACE_SURVIVAL: "종족 최강전",
 };
 
 const createTournamentLinkClassName =

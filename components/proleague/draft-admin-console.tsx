@@ -19,7 +19,6 @@ import {
   isDraftApiError,
   listDraftSessions,
   replaceDraftOrders,
-  searchDraftUsers,
   updateDraftSession,
   updateDraftTeam,
   type DraftCandidate,
@@ -29,8 +28,11 @@ import {
   type DraftPick,
   type DraftSessionDetail,
   type DraftSessionSummary,
-  type DraftUserSearchResult,
 } from "@/lib/api/draft";
+import {
+  searchDraftUsers,
+  type DraftUserSearchResult,
+} from "@/lib/api/draft-users";
 import { useAuth } from "@/components/auth/auth-provider";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";

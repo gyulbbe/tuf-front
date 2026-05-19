@@ -402,7 +402,7 @@ export function LeagueAdminManagementPage({
                       <td className="px-5 py-4">
                         <div className="flex justify-end gap-2">
                           <Link
-                            href={`/admin/league/${item.id}`}
+                            href={`/admin/league/${item.id}?type=${item.leagueType}`}
                             className="inline-flex min-h-10 items-center justify-center rounded-full border border-line-strong bg-white px-4 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
                           >
                             수정

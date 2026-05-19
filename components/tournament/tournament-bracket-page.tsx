@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { DuelTournamentBoard } from "@/components/tournament/duel-tournament-board";
-import { RaceSurvivalProgressBoard } from "@/components/tournament/tournament-progress-page";
+import {
+  RaceSurvivalProgressBoard,
+  RaceSurvivalProgressSubmissionPanel,
+} from "@/components/tournament/tournament-progress-page";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { getTournament } from "@/lib/api/tournament";
 import type {
@@ -119,14 +122,23 @@ export function TournamentBracketPage({
         <>
           <TournamentHeader tournament={tournament} />
           {tournament.bracketType === "RACE_SURVIVAL" ? (
-            <RaceSurvivalProgressBoard
-              onMatchSelect={(match: TournamentMatch) =>
-                setSelectedMatchId(match.id)
-              }
-              readOnly
-              selectedMatchId={selectedMatchId}
-              tournament={tournament}
-            />
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+              <RaceSurvivalProgressBoard
+                onMatchSelect={(match: TournamentMatch) =>
+                  setSelectedMatchId(match.id)
+                }
+                readOnly
+                selectedMatchId={selectedMatchId}
+                tournament={tournament}
+                tournamentId={tournamentId}
+              />
+              <RaceSurvivalProgressSubmissionPanel
+                mode="public"
+                tournament={tournament}
+                tournamentId={tournamentId}
+                onTournamentChange={setTournament}
+              />
+            </div>
           ) : (
             <DuelTournamentBoard
               onMatchSelect={(match: TournamentMatch) =>

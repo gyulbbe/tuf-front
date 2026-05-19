@@ -58,10 +58,6 @@ export type AdminUserUpdateRequest = {
   role?: AdminUserRole;
 };
 
-export type AdminUserRoleUpdateRequest = {
-  role: AdminUserRole;
-};
-
 function readErrorMessage(data: unknown, fallback: string) {
   if (!data || typeof data !== "object") {
     return fallback;
@@ -270,25 +266,6 @@ export async function updateAdminUserStatus(
       },
     ),
     "사용자 상태를 변경하지 못했습니다.",
-  );
-
-  return normalizeAdminUserRecord(user);
-}
-
-export async function updateAdminUserRole(
-  userId: number,
-  role: AdminUserRole,
-) {
-  const payload: AdminUserRoleUpdateRequest = { role };
-  const user = await unwrapEnvelopeResponse(
-    apiClient.patch<ApiEnvelope<AdminUserRecord> | ErrorResponseBody>(
-      `/user/admin/${userId}/role`,
-      payload,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "사용자 권한을 변경하지 못했습니다.",
   );
 
   return normalizeAdminUserRecord(user);

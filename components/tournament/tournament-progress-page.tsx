@@ -1,16 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HomeScheduleMapSearch } from "@/components/admin/home-schedule-map-search";
+import { useAuth } from "@/components/auth/auth-provider";
 import { DuelTournamentBoard } from "@/components/tournament/duel-tournament-board";
 import { TournamentScoreSubmissionPanel } from "@/components/tournament/tournament-score-submission-panel";
 import { SurfaceCard } from "@/components/site/surface-card";
 import {
+  approveRaceSurvivalProgressSubmission,
   getTournament,
+  listRaceSurvivalProgressSubmissions,
   listTournamentMatchScoreSubmissions,
+  rejectRaceSurvivalProgressSubmission,
+  submitRaceSurvivalProgressSubmission,
   updateTournamentMatchMap,
   updateTournamentMatchParticipants,
+  type RaceSurvivalProgressSubmission,
+  type TournamentMatchScoreSubmission,
 } from "@/lib/api/tournament";
 import type { HomeScheduleMapSearchResult } from "@/lib/api/home-schedule";
 import type {
@@ -18,6 +25,7 @@ import type {
   TournamentMatch,
   TournamentParticipant,
 } from "@/lib/tournament/types";
+import { isAdminRole } from "@/lib/auth/roles";
 
 type TournamentProgressPageProps = {
   tournamentId: string;
@@ -43,13 +51,30 @@ export function TournamentProgressPage({
   const [pendingApprovalMatchIds, setPendingApprovalMatchIds] = useState<
     Set<string>
   >(() => new Set());
-  const [pendingApprovalRefreshKey, setPendingApprovalRefreshKey] = useState(0);
+  const pendingApprovalLoadedTournamentIdRef = useRef<string | null>(null);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const matches = useMemo(() => getMatches(tournament), [tournament]);
   const selectedMatch =
     matches.find((match) => match.id === selectedMatchId) ?? null;
-  const refreshPendingApprovalIndicators = useCallback(() => {
-    setPendingApprovalRefreshKey((current) => current + 1);
+  const updatePendingApprovalForMatch = useCallback((
+    matchId: string,
+    submissions: TournamentMatchScoreSubmission[],
+  ) => {
+    const hasPendingSubmission = submissions.some(
+      (submission) => submission.status === "PENDING",
+    );
+
+    setPendingApprovalMatchIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+
+      if (hasPendingSubmission) {
+        nextIds.add(matchId);
+      } else {
+        nextIds.delete(matchId);
+      }
+
+      return nextIds;
+    });
   }, []);
 
   useEffect(() => {
@@ -64,6 +89,7 @@ export function TournamentProgressPage({
 
         if (!cancelled) {
           setTournament(nextTournament);
+          pendingApprovalLoadedTournamentIdRef.current = null;
           setPendingApprovalMatchIds(new Set());
           setSelectedMatchId(null);
         }
@@ -92,10 +118,15 @@ export function TournamentProgressPage({
   }, [tournamentId]);
 
   useEffect(() => {
-    if (!tournament) {
+    if (
+      !tournament ||
+      tournament.bracketType === "RACE_SURVIVAL" ||
+      pendingApprovalLoadedTournamentIdRef.current === tournamentId
+    ) {
       return;
     }
 
+    pendingApprovalLoadedTournamentIdRef.current = tournamentId;
     let cancelled = false;
 
     async function loadPendingApprovalMatches() {
@@ -128,7 +159,7 @@ export function TournamentProgressPage({
     return () => {
       cancelled = true;
     };
-  }, [matches, pendingApprovalRefreshKey, tournament, tournamentId]);
+  }, [matches, tournament, tournamentId]);
 
   return (
     <div className="relative left-1/2 w-[calc(100vw-1.25rem)] max-w-[1600px] -translate-x-1/2 space-y-4 sm:w-[calc(100vw-2rem)]">
@@ -170,8 +201,8 @@ export function TournamentProgressPage({
               onMatchSelect={(match: TournamentMatch) =>
                 setSelectedMatchId(match.id)
               }
-              onTournamentChange={setTournament}
-              pendingApprovalMatchIds={pendingApprovalMatchIds}
+              pendingApprovalMatchIds={new Set()}
+              readOnly
               selectedMatchId={selectedMatchId}
               tournament={tournament}
               tournamentId={tournamentId}
@@ -196,15 +227,24 @@ export function TournamentProgressPage({
             />
           )}
 
-          <TournamentScoreSubmissionPanel
-            key={selectedMatch?.id ?? "no-match"}
-            mode="admin"
-            selectedMatch={selectedMatch}
-            tournament={tournament}
-            tournamentId={tournamentId}
-            onSubmissionsChange={refreshPendingApprovalIndicators}
-            onTournamentChange={setTournament}
-          />
+          {tournament.bracketType === "RACE_SURVIVAL" ? (
+            <RaceSurvivalProgressSubmissionPanel
+              mode="admin"
+              tournament={tournament}
+              tournamentId={tournamentId}
+              onTournamentChange={setTournament}
+            />
+          ) : (
+            <TournamentScoreSubmissionPanel
+              key={selectedMatch?.id ?? "no-match"}
+              mode="admin"
+              selectedMatch={selectedMatch}
+              tournament={tournament}
+              tournamentId={tournamentId}
+              onSubmissionsChange={updatePendingApprovalForMatch}
+              onTournamentChange={setTournament}
+            />
+          )}
         </div>
       ) : null}
     </div>
@@ -295,7 +335,588 @@ function getStatusClassName(status: TournamentMatch["status"]) {
   }
 }
 
+type RaceSurvivalDraftRow = {
+  clientId: string;
+  matchOrder: number;
+  mapId: number | null;
+  mapName: string;
+  slot1ParticipantId: string;
+  slot2ParticipantId: string;
+  slot1Score: 0 | 1;
+  slot2Score: 0 | 1;
+};
+
+function createRaceSurvivalDraftRow(matchOrder: number): RaceSurvivalDraftRow {
+  return {
+    clientId: `race-progress-${matchOrder}-${Date.now()}`,
+    matchOrder,
+    mapId: null,
+    mapName: "",
+    slot1ParticipantId: "",
+    slot2ParticipantId: "",
+    slot1Score: 1,
+    slot2Score: 0,
+  };
+}
+
+export function RaceSurvivalProgressSubmissionPanel({
+  mode,
+  onTournamentChange,
+  tournament,
+  tournamentId,
+}: {
+  mode: "admin" | "public";
+  onTournamentChange: (tournament: Tournament) => void;
+  tournament: Tournament;
+  tournamentId: string;
+}) {
+  const { user, isAuthenticated } = useAuth();
+  const [draftRows, setDraftRows] = useState<RaceSurvivalDraftRow[]>(() => [
+    createRaceSurvivalDraftRow(1),
+  ]);
+  const [submissions, setSubmissions] = useState<RaceSurvivalProgressSubmission[]>([]);
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
+  const raceGroups = useMemo(
+    () =>
+      tournament.groups
+        .filter((group) => raceOrder.includes(String(group.groupCode) as typeof raceOrder[number]))
+        .sort((left, right) => {
+          const leftOrder = raceOrder.indexOf(String(left.groupCode) as typeof raceOrder[number]);
+          const rightOrder = raceOrder.indexOf(String(right.groupCode) as typeof raceOrder[number]);
+
+          return leftOrder - rightOrder;
+        }),
+    [tournament],
+  );
+  const raceByParticipantId = useMemo(() => {
+    const next = new Map<string, string>();
+    raceGroups.forEach((group) => {
+      group.participants.forEach((participant) => {
+        next.set(participant.id, String(group.groupCode));
+      });
+    });
+    return next;
+  }, [raceGroups]);
+  const participantOptions = useMemo(
+    () =>
+      raceGroups.flatMap((group) =>
+        group.participants.map((participant) => ({
+          participant,
+          race: String(group.groupCode),
+        })),
+      ),
+    [raceGroups],
+  );
+  const isAdmin = isAdminRole(user?.role);
+  const isTournamentParticipant =
+    typeof user?.userPk === "number" &&
+    participantOptions.some(({ participant }) => participant.userId === String(user.userPk));
+  const canViewSubmissions = isAdmin || isTournamentParticipant;
+  const canSubmitProgress =
+    tournament.status !== "FINISHED" && canViewSubmissions;
+  const canReview = mode === "admin" && isAdmin;
+  const selectedSubmission =
+    submissions.find((submission) => submission.id === selectedSubmissionId) ??
+    submissions[0] ??
+    null;
+
+  const loadSubmissions = useCallback(async () => {
+    if (!canViewSubmissions) {
+      setSubmissions([]);
+      setSelectedSubmissionId(null);
+      return;
+    }
+
+    setLoadingSubmissions(true);
+    setError(null);
+    try {
+      const nextSubmissions = await listRaceSurvivalProgressSubmissions(tournamentId);
+      setSubmissions(nextSubmissions);
+      setSelectedSubmissionId((currentId) =>
+        currentId && nextSubmissions.some((submission) => submission.id === currentId)
+          ? currentId
+          : nextSubmissions[0]?.id ?? null,
+      );
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "종족 최강전 진행안 목록을 불러오지 못했습니다.",
+      );
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  }, [canViewSubmissions, tournamentId]);
+
+  useEffect(() => {
+    void loadSubmissions();
+  }, [loadSubmissions]);
+
+  function updateDraftRow(
+    clientId: string,
+    updater: (row: RaceSurvivalDraftRow) => RaceSurvivalDraftRow,
+  ) {
+    setDraftRows((currentRows) =>
+      currentRows.map((row) => (row.clientId === clientId ? updater(row) : row)),
+    );
+    setError(null);
+    setMessage(null);
+  }
+
+  function addDraftRow() {
+    setDraftRows((currentRows) => [
+      ...currentRows,
+      createRaceSurvivalDraftRow(currentRows.length + 1),
+    ]);
+  }
+
+  function removeDraftRow(clientId: string) {
+    setDraftRows((currentRows) =>
+      currentRows
+        .filter((row) => row.clientId !== clientId)
+        .map((row, index) => ({ ...row, matchOrder: index + 1 })),
+    );
+  }
+
+  function buildSubmissionPayload() {
+    if (draftRows.length === 0) {
+      throw new Error("최소 1경기 이상 입력해주세요.");
+    }
+
+    return {
+      matches: draftRows.map((row, index) => {
+        const slot1ParticipantId = getParticipantIdNumber(row.slot1ParticipantId);
+        const slot2ParticipantId = getParticipantIdNumber(row.slot2ParticipantId);
+
+        if (!slot1ParticipantId || !slot2ParticipantId) {
+          throw new Error("모든 경기의 선수 A/B를 선택해주세요.");
+        }
+        if (slot1ParticipantId === slot2ParticipantId) {
+          throw new Error("같은 선수를 양쪽 슬롯에 넣을 수 없습니다.");
+        }
+
+        return {
+          matchOrder: index + 1,
+          mapId: row.mapId,
+          slot1ParticipantId,
+          slot2ParticipantId,
+          slot1Score: row.slot1Score,
+          slot2Score: row.slot2Score,
+        };
+      }),
+    };
+  }
+
+  async function submitProgress() {
+    if (!canSubmitProgress) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const payload = buildSubmissionPayload();
+      const submission = await submitRaceSurvivalProgressSubmission(tournamentId, payload);
+      setMessage("진행안을 제출했습니다. 관리자 최종 승인 전까지 공식 결과에는 반영되지 않습니다.");
+      setSelectedSubmissionId(submission.id);
+      await loadSubmissions();
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "종족 최강전 진행안을 제출하지 못했습니다.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approveProgress(submissionId: string) {
+    if (!canReview) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const nextTournament = await approveRaceSurvivalProgressSubmission(
+        tournamentId,
+        submissionId,
+      );
+      onTournamentChange(nextTournament);
+      setMessage("진행안을 최종 승인했습니다. 공식 결과가 반영되었습니다.");
+      await loadSubmissions();
+    } catch (approveError) {
+      setError(
+        approveError instanceof Error
+          ? approveError.message
+          : "종족 최강전 진행안을 최종 승인하지 못했습니다.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rejectProgress(submissionId: string) {
+    if (!canReview) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await rejectRaceSurvivalProgressSubmission(tournamentId, submissionId, {
+        adminNote: rejectNote.trim() || "관리자 반려",
+      });
+      setRejectNote("");
+      setMessage("진행안을 반려했습니다.");
+      await loadSubmissions();
+    } catch (rejectError) {
+      setError(
+        rejectError instanceof Error
+          ? rejectError.message
+          : "종족 최강전 진행안을 반려하지 못했습니다.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <SurfaceCard className="space-y-5 p-5 sm:p-6">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
+          Race Progress
+        </p>
+        <h2 className="mt-2 text-xl font-semibold text-foreground">
+          전체 진행안
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          출전 순서, 맵, 승패를 끝까지 입력한 뒤 한 번에 제출합니다.
+        </p>
+      </div>
+
+      {!isAuthenticated ? (
+        <div className="rounded-lg border border-line bg-surface-strong px-4 py-4 text-sm text-muted">
+          로그인한 참가자 또는 관리자만 진행안을 제출할 수 있습니다.
+        </div>
+      ) : null}
+
+      {isAuthenticated && !canViewSubmissions ? (
+        <div className="rounded-lg border border-line bg-surface-strong px-4 py-4 text-sm text-muted">
+          참가자가 아니면 공식 반영된 결과만 볼 수 있습니다.
+        </div>
+      ) : null}
+
+      {message ? (
+        <div className="rounded-lg border border-success-ink/20 bg-success-soft px-4 py-3 text-sm font-semibold text-success-ink">
+          {message}
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="rounded-lg border border-danger-ink/20 bg-danger-soft px-4 py-3 text-sm font-semibold text-danger-ink">
+          {error}
+        </div>
+      ) : null}
+
+      {canSubmitProgress ? (
+        <div className="space-y-3">
+          <div className="overflow-x-auto rounded-lg border border-line bg-surface-strong">
+            <table className="w-full min-w-[980px] border-collapse text-sm">
+              <thead>
+                <tr className="bg-surface text-left text-xs font-bold uppercase tracking-[0.08em] text-muted">
+                  <th className="px-3 py-3">순서</th>
+                  <th className="px-3 py-3">맵</th>
+                  <th className="px-3 py-3">선수 A</th>
+                  <th className="px-3 py-3">스코어</th>
+                  <th className="px-3 py-3">선수 B</th>
+                  <th className="px-3 py-3">관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {draftRows.map((row, index) => (
+                  <tr key={row.clientId} className="border-t border-line">
+                    <td className="px-3 py-3 align-top">
+                      <span className="inline-flex size-8 items-center justify-center rounded-full bg-surface text-sm font-bold text-accent-ink">
+                        {index + 1}
+                      </span>
+                    </td>
+                    <td className="min-w-[220px] px-3 py-3 align-top">
+                      <HomeScheduleMapSearch
+                        disabled={busy}
+                        mapName={row.mapName}
+                        onClear={() =>
+                          updateDraftRow(row.clientId, (currentRow) => ({
+                            ...currentRow,
+                            mapId: null,
+                            mapName: "",
+                          }))
+                        }
+                        onSelect={(map) =>
+                          updateDraftRow(row.clientId, (currentRow) => ({
+                            ...currentRow,
+                            mapId: map.id,
+                            mapName: map.mapName,
+                          }))
+                        }
+                      />
+                    </td>
+                    <td className="min-w-[190px] px-3 py-3 align-top">
+                      <select
+                        className="min-h-11 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-foreground outline-none focus:border-accent"
+                        value={row.slot1ParticipantId}
+                        onChange={(event) =>
+                          updateDraftRow(row.clientId, (currentRow) => ({
+                            ...currentRow,
+                            slot1ParticipantId: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">선수 선택</option>
+                        {participantOptions.map(({ participant, race }) => (
+                          <option key={participant.id} value={participant.id}>
+                            {participant.displayName} · {race}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <select
+                        className="min-h-11 rounded-lg border border-line-strong bg-white px-3 text-sm font-bold text-foreground outline-none focus:border-accent"
+                        value={`${row.slot1Score}:${row.slot2Score}`}
+                        onChange={(event) => {
+                          const [leftScore, rightScore] = event.target.value
+                            .split(":")
+                            .map(Number) as [0 | 1, 0 | 1];
+                          updateDraftRow(row.clientId, (currentRow) => ({
+                            ...currentRow,
+                            slot1Score: leftScore,
+                            slot2Score: rightScore,
+                          }));
+                        }}
+                      >
+                        <option value="1:0">1 : 0</option>
+                        <option value="0:1">0 : 1</option>
+                      </select>
+                    </td>
+                    <td className="min-w-[190px] px-3 py-3 align-top">
+                      <select
+                        className="min-h-11 w-full rounded-lg border border-line-strong bg-white px-3 text-sm text-foreground outline-none focus:border-accent"
+                        value={row.slot2ParticipantId}
+                        onChange={(event) =>
+                          updateDraftRow(row.clientId, (currentRow) => ({
+                            ...currentRow,
+                            slot2ParticipantId: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">선수 선택</option>
+                        {participantOptions.map(({ participant, race }) => (
+                          <option key={participant.id} value={participant.id}>
+                            {participant.displayName} · {race}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <button
+                        type="button"
+                        className="rounded-full border border-danger-ink/20 bg-danger-soft px-3 py-2 text-xs font-bold text-danger-ink disabled:opacity-40"
+                        disabled={draftRows.length === 1 || busy}
+                        onClick={() => removeDraftRow(row.clientId)}
+                      >
+                        삭제
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-line-strong bg-white px-4 py-2 text-sm font-bold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
+              disabled={busy}
+              onClick={addDraftRow}
+            >
+              경기 추가
+            </button>
+            <button
+              type="button"
+              className="rounded-full bg-accent px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-accent-ink disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={busy}
+              onClick={() => {
+                void submitProgress();
+              }}
+            >
+              {busy ? "처리 중" : "결과 제출"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-foreground">제출안</p>
+          {loadingSubmissions ? (
+            <span className="text-xs font-semibold text-muted">불러오는 중</span>
+          ) : null}
+        </div>
+
+        {submissions.length > 0 ? (
+          <div className="grid gap-2">
+            {submissions.map((submission) => (
+              <button
+                key={submission.id}
+                type="button"
+                className={[
+                  "rounded-lg border px-4 py-3 text-left transition-colors",
+                  selectedSubmission?.id === submission.id
+                    ? "border-accent bg-accent-soft"
+                    : "border-line bg-surface-strong hover:border-accent hover:bg-accent-soft",
+                ].join(" ")}
+                onClick={() => setSelectedSubmissionId(submission.id)}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-foreground">
+                    {submission.submitterLoginId ?? "제출자"} 제출
+                  </p>
+                  <span
+                    className={[
+                      "rounded-full px-3 py-1 text-xs font-bold",
+                      submission.status === "PENDING"
+                        ? "bg-warning-soft text-warning-ink"
+                        : submission.status === "APPROVED"
+                          ? "bg-success-soft text-success-ink"
+                          : "bg-danger-soft text-danger-ink",
+                    ].join(" ")}
+                  >
+                    {submission.status === "PENDING"
+                      ? "최종 승인 대기"
+                      : submission.status === "APPROVED"
+                        ? "승인"
+                        : "반려"}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted">
+                  {submission.matches.length}경기 · {submission.regDate ?? "-"}
+                </p>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-line bg-surface-strong px-4 py-5 text-sm text-muted">
+            제출된 진행안이 없습니다.
+          </div>
+        )}
+      </div>
+
+      {selectedSubmission ? (
+        <div className="space-y-3 rounded-lg border border-line bg-surface-strong p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-semibold text-foreground">
+              진행안 미리보기
+            </p>
+            <span className="text-xs font-semibold text-muted">
+              {selectedSubmission.submitterLoginId ?? "제출자"}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] text-sm">
+              <thead>
+                <tr className="text-left text-xs font-bold uppercase tracking-[0.08em] text-muted">
+                  <th className="py-2">순서</th>
+                  <th className="py-2">맵</th>
+                  <th className="py-2">선수 A</th>
+                  <th className="py-2">스코어</th>
+                  <th className="py-2">선수 B</th>
+                  <th className="py-2">승자</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedSubmission.matches.map((match) => (
+                  <tr key={match.id} className="border-t border-line">
+                    <td className="py-2 font-bold text-accent-ink">
+                      {match.matchOrder}
+                    </td>
+                    <td className="py-2 text-muted">
+                      {match.mapName ?? "맵 미정"}
+                    </td>
+                    <td className="py-2 font-semibold text-foreground">
+                      {match.slot1Participant?.displayName ?? match.slot1ParticipantId}
+                      <span className="ml-1 text-xs text-muted">
+                        {match.slot1Race}
+                      </span>
+                    </td>
+                    <td className="py-2 font-bold text-foreground">
+                      {match.slot1Score} : {match.slot2Score}
+                    </td>
+                    <td className="py-2 font-semibold text-foreground">
+                      {match.slot2Participant?.displayName ?? match.slot2ParticipantId}
+                      <span className="ml-1 text-xs text-muted">
+                        {match.slot2Race}
+                      </span>
+                    </td>
+                    <td className="py-2 font-bold text-success-ink">
+                      {match.winnerParticipant?.displayName ?? "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {canReview && selectedSubmission.status === "PENDING" ? (
+            <div className="grid gap-3">
+              <textarea
+                className="min-h-20 rounded-lg border border-line-strong bg-white px-4 py-3 text-sm text-foreground outline-none focus:border-accent"
+                placeholder="반려 사유"
+                value={rejectNote}
+                onChange={(event) => setRejectNote(event.target.value)}
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-full border border-danger-ink/20 bg-danger-soft px-4 py-2 text-sm font-bold text-danger-ink disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() => {
+                    void rejectProgress(selectedSubmission.id);
+                  }}
+                >
+                  반려
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full bg-accent px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-accent-ink disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() => {
+                    void approveProgress(selectedSubmission.id);
+                  }}
+                >
+                  최종 승인
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </SurfaceCard>
+  );
+}
+
 export function RaceSurvivalProgressBoard({
+  allowParticipantAssignment = false,
   onMatchSelect,
   onTournamentChange,
   pendingApprovalMatchIds,
@@ -304,6 +925,7 @@ export function RaceSurvivalProgressBoard({
   tournament,
   tournamentId,
 }: {
+  allowParticipantAssignment?: boolean;
   onMatchSelect?: (match: TournamentMatch) => void;
   onTournamentChange?: (tournament: Tournament) => void;
   pendingApprovalMatchIds?: ReadonlySet<string>;
@@ -312,6 +934,7 @@ export function RaceSurvivalProgressBoard({
   tournament: Tournament;
   tournamentId?: string;
 }) {
+  const { user } = useAuth();
   const [editingMapMatchId, setEditingMapMatchId] = useState<string | null>(null);
   const [updatingMapMatchId, setUpdatingMapMatchId] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -319,8 +942,7 @@ export function RaceSurvivalProgressBoard({
   const [savingAssignmentMatchId, setSavingAssignmentMatchId] = useState<string | null>(null);
   const [slot1ParticipantId, setSlot1ParticipantId] = useState("");
   const [slot2ParticipantId, setSlot2ParticipantId] = useState("");
-  const canEditTournament = !readOnly && Boolean(tournamentId && onTournamentChange);
-  const canEditMaps = canEditTournament;
+  const canCallUpdate = Boolean(tournamentId && onTournamentChange);
   const matches = useMemo(
     () =>
       getMatches(tournament).sort((left, right) => {
@@ -368,6 +990,18 @@ export function RaceSurvivalProgressBoard({
       ),
     [raceGroups],
   );
+  const isTournamentParticipant = useMemo(() => {
+    if (typeof user?.userPk !== "number") {
+      return false;
+    }
+    const currentUserId = String(user.userPk);
+    return raceGroups.some((group) =>
+      group.participants.some((participant) => participant.userId === currentUserId),
+    );
+  }, [raceGroups, user?.userPk]);
+  const canEditMaps = !readOnly && canCallUpdate;
+  const canEditParticipants =
+    canCallUpdate && (!readOnly || (allowParticipantAssignment && isTournamentParticipant));
   const fixedWinnerParticipant = useMemo(() => {
     if (!selectedMatch || selectedMatch.displayOrder <= 1) {
       return null;
@@ -388,7 +1022,7 @@ export function RaceSurvivalProgressBoard({
     );
   }, [matches, selectedMatch]);
   const selectedMatchEditable =
-    canEditTournament &&
+    canEditParticipants &&
     selectedMatch !== null &&
     selectedMatch.status !== "FINISHED" &&
     selectedMatch.status !== "CANCELLED";
@@ -546,7 +1180,7 @@ export function RaceSurvivalProgressBoard({
         })}
       </div>
 
-      {canEditTournament ? (
+      {canEditParticipants ? (
         <div className="rounded-lg border border-line bg-surface-strong p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>

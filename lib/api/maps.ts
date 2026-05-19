@@ -228,12 +228,6 @@ export async function listAdminMaps(params: AdminMapListParams = {}) {
   return normalizeAdminMapPage(data, page, size);
 }
 
-export async function searchAdminMaps(keyword: string, limit = 8) {
-  const page = await listAdminMaps({ keyword, page: 0, size: limit });
-
-  return page.items;
-}
-
 export async function createAdminMap(payload: AdminMapRequest) {
   const data = await unwrapResponse<AdminMap>(
     apiClient.post<ApiEnvelope<AdminMap> | AdminMap>("/admin/maps", payload, {

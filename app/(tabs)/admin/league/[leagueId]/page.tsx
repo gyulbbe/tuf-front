@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { LeagueAdminRegistrationPage } from "@/components/league/league-admin-registration-page";
 import { SurfaceCard } from "@/components/site/surface-card";
+import type { AdminLeagueType } from "@/lib/api/league";
 import { isAdminRole } from "@/lib/auth/roles";
 import { requireServerAuth } from "@/lib/auth/server-auth";
 
@@ -12,12 +13,29 @@ type AdminLeagueEditPageProps = {
   params: Promise<{
     leagueId: string;
   }>;
+  searchParams?: Promise<{
+    type?: string;
+  }>;
 };
+
+const leagueTypes = new Set<AdminLeagueType>([
+  "PROLEAGUE",
+  "PERSONAL",
+  "ULTIMATE_BATTLE",
+  "RACE_SURVIVAL",
+]);
+
+function parseLeagueType(value: string | undefined): AdminLeagueType | null {
+  const normalized = value?.trim().toUpperCase() as AdminLeagueType | undefined;
+  return normalized && leagueTypes.has(normalized) ? normalized : null;
+}
 
 export default async function AdminLeagueEditPage({
   params,
+  searchParams,
 }: AdminLeagueEditPageProps) {
   const { leagueId } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
   const session = await requireServerAuth(`/admin/league/${leagueId}`);
   const parsedLeagueId = Number(leagueId);
 
@@ -47,5 +65,10 @@ export default async function AdminLeagueEditPage({
     );
   }
 
-  return <LeagueAdminRegistrationPage leagueId={parsedLeagueId} />;
+  return (
+    <LeagueAdminRegistrationPage
+      initialType={parseLeagueType(resolvedSearchParams.type)}
+      leagueId={parsedLeagueId}
+    />
+  );
 }

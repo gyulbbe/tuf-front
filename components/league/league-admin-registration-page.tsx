@@ -93,25 +93,20 @@ function selectedUserIds(users: DraftUserSearchResult[]) {
     .filter((id) => Number.isFinite(id));
 }
 
-function normalizeDraftRace(value: string | null) {
-  const normalized = value?.trim().toUpperCase();
-  return normalized === "TERRAN" ||
-    normalized === "ZERG" ||
-    normalized === "PROTOSS"
-    ? normalized
-    : null;
-}
-
 export function LeagueAdminRegistrationPage({
   initialType = null,
   leagueId,
 }: LeagueAdminRegistrationPageProps) {
   const isEditMode = typeof leagueId === "number";
+  const shouldUseDedicatedEditForm =
+    isEditMode && (initialType === "PROLEAGUE" || initialType === "PERSONAL");
   const [leagueType, setLeagueType] = useState<AdminLeagueType | null>(
     initialType,
   );
   const [detail, setDetail] = useState<AdminLeagueDetail | null>(null);
-  const [loading, setLoading] = useState(isEditMode);
+  const [loading, setLoading] = useState(
+    isEditMode && !shouldUseDedicatedEditForm,
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [leagueName, setLeagueName] = useState("");
   const [seasonName, setSeasonName] = useState("");
@@ -133,7 +128,11 @@ export function LeagueAdminRegistrationPage({
   const [savedLeague, setSavedLeague] = useState<AdminLeagueDetail | null>(null);
 
   useEffect(() => {
-    if (!isEditMode || typeof leagueId !== "number") {
+    if (
+      shouldUseDedicatedEditForm ||
+      !isEditMode ||
+      typeof leagueId !== "number"
+    ) {
       return;
     }
 
@@ -192,7 +191,7 @@ export function LeagueAdminRegistrationPage({
     return () => {
       cancelled = true;
     };
-  }, [isEditMode, leagueId]);
+  }, [isEditMode, leagueId, shouldUseDedicatedEditForm]);
 
   const allRacePlayers = useMemo(
     () => raceOrder.flatMap((race) => racePlayers[race]),
@@ -230,10 +229,6 @@ export function LeagueAdminRegistrationPage({
     user: DraftUserSearchResult,
   ) {
     setSubmitError(null);
-    if (normalizeDraftRace(user.race) !== race) {
-      setSubmitError(`${raceLabels[race]} 유저만 이 칸에 추가할 수 있습니다.`);
-      return;
-    }
     setRacePlayers((current) => {
       if (raceOrder.some((item) => current[item].some((player) => player.userId === user.userId))) {
         return current;
@@ -512,7 +507,7 @@ export function LeagueAdminRegistrationPage({
                 <div>
                   <h2 className="text-xl font-semibold text-foreground">종족 대표 설정</h2>
                   <p className="mt-2 text-sm text-muted">
-                    테란, 저그, 토스 대표를 각각 1명 이상 등록합니다.
+                    실제 유저 종족과 관계없이 테란, 저그, 토스 팀에 각각 1명 이상 등록합니다.
                   </p>
                 </div>
                 <div className="grid gap-4 lg:grid-cols-3">

@@ -32,7 +32,10 @@ type TournamentScoreSubmissionPanelProps = {
   selectedMatch: TournamentMatch | null;
   tournament: Tournament;
   tournamentId: string;
-  onSubmissionsChange?: () => void;
+  onSubmissionsChange?: (
+    matchId: string,
+    submissions: TournamentMatchScoreSubmission[],
+  ) => void;
   onTournamentChange: (tournament: Tournament) => void;
 };
 
@@ -162,9 +165,31 @@ function getPanelMatchTitle(match: TournamentMatch) {
     : `${match.matchKey} · ${match.displayName}`;
 }
 
+function getTournamentParticipantIdsForUser(
+  tournament: Tournament,
+  userPk: number | undefined,
+) {
+  if (typeof userPk !== "number") {
+    return [];
+  }
+
+  const currentUserId = String(userPk);
+  const participantIds = new Set<string>();
+
+  tournament.groups.forEach((group) => {
+    group.participants.forEach((participant) => {
+      if (participant.userId === currentUserId) {
+        participantIds.add(participant.id);
+      }
+    });
+  });
+
+  return Array.from(participantIds);
+}
+
 function isSubmissionFromCurrentUser(
   submission: TournamentMatchScoreSubmission,
-  match: TournamentMatch,
+  tournamentParticipantIds: string[],
   userPk: number | undefined,
 ) {
   if (typeof userPk !== "number") {
@@ -172,15 +197,10 @@ function isSubmissionFromCurrentUser(
   }
 
   const currentUserId = String(userPk);
-  const participantIds = match.slots
-    .map((slot) =>
-      slot.participant?.userId === currentUserId ? slot.participant.id : null,
-    )
-    .filter((participantId): participantId is string => Boolean(participantId));
 
   return (
     submission.submittedByUserId === currentUserId ||
-    participantIds.includes(submission.submittedByParticipantId ?? "")
+    tournamentParticipantIds.includes(submission.submittedByParticipantId ?? "")
   );
 }
 
@@ -418,28 +438,47 @@ export function TournamentScoreSubmissionPanel({
   const canAdmin = isAdminMode && isAdminRole(user?.role);
   const currentUserId =
     typeof user?.userPk === "number" ? String(user.userPk) : null;
+  const tournamentParticipantIds = useMemo(
+    () => getTournamentParticipantIdsForUser(tournament, user?.userPk),
+    [tournament, user?.userPk],
+  );
+  const isTournamentParticipant = tournamentParticipantIds.length > 0;
   const isMatchParticipant = Boolean(
     selectedMatch?.slots.some(
       (slot) => slot.participant?.userId === currentUserId,
     ),
   );
-  const canViewSubmissions = Boolean(selectedMatch && (canAdmin || isMatchParticipant));
+  const canParticipantSubmit =
+    tournament.bracketType === "RACE_SURVIVAL"
+      ? isTournamentParticipant
+      : isMatchParticipant;
+  const canViewSubmissions = Boolean(
+    selectedMatch && (canAdmin || canParticipantSubmit),
+  );
   const canSubmitScore = Boolean(
     selectedMatch &&
       isScoreSubmittableMatch(selectedMatch) &&
-      (canAdmin || isMatchParticipant),
+      (canAdmin || canParticipantSubmit),
   );
   const visibleSubmissions =
     canAdmin || !selectedMatch
       ? submissions
       : submissions.filter((submission) =>
-          isSubmissionFromCurrentUser(submission, selectedMatch, user?.userPk),
+          isSubmissionFromCurrentUser(
+            submission,
+            tournamentParticipantIds,
+            user?.userPk,
+          ),
         );
   const myPendingSubmission = selectedMatch
     ? visibleSubmissions.find(
         (submission) =>
           submission.status === "PENDING" &&
-          isSubmissionFromCurrentUser(submission, selectedMatch, user?.userPk),
+          isSubmissionFromCurrentUser(
+            submission,
+            tournamentParticipantIds,
+            user?.userPk,
+          ),
       )
     : null;
   const presets = useMemo(
@@ -480,6 +519,7 @@ export function TournamentScoreSubmissionPanel({
 
         if (!cancelled) {
           setSubmissions(nextSubmissions);
+          onSubmissionsChange?.(match.id, nextSubmissions);
         }
       } catch (error) {
         if (!cancelled) {
@@ -502,7 +542,7 @@ export function TournamentScoreSubmissionPanel({
     return () => {
       cancelled = true;
     };
-  }, [canViewSubmissions, selectedMatch, tournamentId]);
+  }, [canViewSubmissions, onSubmissionsChange, selectedMatch, tournamentId]);
 
   function setPresetIndex(match: TournamentMatch, nextIndex: number) {
     setPresetIndexByMatchId((current) => ({
@@ -528,7 +568,7 @@ export function TournamentScoreSubmissionPanel({
       match.id,
     );
     setSubmissions(nextSubmissions);
-    onSubmissionsChange?.();
+    onSubmissionsChange?.(match.id, nextSubmissions);
   }
 
   async function submitScore() {
@@ -537,7 +577,6 @@ export function TournamentScoreSubmissionPanel({
     }
 
     const payload: TournamentSubmitScoreRequest = {
-      submitterRole: canAdmin ? "ADMIN" : "PLAYER",
       scores: selectedMatch.slots.map((slot, index) => ({
         slotNo: slot.slotNo === 2 ? 2 : 1,
         score: selectedPreset[index],
@@ -576,12 +615,14 @@ export function TournamentScoreSubmissionPanel({
         submission.id,
       );
       onTournamentChange(nextTournament);
-      setSubmissions((current) =>
-        current.map((item) =>
-          item.id === submission.id ? { ...item, status: "APPROVED" } : item,
-        ),
+      const nextSubmissions: TournamentMatchScoreSubmission[] = submissions.map(
+        (item) =>
+          item.id === submission.id
+            ? { ...item, status: "APPROVED" as const }
+            : item,
       );
-      onSubmissionsChange?.();
+      setSubmissions(nextSubmissions);
+      onSubmissionsChange?.(selectedMatch.id, nextSubmissions);
     } catch (error) {
       setSubmissionError(
         error instanceof Error
@@ -722,11 +763,7 @@ export function TournamentScoreSubmissionPanel({
                 disabled={submitting || Boolean(!canAdmin && myPendingSubmission)}
                 onClick={submitScore}
               >
-                {submitting
-                  ? "제출 중..."
-                  : canAdmin
-                    ? "관리자 점수 제출"
-                    : "결과 제출"}
+                {submitting ? "제출 중..." : "결과 제출"}
               </Button>
             </>
           ) : (

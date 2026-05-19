@@ -73,7 +73,6 @@ export type TournamentMatchScoreSubmission = {
 };
 
 export type TournamentSubmitScoreRequest = {
-  submitterRole: TournamentScoreSubmitterRole;
   scores: Array<{
     slotNo: 1 | 2;
     score: number;
@@ -82,6 +81,53 @@ export type TournamentSubmitScoreRequest = {
 
 export type TournamentRejectScoreSubmissionRequest = {
   adminNote: string;
+};
+
+export type RaceSurvivalProgressSubmissionStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED";
+
+export type RaceSurvivalProgressSubmissionMatch = {
+  id: string;
+  matchOrder: number;
+  mapId: number | null;
+  mapName: string | null;
+  slot1ParticipantId: string;
+  slot1Participant: TournamentParticipant | null;
+  slot1Race: string | null;
+  slot2ParticipantId: string;
+  slot2Participant: TournamentParticipant | null;
+  slot2Race: string | null;
+  slot1Score: number;
+  slot2Score: number;
+  winnerParticipantId: string | null;
+  winnerParticipant: TournamentParticipant | null;
+};
+
+export type RaceSurvivalProgressSubmission = {
+  id: string;
+  tournamentId: string;
+  submittedByUserId: string | null;
+  submitterLoginId: string | null;
+  status: RaceSurvivalProgressSubmissionStatus;
+  reviewedByUserId: string | null;
+  reviewerLoginId: string | null;
+  adminNote: string | null;
+  regDate: string | null;
+  reviewedAt: string | null;
+  matches: RaceSurvivalProgressSubmissionMatch[];
+};
+
+export type RaceSurvivalProgressSubmissionRequest = {
+  matches: Array<{
+    matchOrder: number;
+    mapId: number | null;
+    slot1ParticipantId: number;
+    slot2ParticipantId: number;
+    slot1Score: number;
+    slot2Score: number;
+  }>;
 };
 
 const endpoint = "/tournaments";
@@ -225,6 +271,19 @@ function normalizeScoreSubmitterRole(
   value: unknown,
 ): TournamentScoreSubmitterRole {
   return value === "ADMIN" ? "ADMIN" : "PLAYER";
+}
+
+function normalizeRaceSurvivalProgressSubmissionStatus(
+  value: unknown,
+): RaceSurvivalProgressSubmissionStatus {
+  switch (value) {
+    case "APPROVED":
+    case "REJECTED":
+      return value;
+    case "PENDING":
+    default:
+      return "PENDING";
+  }
 }
 
 function normalizeMatchRole(value: unknown): TournamentMatchRole {
@@ -783,6 +842,55 @@ function normalizeScoreSubmission(
   };
 }
 
+function normalizeRaceSurvivalProgressSubmissionMatch(
+  value: unknown,
+  index: number,
+): RaceSurvivalProgressSubmissionMatch {
+  const raw = readObject(value);
+  const slot1Participant = normalizeParticipant(raw.slot1Participant, index * 2);
+  const slot2Participant = normalizeParticipant(raw.slot2Participant, index * 2 + 1);
+  const winnerParticipant = normalizeParticipant(raw.winnerParticipant, index * 2);
+
+  return {
+    id: readId(raw.id, `match-${index + 1}`),
+    matchOrder: readNumber(raw.matchOrder, index + 1),
+    mapId: readNullableNumber(raw.mapId),
+    mapName: readStringOrNull(raw.mapName),
+    slot1ParticipantId: readId(raw.slot1ParticipantId, slot1Participant?.id ?? ""),
+    slot1Participant,
+    slot1Race: readStringOrNull(raw.slot1Race),
+    slot2ParticipantId: readId(raw.slot2ParticipantId, slot2Participant?.id ?? ""),
+    slot2Participant,
+    slot2Race: readStringOrNull(raw.slot2Race),
+    slot1Score: readNumber(raw.slot1Score, 0),
+    slot2Score: readNumber(raw.slot2Score, 0),
+    winnerParticipantId: readNullableId(raw.winnerParticipantId),
+    winnerParticipant,
+  };
+}
+
+function normalizeRaceSurvivalProgressSubmission(
+  value: unknown,
+): RaceSurvivalProgressSubmission {
+  const raw = readObject(value);
+
+  return {
+    id: readId(raw.id, ""),
+    tournamentId: readId(raw.tournamentId, ""),
+    submittedByUserId: readNullableId(raw.submittedByUserId),
+    submitterLoginId: readStringOrNull(raw.submitterLoginId),
+    status: normalizeRaceSurvivalProgressSubmissionStatus(raw.status),
+    reviewedByUserId: readNullableId(raw.reviewedByUserId),
+    reviewerLoginId: readStringOrNull(raw.reviewerLoginId),
+    adminNote: readStringOrNull(raw.adminNote),
+    regDate: readStringOrNull(raw.regDate),
+    reviewedAt: readStringOrNull(raw.reviewedAt),
+    matches: readArray(raw.matches)
+      .map(normalizeRaceSurvivalProgressSubmissionMatch)
+      .sort((left, right) => left.matchOrder - right.matchOrder),
+  };
+}
+
 function readErrorMessage(data: unknown, fallback: string) {
   const body = readObject(data);
 
@@ -986,6 +1094,77 @@ export async function updateTournamentMatchParticipants(
   );
 
   return normalizeTournament(tournament);
+}
+
+export async function submitRaceSurvivalProgressSubmission(
+  tournamentId: string,
+  payload: RaceSurvivalProgressSubmissionRequest,
+) {
+  const submission = await unwrapPayload<unknown>(
+    apiClient.post<ApiEnvelope<unknown> | unknown>(
+      `${endpoint}/${tournamentId}/race-survival-progress-submissions`,
+      payload,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "종족 최강전 진행안을 제출하지 못했습니다.",
+  );
+
+  return normalizeRaceSurvivalProgressSubmission(submission);
+}
+
+export async function listRaceSurvivalProgressSubmissions(
+  tournamentId: string,
+) {
+  const submissions = await unwrapPayload<unknown>(
+    apiClient.get<ApiEnvelope<unknown> | unknown>(
+      `${endpoint}/${tournamentId}/race-survival-progress-submissions`,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "종족 최강전 진행안 목록을 불러오지 못했습니다.",
+  );
+
+  return readArray(submissions).map(normalizeRaceSurvivalProgressSubmission);
+}
+
+export async function approveRaceSurvivalProgressSubmission(
+  tournamentId: string,
+  submissionId: string,
+) {
+  const tournament = await unwrapPayload<unknown>(
+    apiClient.post<ApiEnvelope<unknown> | unknown>(
+      `${endpoint}/${tournamentId}/race-survival-progress-submissions/${submissionId}/approve`,
+      undefined,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "종족 최강전 진행안을 최종 승인하지 못했습니다.",
+  );
+
+  return normalizeTournament(tournament);
+}
+
+export async function rejectRaceSurvivalProgressSubmission(
+  tournamentId: string,
+  submissionId: string,
+  payload: TournamentRejectScoreSubmissionRequest,
+) {
+  const submission = await unwrapPayload<unknown>(
+    apiClient.post<ApiEnvelope<unknown> | unknown>(
+      `${endpoint}/${tournamentId}/race-survival-progress-submissions/${submissionId}/reject`,
+      payload,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "종족 최강전 진행안을 반려하지 못했습니다.",
+  );
+
+  return normalizeRaceSurvivalProgressSubmission(submission);
 }
 
 export async function submitTournamentMatchScore(

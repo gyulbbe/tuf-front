@@ -1,9 +1,6 @@
 import axios from "axios";
 import { apiClient } from "@/lib/api/client";
-import {
-  searchDraftUsers,
-  type DraftUserSearchResult,
-} from "@/lib/api/draft-users";
+import type { DraftUserSearchResult } from "@/lib/api/draft-users";
 
 type ApiEnvelope<T> = {
   status?: number;
@@ -633,10 +630,6 @@ export async function pickRpsDraftCandidate(
   );
 
   return normalizeSnapshot(snapshot);
-}
-
-export async function searchRpsDraftUsers(keyword: string, limit = 8) {
-  return searchDraftUsers(keyword, limit);
 }
 
 export function buildRpsDraftWebSocketUrl() {

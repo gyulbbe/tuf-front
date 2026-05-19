@@ -261,13 +261,6 @@ export type DraftOrderReplaceRequest = {
   }>;
 };
 
-export type DraftUserSearchResult = {
-  id: number;
-  userId: string;
-  tier: string | null;
-  race: string | null;
-};
-
 export type DraftApiErrorInfo = {
   fallback: string;
   httpStatus: number | null;
@@ -895,19 +888,6 @@ export async function replaceDraftOrders(
   );
 
   return normalizeDraftSessionDetail(detail);
-}
-
-export async function searchDraftUsers(keyword: string, limit = 8) {
-  return unwrapResponse(
-    apiClient.get<ApiEnvelope<DraftUserSearchResult[]>>("/user/draft-search", {
-      params: {
-        keyword,
-        limit,
-      },
-      validateStatus: () => true,
-    }),
-    "유저 검색 결과를 불러오지 못했습니다.",
-  );
 }
 
 export function buildDraftWebSocketUrl() {

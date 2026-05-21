@@ -23,6 +23,7 @@ import {
   type RpsDraftUserSearchResult,
 } from "@/lib/api/rps-draft";
 import { buildLoginHref } from "@/lib/auth/auth-navigation";
+import type { AuthUser } from "@/lib/auth/auth-types";
 import { canManageOwnedResource } from "@/lib/auth/roles";
 import { rpsDraftListPath, rpsDraftLivePath } from "@/lib/rps-draft/routes";
 
@@ -50,10 +51,26 @@ function buildDefaultDraftTitle(username?: string | null) {
   return `${now.getFullYear()}${padNumber(now.getMonth() + 1)}${padNumber(now.getDate())}${padNumber(now.getHours())}${padNumber(now.getMinutes())}_${userId}`;
 }
 
-function createEmptyForm(title = ""): RpsDraftCreateFormState {
+function toCurrentUserSearchResult(user?: AuthUser | null): RpsDraftUserSearchResult | null {
+  if (!user || typeof user.userPk !== "number" || !user.username.trim()) {
+    return null;
+  }
+
+  return {
+    id: user.userPk,
+    userId: user.username.trim(),
+    tier: null,
+    race: null,
+  };
+}
+
+function createEmptyForm(
+  title = "",
+  team1Picker: RpsDraftUserSearchResult | null = null,
+): RpsDraftCreateFormState {
   return {
     title,
-    team1Picker: null,
+    team1Picker,
     team2Picker: null,
     candidateNamesText: "",
   };
@@ -93,24 +110,25 @@ function toTimestamp(value: string | null | undefined) {
 
 function sortSessions(sessions: RpsDraftSessionSummary[]) {
   return [...sessions].sort((left, right) => {
+    const leftFinished = left.status === "FINISHED";
+    const rightFinished = right.status === "FINISHED";
     const delta =
-      toTimestamp(right.startedAt) -
-        toTimestamp(left.startedAt) ||
-      toTimestamp(right.endedAt) -
-        toTimestamp(left.endedAt) ||
+      Number(leftFinished) - Number(rightFinished) ||
+      toTimestamp(right.regDate ?? right.startedAt) -
+        toTimestamp(left.regDate ?? left.startedAt) ||
       right.id - left.id;
 
     return delta;
   });
 }
 
-function filterActiveSessions(sessions: RpsDraftSessionSummary[]) {
-  return sortSessions(sessions).filter((session) => session.status !== "FINISHED");
-}
-
 function describeSchedule(session: RpsDraftSessionSummary) {
+  if (session.regDate) {
+    return `생성 ${formatDateTime(session.regDate)}`;
+  }
+
   if (session.startedAt) {
-    return `시작 ${formatDateTime(session.startedAt)}`;
+    return `생성 ${formatDateTime(session.startedAt)}`;
   }
 
   return null;
@@ -124,6 +142,8 @@ function describeProgress(session: RpsDraftSessionSummary) {
       return session.currentPickNo
         ? `${session.currentPickNo}번 지명 진행 중입니다.`
         : "후보 지명이 진행 중입니다.";
+    case "FINISHED":
+      return "완료된 드래프트입니다.";
     default:
       return "진행 상황을 확인해 주세요.";
   }
@@ -172,7 +192,10 @@ export function RpsDraftListPage() {
   const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [form, setForm] = useState<RpsDraftCreateFormState>(() =>
-    createEmptyForm(buildDefaultDraftTitle(user?.username)),
+    createEmptyForm(
+      buildDefaultDraftTitle(user?.username),
+      toCurrentUserSearchResult(user),
+    ),
   );
 
   useEffect(() => {
@@ -210,7 +233,7 @@ export function RpsDraftListPage() {
     };
   }, []);
 
-  const activeSessions = filterActiveSessions(sessions);
+  const sortedSessions = sortSessions(sessions);
   const loginHref = buildLoginHref({ redirectTo: rpsDraftListPath() });
   const previewCandidateNames = useMemo(
     () => parseCandidateNames(form.candidateNamesText),
@@ -274,7 +297,12 @@ export function RpsDraftListPage() {
 
   function handleOpenCreateDialog() {
     setCreateError(null);
-    setForm(createEmptyForm(buildDefaultDraftTitle(user?.username)));
+    setForm(
+      createEmptyForm(
+        buildDefaultDraftTitle(user?.username),
+        toCurrentUserSearchResult(user),
+      ),
+    );
     setIsCreateOpen(true);
   }
 
@@ -358,13 +386,13 @@ export function RpsDraftListPage() {
           <div className="mt-6 rounded-lg border border-dashed border-line px-6 py-10 text-sm text-muted">
             진행 가능한 드래프트를 불러오는 중입니다.
           </div>
-        ) : activeSessions.length === 0 ? (
+        ) : sortedSessions.length === 0 ? (
           <div className="mt-6 rounded-lg border border-dashed border-line px-6 py-10 text-sm text-muted">
-            아직 진행 가능한 드래프트가 없습니다.
+            아직 생성된 드래프트가 없습니다.
           </div>
         ) : (
           <div className="mt-6 grid gap-3 2xl:grid-cols-2">
-            {activeSessions.map((session) => {
+            {sortedSessions.map((session) => {
               const canManage = canManageOwnedResource({
                 ownerUserId: session.ownerUserId,
                 role: user?.role,

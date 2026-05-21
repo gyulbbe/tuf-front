@@ -30,6 +30,8 @@ export type RpsDraftSessionSummary = {
   pendingDraftTeamId: number | null;
   startedAt: string | null;
   endedAt: string | null;
+  regDate: string | null;
+  updateDate: string | null;
 };
 
 export type RpsDraftTeam = {

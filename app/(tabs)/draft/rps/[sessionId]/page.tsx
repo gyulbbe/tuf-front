@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { RpsDraftSessionPage } from "@/components/rps-draft/rps-draft-session-page";
+import { notFound, redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "팀배/컨텐츠 드래프트 설정",
+  title: "가위바위보 드래프트",
 };
 
 type DraftRpsSessionPageProps = {
@@ -22,5 +21,5 @@ export default async function DraftRpsSessionPage({
     notFound();
   }
 
-  return <RpsDraftSessionPage sessionId={sessionId} />;
+  redirect(`/draft/rps/${sessionId}/live`);
 }

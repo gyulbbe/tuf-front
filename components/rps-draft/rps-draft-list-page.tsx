@@ -2,9 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { RpsDraftUserSearch } from "@/components/rps-draft/rps-draft-user-search";
+import {
+  formatDateTime,
+  formatRelativePickNo,
+  StatusBadge,
+  ValueBadge,
+} from "@/components/rps-draft/rps-draft-ui";
 import { OverlayDialog } from "@/components/site/overlay-dialog";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
@@ -18,16 +24,7 @@ import {
 } from "@/lib/api/rps-draft";
 import { buildLoginHref } from "@/lib/auth/auth-navigation";
 import { canManageOwnedResource } from "@/lib/auth/roles";
-import {
-  rpsDraftListPath,
-  rpsDraftLivePath,
-} from "@/lib/rps-draft/routes";
-import {
-  formatDateTime,
-  formatRelativePickNo,
-  StatusBadge,
-  ValueBadge,
-} from "@/components/rps-draft/rps-draft-ui";
+import { rpsDraftListPath, rpsDraftLivePath } from "@/lib/rps-draft/routes";
 
 const secondaryLinkClassName =
   "inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-4 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink";
@@ -39,7 +36,7 @@ type RpsDraftCreateFormState = {
   title: string;
   team1Picker: RpsDraftUserSearchResult | null;
   team2Picker: RpsDraftUserSearchResult | null;
-  candidates: RpsDraftUserSearchResult[];
+  candidateNamesText: string;
 };
 
 function padNumber(value: number) {
@@ -58,8 +55,31 @@ function createEmptyForm(title = ""): RpsDraftCreateFormState {
     title,
     team1Picker: null,
     team2Picker: null,
-    candidates: [],
+    candidateNamesText: "",
   };
+}
+
+function parseCandidateNames(value: string) {
+  return value
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+function findDuplicateCandidateName(names: readonly string[]) {
+  const seenNames = new Set<string>();
+
+  for (const name of names) {
+    const key = name.toLocaleLowerCase("ko-KR");
+
+    if (seenNames.has(key)) {
+      return name;
+    }
+
+    seenNames.add(key);
+  }
+
+  return null;
 }
 
 function toTimestamp(value: string | null | undefined) {
@@ -98,52 +118,44 @@ function describeSchedule(session: RpsDraftSessionSummary) {
 
 function describeProgress(session: RpsDraftSessionSummary) {
   switch (session.status) {
-    case "READY":
-      return "팀장과 후보 구성이 끝난 드래프트입니다. 바로 시작할 수 있습니다.";
     case "RPS_PENDING":
-      return "두 팀장이 가위바위보로 선픽 순서를 정하는 중입니다.";
+      return "두 팀장이 가위바위보로 지명 순서를 정하는 중입니다.";
     case "PICKING":
       return session.currentPickNo
-        ? `${session.currentPickNo}픽 진행 중입니다.`
-        : "선수 선택이 진행 중입니다.";
+        ? `${session.currentPickNo}번 지명 진행 중입니다.`
+        : "후보 지명이 진행 중입니다.";
     default:
       return "진행 상황을 확인해 주세요.";
   }
-}
-
-function formatSelectedUser(user: RpsDraftUserSearchResult) {
-  return user.userId;
 }
 
 function formatUserLoginId(value: string | null | undefined) {
   return value?.trim() || "아이디 확인 필요";
 }
 
-function hasUser(user: RpsDraftUserSearchResult[], userId: number) {
-  return user.some((entry) => entry.id === userId);
-}
-
 function validateCreateForm(form: RpsDraftCreateFormState) {
   const title = form.title.trim();
+  const candidateNames = parseCandidateNames(form.candidateNamesText);
+  const duplicateName = findDuplicateCandidateName(candidateNames);
 
   if (!title) {
     return "드래프트 제목을 입력해 주세요.";
   }
 
   if (!form.team1Picker || !form.team2Picker) {
-    return "팀장 두 명을 모두 골라 주세요.";
+    return "팀장 2명을 모두 골라 주세요.";
   }
 
   if (form.team1Picker.id === form.team2Picker.id) {
-    return "서로 다른 유저를 팀장으로 선택해 주세요.";
+    return "서로 다른 팀장을 선택해 주세요.";
   }
 
-  if (form.candidates.length === 0) {
-    return "후보를 1명 이상 추가해 주세요.";
+  if (candidateNames.length === 0) {
+    return "후보 이름을 1명 이상 입력해 주세요.";
   }
 
-  if (hasUser(form.candidates, form.team1Picker.id) || hasUser(form.candidates, form.team2Picker.id)) {
-    return "팀장은 후보 목록에 함께 넣을 수 없습니다.";
+  if (duplicateName) {
+    return `후보 이름이 중복됩니다: ${duplicateName}`;
   }
 
   return null;
@@ -198,6 +210,19 @@ export function RpsDraftListPage() {
     };
   }, []);
 
+  const activeSessions = filterActiveSessions(sessions);
+  const loginHref = buildLoginHref({ redirectTo: rpsDraftListPath() });
+  const previewCandidateNames = useMemo(
+    () => parseCandidateNames(form.candidateNamesText),
+    [form.candidateNamesText],
+  );
+  const team1DisabledUserIds = [
+    form.team2Picker?.id,
+  ].filter((value): value is number => typeof value === "number");
+  const team2DisabledUserIds = [
+    form.team1Picker?.id,
+  ].filter((value): value is number => typeof value === "number");
+
   async function handleCreateSession() {
     const validationMessage = validateCreateForm(form);
 
@@ -214,7 +239,7 @@ export function RpsDraftListPage() {
         title: form.title.trim(),
         team1PickerUserId: form.team1Picker!.id,
         team2PickerUserId: form.team2Picker!.id,
-        candidateUserIds: form.candidates.map((candidate) => candidate.id),
+        candidateNames: parseCandidateNames(form.candidateNamesText),
       });
 
       setIsCreateOpen(false);
@@ -247,28 +272,6 @@ export function RpsDraftListPage() {
     }));
   }
 
-  function handleAddCandidate(nextUser: RpsDraftUserSearchResult) {
-    setCreateError(null);
-    setForm((current) => {
-      if (hasUser(current.candidates, nextUser.id)) {
-        return current;
-      }
-
-      return {
-        ...current,
-        candidates: [...current.candidates, nextUser],
-      };
-    });
-  }
-
-  function handleRemoveCandidate(candidateUserId: number) {
-    setCreateError(null);
-    setForm((current) => ({
-      ...current,
-      candidates: current.candidates.filter((candidate) => candidate.id !== candidateUserId),
-    }));
-  }
-
   function handleOpenCreateDialog() {
     setCreateError(null);
     setForm(createEmptyForm(buildDefaultDraftTitle(user?.username)));
@@ -286,7 +289,7 @@ export function RpsDraftListPage() {
   async function handleDeleteSession(sessionId: number, title: string) {
     if (
       !window.confirm(
-        [`"${title}" 드래프트를 삭제할까?`, "", "삭제 후에는 되돌릴 수 없다."].join("\n"),
+        [`"${title}" 드래프트를 삭제할까요?`, "", "삭제 후에는 되돌릴 수 없습니다."].join("\n"),
       )
     ) {
       return;
@@ -309,25 +312,6 @@ export function RpsDraftListPage() {
     }
   }
 
-  const activeSessions = filterActiveSessions(sessions);
-  const loginHref = buildLoginHref({ redirectTo: rpsDraftListPath() });
-  const candidateIds = form.candidates.map((candidate) => candidate.id);
-  const team1DisabledUserIds = [
-    form.team2Picker?.id,
-    ...candidateIds,
-  ].filter((value): value is number => typeof value === "number");
-  const team2DisabledUserIds = [
-    form.team1Picker?.id,
-    ...candidateIds,
-  ].filter((value): value is number => typeof value === "number");
-  const candidateDisabledUserIds = [
-    form.team1Picker?.id,
-    form.team2Picker?.id,
-    ...candidateIds,
-  ].filter((value): value is number => typeof value === "number");
-  const createSurfaceClassName =
-    "bg-surface-strong shadow-none backdrop-blur-none";
-
   return (
     <>
       <SurfaceCard className="p-6 sm:p-8">
@@ -337,30 +321,29 @@ export function RpsDraftListPage() {
               Draft
             </p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              팀배/컨텐츠 드래프트
+              가위바위보 드래프트
             </h1>
             <p className="mt-4 text-base leading-8 text-muted">
-              드래프트 생성 전에 팀장 2명과 후보 목록을 한 번에 정하고, 생성 직후 바로
-              시작 단계로 넘어가는 팀배/컨텐츠 드래프트입니다.
+              팀장 2명은 기존 계정에서 선택하고, 후보는 계정 없이 이름 목록으로 진행합니다.
             </p>
           </div>
 
           {isAuthenticated ? (
             <div className="flex flex-wrap gap-2 sm:justify-end">
               <Link href="/draft/pinball" className={secondaryLinkClassName}>
-                핀볼 생성
+                핀볼 드래프트
               </Link>
               <Button variant="accent" onClick={handleOpenCreateDialog}>
-                가위바위보 생성
+                새 드래프트
               </Button>
             </div>
           ) : status === "loading" ? (
             <Button variant="outline" disabled>
-              로그인 확인 중...
+              로그인 확인 중
             </Button>
           ) : (
             <Link href={loginHref} className={primaryLinkClassName}>
-              로그인 후 생성
+              로그인하고 생성
             </Link>
           )}
         </div>
@@ -399,9 +382,7 @@ export function RpsDraftListPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge status={session.status} />
                         <ValueBadge>{formatRelativePickNo(session.currentPickNo)}</ValueBadge>
-                        <ValueBadge>
-                          방장 {ownerLabel}
-                        </ValueBadge>
+                        <ValueBadge>방장 {ownerLabel}</ValueBadge>
                       </div>
                       <h2 className="mt-3 text-xl font-semibold text-foreground">
                         {session.title}
@@ -444,11 +425,11 @@ export function RpsDraftListPage() {
         closeOnBackdropClick={false}
         closeOnEscape={false}
         title="드래프트 생성"
-        description="제목, 팀장 2명, 후보 목록을 여기서 모두 정합니다. 생성이 끝나면 바로 진행 화면으로 이동합니다."
-        panelClassName="max-w-[1400px] bg-white backdrop-blur-none"
+        description="팀장 2명과 쉼표로 구분한 후보 이름을 입력하면 바로 진행 화면으로 이동합니다."
+        panelClassName="max-w-[1100px] bg-white backdrop-blur-none"
       >
         <form
-          className="grid gap-5 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]"
+          className="grid gap-5 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]"
           onSubmit={(event) => {
             event.preventDefault();
             void handleCreateSession();
@@ -463,171 +444,125 @@ export function RpsDraftListPage() {
                   setCreateError(null);
                   setForm((current) => ({ ...current, title: event.target.value }));
                 }}
-                placeholder="예: 4월 팀배 컨텐츠전"
+                placeholder="예: 4월 가위바위보 드래프트"
                 disabled={creating}
               />
             </div>
 
-            <div className="grid gap-4">
-              <SurfaceCard className={`p-5 ${createSurfaceClassName}`}>
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">1팀 팀장</h3>
-                </div>
-
-                <div className="mt-4">
-                  <RpsDraftUserSearch
-                    label="팀장 검색"
-                    selectedUser={form.team1Picker}
-                    onSelect={(nextUser) => {
-                      handleSelectTeam("team1Picker", nextUser);
+            <SurfaceCard className="bg-surface-strong p-5 shadow-none">
+              <h3 className="text-lg font-semibold text-foreground">1팀 팀장</h3>
+              <div className="mt-4">
+                <RpsDraftUserSearch
+                  label="팀장 검색"
+                  selectedUser={form.team1Picker}
+                  onSelect={(nextUser) => {
+                    handleSelectTeam("team1Picker", nextUser);
+                  }}
+                  disabled={creating}
+                  disabledUserIds={team1DisabledUserIds}
+                  disabledUserMessage="이미 다른 팀장으로 선택된 계정입니다."
+                />
+              </div>
+              {form.team1Picker ? (
+                <div className="mt-4 flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      handleClearTeam("team1Picker");
                     }}
                     disabled={creating}
-                    disabledUserIds={team1DisabledUserIds}
-                    disabledUserMessage="다른 팀장이나 후보로 이미 선택된 유저입니다."
-                  />
+                  >
+                    선택 해제
+                  </Button>
                 </div>
+              ) : null}
+            </SurfaceCard>
 
-                {form.team1Picker ? (
-                  <div className="mt-4 flex justify-end">
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        handleClearTeam("team1Picker");
-                      }}
-                      disabled={creating}
-                    >
-                      선택 해제
-                    </Button>
-                  </div>
-                ) : null}
-              </SurfaceCard>
-
-              <SurfaceCard className={`p-5 ${createSurfaceClassName}`}>
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">2팀 팀장</h3>
-                </div>
-
-                <div className="mt-4">
-                  <RpsDraftUserSearch
-                    label="팀장 검색"
-                    selectedUser={form.team2Picker}
-                    onSelect={(nextUser) => {
-                      handleSelectTeam("team2Picker", nextUser);
+            <SurfaceCard className="bg-surface-strong p-5 shadow-none">
+              <h3 className="text-lg font-semibold text-foreground">2팀 팀장</h3>
+              <div className="mt-4">
+                <RpsDraftUserSearch
+                  label="팀장 검색"
+                  selectedUser={form.team2Picker}
+                  onSelect={(nextUser) => {
+                    handleSelectTeam("team2Picker", nextUser);
+                  }}
+                  disabled={creating}
+                  disabledUserIds={team2DisabledUserIds}
+                  disabledUserMessage="이미 다른 팀장으로 선택된 계정입니다."
+                />
+              </div>
+              {form.team2Picker ? (
+                <div className="mt-4 flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      handleClearTeam("team2Picker");
                     }}
                     disabled={creating}
-                    disabledUserIds={team2DisabledUserIds}
-                    disabledUserMessage="다른 팀장이나 후보로 이미 선택된 유저입니다."
-                  />
+                  >
+                    선택 해제
+                  </Button>
                 </div>
-
-                {form.team2Picker ? (
-                  <div className="mt-4 flex justify-end">
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        handleClearTeam("team2Picker");
-                      }}
-                      disabled={creating}
-                    >
-                      선택 해제
-                    </Button>
-                  </div>
-                ) : null}
-              </SurfaceCard>
-            </div>
+              ) : null}
+            </SurfaceCard>
           </div>
 
-          <SurfaceCard className={`p-5 ${createSurfaceClassName}`}>
-            <div>
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">팀원 선택</h3>
-              </div>
+          <SurfaceCard className="bg-surface-strong p-5 shadow-none">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-foreground">후보 이름</h3>
+              <ValueBadge>{previewCandidateNames.length}명</ValueBadge>
             </div>
 
-            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-              <RpsDraftUserSearch
-                clearOnSelect
-                label="팀원 검색"
-                onSelect={(nextUser) => {
-                  handleAddCandidate(nextUser);
-                }}
-                disabled={creating}
-                disabledUserIds={candidateDisabledUserIds}
-                disabledUserMessage="팀장이거나 이미 후보 목록에 들어간 유저입니다."
-              />
+            <textarea
+              value={form.candidateNamesText}
+              onChange={(event) => {
+                setCreateError(null);
+                setForm((current) => ({
+                  ...current,
+                  candidateNamesText: event.target.value,
+                }));
+              }}
+              className="mt-4 min-h-44 w-full resize-y rounded-lg border border-line-strong bg-white px-4 py-3 text-sm leading-7 text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent"
+              placeholder="예: alpha, bravo, charlie"
+              disabled={creating}
+            />
 
-              <div className="rounded-lg border border-line bg-white px-4 py-4">
-                <div>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">선택한 팀원</p>
-                  </div>
+            <div className="mt-4 rounded-lg border border-line bg-white px-4 py-4">
+              <p className="text-sm font-semibold text-foreground">미리보기</p>
+              {previewCandidateNames.length === 0 ? (
+                <p className="mt-3 text-sm text-muted">쉼표로 후보 이름을 입력해 주세요.</p>
+              ) : (
+                <div className="mt-3 flex max-h-64 flex-wrap gap-2 overflow-y-auto pr-1">
+                  {previewCandidateNames.map((candidateName, index) => (
+                    <ValueBadge key={`${candidateName}-${index}`}>
+                      {index + 1}. {candidateName}
+                    </ValueBadge>
+                  ))}
                 </div>
-
-                {form.candidates.length === 0 ? (
-                  <div className="mt-4 rounded-lg border border-dashed border-line px-4 py-8 text-sm text-muted">
-                    아직 선택한 팀원이 없습니다.
-                  </div>
-                ) : (
-                  <div className="mt-4 grid max-h-80 gap-3 overflow-y-auto pr-1">
-                    {form.candidates.map((candidate, index) => (
-                      <div
-                        key={candidate.id}
-                        className="rounded-lg border border-line bg-white px-4 py-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <ValueBadge>{index + 1}번 팀원</ValueBadge>
-                              <span className="text-sm font-semibold text-foreground">
-                                {formatSelectedUser(candidate)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              handleRemoveCandidate(candidate.id);
-                            }}
-                            disabled={creating}
-                          >
-                            제거
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </SurfaceCard>
 
-          <div className="space-y-3 border-t border-line/80 pt-4 xl:col-span-2">
+          <div className="space-y-3 border-t border-line/80 pt-4 lg:col-span-2">
             {createError ? (
               <p className="text-sm text-danger-ink">{createError}</p>
             ) : null}
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs leading-6 text-muted">
-                생성 전에 팀장 2명과 후보를 모두 정합니다. 생성되면 진행 화면에서
-                바로 시작하면 됩니다.
-              </p>
-
-              <div className="sm:min-w-72">
-                {isAuthenticated ? (
-                  <Button type="submit" variant="accent" fullWidth disabled={creating}>
-                    {creating ? "생성하는 중..." : "생성하고 진행 화면 열기"}
-                  </Button>
-                ) : status === "loading" ? (
-                  <Button variant="outline" fullWidth disabled>
-                    로그인 확인 중...
-                  </Button>
-                ) : (
-                  <Link href={loginHref} className={`${primaryLinkClassName} w-full`}>
-                    로그인하고 생성하기
-                  </Link>
-                )}
-              </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              {isAuthenticated ? (
+                <Button type="submit" variant="accent" disabled={creating}>
+                  {creating ? "생성 중" : "생성하고 진행 화면 열기"}
+                </Button>
+              ) : status === "loading" ? (
+                <Button variant="outline" disabled>
+                  로그인 확인 중
+                </Button>
+              ) : (
+                <Link href={loginHref} className={primaryLinkClassName}>
+                  로그인하고 생성
+                </Link>
+              )}
             </div>
           </div>
         </form>

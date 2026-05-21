@@ -3,15 +3,21 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import {
+  formatChoice,
+  formatDateTime,
+  formatRelativePickNo,
+  formatRoundResult,
+  StatusBadge,
+  ValueBadge,
+} from "@/components/rps-draft/rps-draft-ui";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import {
   getRpsDraftSnapshot,
   pickRpsDraftCandidate,
-  startRpsDraftSession,
   submitRpsDraftChoice,
   type RpsChoice,
-  type RpsDraftCandidate,
   type RpsDraftLivePermissions,
   type RpsDraftLiveSnapshot,
   type RpsDraftLiveTeam,
@@ -19,22 +25,9 @@ import {
   type RpsDraftRosterItem,
 } from "@/lib/api/rps-draft";
 import { buildLoginHref } from "@/lib/auth/auth-navigation";
-import {
-  subscribeToRpsDraftSession,
-} from "@/lib/rps-draft/live-events";
-import {
-  rpsDraftListPath,
-  rpsDraftLivePath,
-} from "@/lib/rps-draft/routes";
-import {
-  formatChoice,
-  formatDateTime,
-  formatRace,
-  formatRelativePickNo,
-  formatRoundResult,
-  StatusBadge,
-  ValueBadge,
-} from "@/components/rps-draft/rps-draft-ui";
+import type { AuthUser } from "@/lib/auth/auth-types";
+import { subscribeToRpsDraftSession } from "@/lib/rps-draft/live-events";
+import { rpsDraftListPath, rpsDraftLivePath } from "@/lib/rps-draft/routes";
 import { cn } from "@/lib/utils";
 
 type NoticeTone = "info" | "danger" | "success";
@@ -82,25 +75,8 @@ function sortRoster(team: RpsDraftLiveTeam) {
   return [...team.roster].sort((left, right) => left.pickNo - right.pickNo);
 }
 
-function formatCandidateUserId(
-  candidate: Pick<RpsDraftCandidate, "candidateUserLoginId">,
-  fallback = "아이디 확인 필요",
-) {
-  return candidate.candidateUserLoginId?.trim() || fallback;
-}
-
-function formatRosterUserId(
-  item: Pick<RpsDraftRosterItem, "candidateUserLoginId">,
-  fallback = "아이디 확인 필요",
-) {
-  return item.candidateUserLoginId?.trim() || fallback;
-}
-
-function formatPickUserId(
-  pick: Pick<RpsDraftPick, "candidateUserLoginId">,
-  fallback = "아이디 확인 필요",
-) {
-  return pick.candidateUserLoginId?.trim() || fallback;
+function formatCandidateName(value: string | null | undefined) {
+  return value?.trim() || "이름 확인 필요";
 }
 
 function findTeamById(teams: RpsDraftLiveTeam[], teamId: number | null | undefined) {
@@ -109,6 +85,52 @@ function findTeamById(teams: RpsDraftLiveTeam[], teamId: number | null | undefin
   }
 
   return teams.find((team) => team.id === teamId) ?? null;
+}
+
+function findMyTeam(snapshot: RpsDraftLiveSnapshot, user: AuthUser | null) {
+  if (!user) {
+    return null;
+  }
+
+  return snapshot.teams.find((team) => team.pickerUserId === user.userPk) ?? null;
+}
+
+function derivePermissions(
+  snapshot: RpsDraftLiveSnapshot,
+  user: AuthUser | null,
+): RpsDraftLivePermissions {
+  const myTeam = findMyTeam(snapshot, user);
+  const isOwner = Boolean(user && snapshot.session.ownerUserId === user.userPk);
+  const myChoiceSubmitted =
+    myTeam?.displayOrder === 1
+      ? snapshot.rps.team1Submitted
+      : myTeam?.displayOrder === 2
+        ? snapshot.rps.team2Submitted
+        : false;
+
+  let myRole: RpsDraftLivePermissions["myRole"] = "VIEWER";
+
+  if (isOwner && myTeam) {
+    myRole = "OWNER_PICKER";
+  } else if (isOwner) {
+    myRole = "OWNER";
+  } else if (myTeam) {
+    myRole = "PICKER";
+  }
+
+  return {
+    canControl: isOwner,
+    canSubmitRps:
+      snapshot.session.status === "RPS_PENDING" &&
+      Boolean(myTeam) &&
+      !myChoiceSubmitted,
+    canPick:
+      snapshot.session.status === "PICKING" &&
+      Boolean(myTeam) &&
+      snapshot.session.currentDraftTeamId === myTeam?.id,
+    myTeamId: myTeam?.id ?? null,
+    myRole,
+  };
 }
 
 function describeTurn(snapshot: RpsDraftLiveSnapshot) {
@@ -122,18 +144,16 @@ function describeTurn(snapshot: RpsDraftLiveSnapshot) {
   );
 
   switch (snapshot.session.status) {
-    case "READY":
-      return "방장이 시작하면 두 팀장이 가위바위보를 냅니다.";
     case "RPS_PENDING":
       return "두 팀장이 가위바위보를 내는 중입니다.";
     case "PICKING":
       return currentTeam
-        ? `${currentTeam.teamName} 차례입니다.${
-            pendingTeam ? ` 다음은 ${pendingTeam.teamName}.` : ""
+        ? `${currentTeam.teamName} 지명 차례입니다.${
+            pendingTeam ? ` 다음 차례는 ${pendingTeam.teamName}입니다.` : ""
           }`
-        : "선수 선택 차례를 기다리는 중입니다.";
+        : "후보 지명 차례를 확인하는 중입니다.";
     case "FINISHED":
-      return "팀 정하기가 끝났습니다.";
+      return "모든 후보 지명이 끝났습니다.";
     default:
       return "현재 상태를 확인하는 중입니다.";
   }
@@ -145,66 +165,18 @@ function describePickHelp(options: {
   status: string | null | undefined;
 }) {
   if (options.status !== "PICKING") {
-    return "가위바위보가 끝나면 여기서 선수를 고릅니다.";
+    return "가위바위보가 끝나면 여기에서 후보를 고릅니다.";
   }
 
   if (options.canPick) {
-    return "지금은 당신 팀 차례입니다.";
+    return "지금은 내 팀 지명 차례입니다.";
   }
 
   if (options.currentTeam) {
-    return `지금은 ${options.currentTeam.teamName} 차례입니다.`;
+    return `지금은 ${options.currentTeam.teamName} 지명 차례입니다.`;
   }
 
-  return "선수 선택 순서를 확인하는 중입니다.";
-}
-
-function RpsHandIcon({ choice }: { choice: RpsChoice }) {
-  const commonProps = {
-    fill: "none",
-    stroke: "currentColor",
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    strokeWidth: 2.3,
-  };
-
-  if (choice === "SCISSORS") {
-    return (
-      <svg viewBox="0 0 48 48" className="h-12 w-12 sm:h-14 sm:w-14" aria-hidden="true">
-        <circle cx="13" cy="33" r="4.5" {...commonProps} />
-        <circle cx="23" cy="34" r="4.5" {...commonProps} />
-        <path d="M16 30 31 16" {...commonProps} />
-        <path d="M26 30 37 15" {...commonProps} />
-        <path d="M22 31 31 38" {...commonProps} />
-        <path d="M29 26 37 37" {...commonProps} />
-      </svg>
-    );
-  }
-
-  if (choice === "ROCK") {
-    return (
-      <svg viewBox="0 0 48 48" className="h-12 w-12 sm:h-14 sm:w-14" aria-hidden="true">
-        <path d="M15 21c0-2 1.6-3.5 3.5-3.5S22 19 22 21v1.5" {...commonProps} />
-        <path d="M21 20.5c0-2 1.6-3.5 3.5-3.5S28 18.5 28 20.5v2" {...commonProps} />
-        <path d="M27 21c0-2 1.6-3.5 3.5-3.5S34 19 34 21v4" {...commonProps} />
-        <path
-          d="M14 26c0-3.3 2.7-6 6-6h8c4.4 0 8 3.6 8 8v4.5c0 4.7-3.8 8.5-8.5 8.5H23c-5 0-9-4-9-9z"
-          {...commonProps}
-        />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 48 48" className="h-12 w-12 sm:h-14 sm:w-14" aria-hidden="true">
-      <path d="M16 14v14" {...commonProps} />
-      <path d="M22 11v17" {...commonProps} />
-      <path d="M28 10v18" {...commonProps} />
-      <path d="M34 14v14" {...commonProps} />
-      <path d="M14 28c0 6.1 4.9 11 11 11h2c4.9 0 9-4 9-9V18" {...commonProps} />
-      <path d="M14 22c0-2 1.6-3.5 3.5-3.5S21 20 21 22v6" {...commonProps} />
-    </svg>
-  );
+  return "후보 지명 순서를 확인하는 중입니다.";
 }
 
 function TeamPanel({
@@ -235,7 +207,7 @@ function TeamPanel({
         <ValueBadge>{team.displayOrder}팀</ValueBadge>
         <h2 className="text-lg font-semibold text-foreground">{team.teamName}</h2>
         {isMine ? <ValueBadge>내 팀</ValueBadge> : null}
-        {isCurrent ? <ValueBadge className="border-accent/20">지금 차례</ValueBadge> : null}
+        {isCurrent ? <ValueBadge className="border-accent/20">현재 차례</ValueBadge> : null}
         {!isCurrent && isPending ? (
           <ValueBadge className="border-warning-ink/20 bg-warning-soft text-warning-ink">
             다음 차례
@@ -246,18 +218,19 @@ function TeamPanel({
       <div className="mt-5 space-y-3">
         {roster.length === 0 ? (
           <div className="rounded-lg border border-dashed border-line px-4 py-5 text-sm text-muted">
-            아직 뽑은 선수가 없습니다.
+            아직 뽑은 후보가 없습니다.
           </div>
         ) : (
-          roster.map((item) => (
+          roster.map((item: RpsDraftRosterItem) => (
             <div
               key={`${team.id}-${item.pickNo}`}
               className="rounded-lg border border-line bg-surface-strong px-4 py-4"
             >
               <div className="flex flex-wrap items-center gap-2">
-                <ValueBadge>{item.pickNo}픽</ValueBadge>
+                <ValueBadge>{item.pickNo}번</ValueBadge>
+                {item.roundNo ? <ValueBadge>{item.roundNo}라운드</ValueBadge> : null}
                 <span className="text-sm font-semibold text-foreground">
-                  {formatRosterUserId(item)}
+                  {formatCandidateName(item.candidateName)}
                 </span>
               </div>
               <p className="mt-2 text-xs leading-6 text-muted">
@@ -272,7 +245,7 @@ function TeamPanel({
 }
 
 export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
-  const { isAuthenticated, status } = useAuth();
+  const { isAuthenticated, status, user } = useAuth();
   const [liveState, setLiveState] = useState(INITIAL_LIVE_STATE);
   const [loading, setLoading] = useState(true);
   const [bootstrapped, setBootstrapped] = useState(false);
@@ -282,31 +255,23 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
   const [notice, setNotice] = useState<LiveNotice | null>(null);
   const backgroundRefreshInFlightRef = useRef(false);
   const lastBackgroundRefreshAtRef = useRef(0);
-  const skippedInitialConnectedRefreshRef = useRef(false);
 
   const applySnapshot = useCallback(
-    (
-      nextSnapshot: RpsDraftLiveSnapshot,
-      options?: {
-        keepPermissions?: boolean;
-      },
-    ) => {
-      setLiveState((current) => {
+    (nextSnapshot: RpsDraftLiveSnapshot) => {
+      setLiveState(() => {
         const nextPermissions =
-          options?.keepPermissions || nextSnapshot.permissions === null
-            ? current.permissions
-            : nextSnapshot.permissions;
+          nextSnapshot.permissions ?? derivePermissions(nextSnapshot, user);
 
         return {
-          permissions: nextPermissions ?? null,
+          permissions: nextPermissions,
           snapshot: {
             ...nextSnapshot,
-            permissions: nextPermissions ?? null,
+            permissions: nextPermissions,
           },
         };
       });
     },
-    [],
+    [user],
   );
 
   const refreshSnapshot = useCallback(
@@ -362,7 +327,6 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
 
   useEffect(() => {
     let cancelled = false;
-    skippedInitialConnectedRefreshRef.current = false;
 
     async function loadInitialSnapshot() {
       try {
@@ -406,9 +370,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
       sessionId,
       onEvent: (event) => {
         if (event.snapshot) {
-          applySnapshot(event.snapshot, {
-            keepPermissions: true,
-          });
+          applySnapshot(event.snapshot);
         }
 
         if (event.type === "RPS_RESOLVED" && event.roundResult === "DRAW") {
@@ -417,15 +379,9 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
             tone: "info",
           });
         }
-
       },
       onStateChange: (nextState) => {
         if (nextState === "connected" && status === "authenticated") {
-          if (!skippedInitialConnectedRefreshRef.current) {
-            skippedInitialConnectedRefreshRef.current = true;
-            return;
-          }
-
           void refreshSnapshot({
             background: true,
             keepMessage: true,
@@ -484,26 +440,6 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
     };
   }, [notice]);
 
-  async function handleStart() {
-    setPendingAction("start");
-    setActionMessage(null);
-
-    try {
-      const nextSnapshot = await startRpsDraftSession(sessionId);
-      applySnapshot(nextSnapshot);
-      setActionMessage("드래프트를 시작했습니다.");
-      setError(null);
-    } catch (startError) {
-      setActionMessage(
-        startError instanceof Error
-          ? startError.message
-          : "드래프트를 시작하지 못했습니다.",
-      );
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
   async function handleSubmitRps(choice: RpsChoice) {
     setPendingAction(`rps:${choice}`);
     setActionMessage(null);
@@ -524,32 +460,30 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
     }
   }
 
-  async function handlePick(candidateUserId: number) {
+  async function handlePick(candidateId: number) {
     const pickedCandidate = liveState.snapshot?.availableCandidates.find(
-      (candidate) => candidate.candidateUserId === candidateUserId,
+      (candidate) => candidate.id === candidateId,
     );
 
-    setPendingAction(`pick:${candidateUserId}`);
+    setPendingAction(`pick:${candidateId}`);
     setActionMessage(null);
 
     try {
       const nextSnapshot = await pickRpsDraftCandidate(sessionId, {
-        candidateUserId,
+        candidateId,
       });
       applySnapshot(nextSnapshot);
       setActionMessage(
         pickedCandidate
-          ? `${formatCandidateUserId(
-              pickedCandidate,
-            )}을 선택했습니다.`
-          : "선수를 선택했습니다.",
+          ? `${formatCandidateName(pickedCandidate.candidateName)} 후보를 선택했습니다.`
+          : "후보를 선택했습니다.",
       );
       setError(null);
     } catch (pickError) {
       setActionMessage(
         pickError instanceof Error
           ? pickError.message
-          : "선수를 선택하지 못했습니다.",
+          : "후보를 선택하지 못했습니다.",
       );
     } finally {
       setPendingAction(null);
@@ -562,13 +496,12 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
   const team1 = sortedTeams[0] ?? null;
   const team2 = sortedTeams[1] ?? null;
   const myTeamId = permissions?.myTeamId ?? null;
-  const canControl = Boolean(permissions?.canControl);
   const canSubmitRps = Boolean(permissions?.canSubmitRps);
   const canPick = Boolean(permissions?.canPick);
   const currentTeam = snapshot
     ? findTeamById(sortedTeams, snapshot.session.currentDraftTeamId)
     : null;
-  const latestPick = snapshot?.recentPicks[0] ?? null;
+  const latestPick: RpsDraftPick | null = snapshot?.recentPicks[0] ?? null;
   const choicesRevealed = Boolean(
     snapshot?.rps.team1Choice && snapshot?.rps.team2Choice,
   );
@@ -591,19 +524,14 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
               ) : null}
             </div>
             <h1 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              {snapshot?.session.title ?? "팀배/컨텐츠 드래프트"}
+              {snapshot?.session.title ?? "가위바위보 드래프트"}
             </h1>
             <p className="mt-4 text-base leading-8 text-muted">
               {snapshot ? describeTurn(snapshot) : "드래프트 진행 화면을 불러오는 중입니다."}
             </p>
             {latestPick ? (
               <p className="mt-3 text-sm text-muted">
-                최근 선택: {latestPick.pickNo}픽{" "}
-                {formatPickUserId(
-                  latestPick,
-                )}{" "}
-                ·{" "}
-                {latestPick.rpsDraftTeamName}
+                최근 선택: {latestPick.pickNo}번 {formatCandidateName(latestPick.candidateName)} · {latestPick.rpsDraftTeamName}
               </p>
             ) : null}
             {snapshot?.session.startedAt ? (
@@ -620,17 +548,6 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
             <Link href={rpsDraftListPath()} className={secondaryLinkClassName}>
               목록
             </Link>
-            {snapshot?.session.status === "READY" && canControl ? (
-              <Button
-                variant="accent"
-                disabled={pendingAction !== null}
-                onClick={() => {
-                  void handleStart();
-                }}
-              >
-                {pendingAction === "start" ? "시작하는 중..." : "시작"}
-              </Button>
-            ) : null}
           </div>
         </div>
 
@@ -728,24 +645,14 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
                     key={choice.value}
                     variant={canSubmitRps ? "accent" : "outline"}
                     disabled={pendingAction !== null || !canSubmitRps}
-                    className="h-24 min-w-0 rounded-lg p-0 sm:h-28 sm:w-28"
+                    className="h-20 min-w-0 rounded-lg px-3 py-0 text-base sm:h-24 sm:w-28"
                     title={choice.label}
                     aria-label={choice.label}
                     onClick={() => {
                       void handleSubmitRps(choice.value);
                     }}
                   >
-                    <span className="sr-only">
-                      {pendingAction === actionKey
-                        ? `${choice.label} 내는 중...`
-                        : choice.label}
-                    </span>
-                    <span className="flex flex-col items-center gap-1.5">
-                      <RpsHandIcon choice={choice.value} />
-                      <span className="text-sm font-semibold leading-none">
-                        {choice.label}
-                      </span>
-                    </span>
+                    {pendingAction === actionKey ? "제출 중" : choice.label}
                   </Button>
                 );
               })}
@@ -756,7 +663,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-foreground">
-                  지금 뽑을 수 있는 후보
+                  지명 가능한 후보
                 </h2>
                 <p className="mt-3 text-sm leading-7 text-muted">
                   {describePickHelp({
@@ -773,38 +680,34 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
               <div className="mt-5 rounded-lg border border-dashed border-line px-6 py-8 text-sm text-muted">
                 {snapshot.session.status === "FINISHED"
                   ? "모든 후보 선택이 끝났습니다."
-                  : "지금은 선택할 후보가 없습니다."}
+                  : "지금 선택 가능한 후보가 없습니다."}
               </div>
             ) : (
               <div className="mt-5 grid gap-3">
                 {snapshot.availableCandidates.map((candidate) => {
-                  const actionKey = `pick:${candidate.candidateUserId}`;
+                  const actionKey = `pick:${candidate.id}`;
 
                   return (
                     <div
-                      key={candidate.candidateUserId}
+                      key={candidate.id}
                       className="rounded-lg border border-line bg-surface-strong px-4 py-4"
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground">
-                              {formatCandidateUserId(
-                                candidate,
-                              )}
-                            </span>
-                            <ValueBadge>{formatRace(candidate.race)}</ValueBadge>
-                          </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <ValueBadge>{candidate.displayOrder}번</ValueBadge>
+                          <span className="text-sm font-semibold text-foreground">
+                            {formatCandidateName(candidate.candidateName)}
+                          </span>
                         </div>
 
                         <Button
                           variant={canPick ? "accent" : "outline"}
                           disabled={pendingAction !== null || !canPick}
                           onClick={() => {
-                            void handlePick(candidate.candidateUserId);
+                            void handlePick(candidate.id);
                           }}
                         >
-                          {pendingAction === actionKey ? "선택 중..." : "선택"}
+                          {pendingAction === actionKey ? "선택 중" : "선택"}
                         </Button>
                       </div>
                     </div>

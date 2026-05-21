@@ -13,10 +13,9 @@ type ErrorResponseBody = {
   error?: string;
 };
 
-export type RpsDraftStatus = "READY" | "RPS_PENDING" | "PICKING" | "FINISHED";
+export type RpsDraftStatus = "RPS_PENDING" | "PICKING" | "FINISHED";
 export type RpsChoice = "ROCK" | "PAPER" | "SCISSORS";
-export type RpsRoundResult = "PENDING" | "TEAM1_WIN" | "TEAM2_WIN";
-export type RpsLiveRoundResult = "DRAW" | "TEAM1_WIN" | "TEAM2_WIN";
+export type RpsRoundResult = "PENDING" | "DRAW" | "TEAM1_WIN" | "TEAM2_WIN";
 export type RpsDraftMyRole = "VIEWER" | "OWNER" | "PICKER" | "OWNER_PICKER";
 
 export type RpsDraftSessionSummary = {
@@ -43,42 +42,27 @@ export type RpsDraftTeam = {
   pickerName: string | null;
 };
 
-export type RpsDraftSessionDetail = {
-  id: number;
-  title: string;
-  ownerUserId: number;
-  ownerUserLoginId: string;
-  ownerName: string | null;
-  status: RpsDraftStatus | string;
-  currentPickNo: number | null;
-  currentDraftTeamId: number | null;
-  pendingDraftTeamId: number | null;
-  startedAt: string | null;
-  endedAt: string | null;
-  teams: RpsDraftTeam[];
-  candidates: RpsDraftCandidate[];
-};
-
 export type RpsDraftCandidate = {
+  id: number;
   rpsDraftSessionId: number;
-  candidateUserId: number;
-  candidateUserLoginId: string;
   candidateName: string;
-  tier?: string | null;
-  race: string | null;
-  status: "WAITING" | "PICKED" | "EXCLUDED" | string;
+  displayOrder: number;
+  status: "WAITING" | "PICKED" | string;
   pickedRpsDraftTeamId: number | null;
   pickedRpsDraftTeamName: string | null;
   pickedAt: string | null;
 };
 
+export type RpsDraftSessionDetail = RpsDraftSessionSummary & {
+  teams: RpsDraftTeam[];
+  candidates: RpsDraftCandidate[];
+};
+
 export type RpsDraftRosterItem = {
   pickNo: number;
-  candidateUserId: number;
-  candidateUserLoginId: string;
+  roundNo: number | null;
+  candidateId: number;
   candidateName: string;
-  tier?: string | null;
-  race?: string | null;
   pickedByUserId: number;
   pickedByUserLoginId?: string | null;
   pickedByUserName: string | null;
@@ -94,29 +78,15 @@ export type RpsDraftPick = {
   pickNo: number;
   rpsDraftTeamId: number;
   rpsDraftTeamName: string;
-  candidateUserId: number;
-  candidateUserLoginId: string;
+  candidateId: number;
   candidateName: string;
-  tier?: string | null;
-  race?: string | null;
   pickedByUserId: number;
   pickedByUserLoginId?: string | null;
   pickedByUserName: string | null;
   pickedAt: string | null;
 };
 
-export type RpsDraftLiveSessionInfo = {
-  id: number;
-  title: string;
-  ownerUserId: number;
-  ownerUserLoginId: string;
-  ownerName: string | null;
-  status: RpsDraftStatus | string;
-  currentPickNo: number | null;
-  currentDraftTeamId: number | null;
-  pendingDraftTeamId: number | null;
-  startedAt: string | null;
-  endedAt: string | null;
+export type RpsDraftLiveSessionInfo = RpsDraftSessionSummary & {
   serverNow: string | null;
 };
 
@@ -147,7 +117,6 @@ export type RpsDraftLiveSnapshot = {
 };
 
 export type RpsDraftLiveEventType =
-  | "SESSION_STARTED"
   | "RPS_SUBMITTED"
   | "RPS_RESOLVED"
   | "TURN_CHANGED"
@@ -160,8 +129,9 @@ export type RpsDraftLiveEvent = {
   occurredAt: string | null;
   serverNow: string | null;
   actorUserId: number | null;
+  actorUserLoginId?: string | null;
   message: string | null;
-  roundResult: RpsLiveRoundResult | null;
+  roundResult: RpsRoundResult | null;
   snapshot: RpsDraftLiveSnapshot | null;
 };
 
@@ -169,16 +139,7 @@ export type RpsDraftSessionCreateRequest = {
   title: string;
   team1PickerUserId: number;
   team2PickerUserId: number;
-  candidateUserIds: number[];
-};
-
-export type RpsDraftPickerAssignRequest = {
-  pickerUserId: number;
-};
-
-export type RpsDraftCandidateRequest = {
-  candidateUserId: number;
-  race?: string;
+  candidateNames: string[];
 };
 
 export type RpsDraftRpsSubmitRequest = {
@@ -186,7 +147,7 @@ export type RpsDraftRpsSubmitRequest = {
 };
 
 export type RpsDraftPickRequest = {
-  candidateUserId: number;
+  candidateId: number;
 };
 
 export type RpsDraftUserSearchResult = DraftUserSearchResult;
@@ -428,27 +389,16 @@ async function unwrapVoidResponse(
     const response = await request;
     const body = response.data as ApiEnvelope<null>;
     const responseStatus =
-      typeof body.status === "number" ? body.status ?? null : response.status;
-    const normalizedResponseStatus = responseStatus ?? response.status;
+      typeof body.status === "number" ? body.status : response.status;
     const responseMessage = readErrorMessage(response.data, fallback);
 
-    if (response.status < 200 || response.status >= 300) {
+    if (response.status < 200 || response.status >= 300 || responseStatus !== 200) {
       throw createRpsDraftApiError(fallback, {
         config: response.config,
         httpStatus: response.status,
         message: responseMessage,
         responseData: response.data,
-        responseStatus: normalizedResponseStatus,
-      });
-    }
-
-    if (normalizedResponseStatus !== 200) {
-      throw createRpsDraftApiError(fallback, {
-        config: response.config,
-        httpStatus: response.status,
-        message: responseMessage,
-        responseData: response.data,
-        responseStatus: normalizedResponseStatus,
+        responseStatus,
       });
     }
   } catch (error) {
@@ -484,7 +434,7 @@ export async function listRpsDraftSessions() {
     apiClient.get<ApiEnvelope<RpsDraftSessionSummary[]>>("/rps-drafts/sessions", {
       validateStatus: () => true,
     }),
-    "가위바위보 드래프트 세션 목록을 불러오지 못했습니다.",
+    "가위바위보 드래프트 목록을 불러오지 못했습니다.",
   );
 }
 
@@ -499,7 +449,7 @@ export async function createRpsDraftSession(
         validateStatus: () => true,
       },
     ),
-    "가위바위보 드래프트 세션을 생성하지 못했습니다.",
+    "가위바위보 드래프트를 생성하지 못했습니다.",
   );
 
   return normalizeSessionDetail(detail);
@@ -513,7 +463,7 @@ export async function getRpsDraftSession(sessionId: number) {
         validateStatus: () => true,
       },
     ),
-    "가위바위보 드래프트 세션 정보를 불러오지 못했습니다.",
+    "가위바위보 드래프트 정보를 불러오지 못했습니다.",
   );
 
   return normalizeSessionDetail(detail);
@@ -528,45 +478,6 @@ export async function deleteRpsDraftSession(sessionId: number) {
   );
 }
 
-export async function assignRpsDraftPicker(
-  sessionId: number,
-  teamId: number,
-  payload: RpsDraftPickerAssignRequest,
-) {
-  const detail = await unwrapResponse(
-    apiClient.post<ApiEnvelope<RpsDraftSessionDetail>>(
-      `/rps-drafts/sessions/${sessionId}/teams/${teamId}/picker`,
-      payload,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "드래프트 진행자를 지정하지 못했습니다.",
-  );
-
-  return normalizeSessionDetail(detail);
-}
-
-export async function registerRpsDraftCandidate(
-  sessionId: number,
-  candidateUserId: number,
-) {
-  const payload: RpsDraftCandidateRequest = { candidateUserId };
-
-  const detail = await unwrapResponse(
-    apiClient.post<ApiEnvelope<RpsDraftSessionDetail>>(
-      `/rps-drafts/sessions/${sessionId}/candidates`,
-      payload,
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "후보를 등록하지 못했습니다.",
-  );
-
-  return normalizeSessionDetail(detail);
-}
-
 export async function getRpsDraftSnapshot(sessionId: number) {
   const snapshot = await unwrapResponse(
     apiClient.get<ApiEnvelope<RpsDraftLiveSnapshot>>(
@@ -576,21 +487,6 @@ export async function getRpsDraftSnapshot(sessionId: number) {
       },
     ),
     "라이브 스냅샷을 불러오지 못했습니다.",
-  );
-
-  return normalizeSnapshot(snapshot);
-}
-
-export async function startRpsDraftSession(sessionId: number) {
-  const snapshot = await unwrapResponse(
-    apiClient.post<ApiEnvelope<RpsDraftLiveSnapshot>>(
-      `/rps-drafts/live/sessions/${sessionId}/start`,
-      {},
-      {
-        validateStatus: () => true,
-      },
-    ),
-    "세션을 시작하지 못했습니다.",
   );
 
   return normalizeSnapshot(snapshot);
@@ -627,6 +523,21 @@ export async function pickRpsDraftCandidate(
       },
     ),
     "후보를 지명하지 못했습니다.",
+  );
+
+  return normalizeSnapshot(snapshot);
+}
+
+export async function finishRpsDraftSession(sessionId: number) {
+  const snapshot = await unwrapResponse(
+    apiClient.post<ApiEnvelope<RpsDraftLiveSnapshot>>(
+      `/rps-drafts/live/sessions/${sessionId}/finish`,
+      {},
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "드래프트를 종료하지 못했습니다.",
   );
 
   return normalizeSnapshot(snapshot);

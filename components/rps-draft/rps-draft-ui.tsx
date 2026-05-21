@@ -28,8 +28,6 @@ export function formatRelativePickNo(value: number | null | undefined) {
 
 export function formatSessionStatus(status: string | null | undefined) {
   switch (status) {
-    case "READY":
-      return "준비";
     case "RPS_PENDING":
       return "가위바위보 대기";
     case "PICKING":
@@ -57,21 +55,6 @@ export function formatChoice(choice: string | null | undefined) {
       return "가위";
     default:
       return "비공개";
-  }
-}
-
-export function formatRace(race: string | null | undefined) {
-  switch (race) {
-    case "ZERG":
-      return "저그";
-    case "TERRAN":
-      return "테란";
-    case "PROTOSS":
-      return "프로토스";
-    case "RANDOM":
-      return "랜덤";
-    default:
-      return race || "미정";
   }
 }
 
@@ -107,7 +90,6 @@ export function formatRoundResult(result: string | null | undefined) {
 
 function buildBadgeClassName(status: string | null | undefined) {
   switch (status) {
-    case "READY":
     case "WAITING":
       return "border-line bg-surface-strong text-foreground";
     case "RPS_PENDING":

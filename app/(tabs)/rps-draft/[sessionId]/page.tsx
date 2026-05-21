@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 
-type LegacyRpsDraftSessionPageProps = {
+type LegacyRpsDraftRedirectPageProps = {
   params: Promise<{
     sessionId: string;
   }>;
 };
 
-export default async function LegacyRpsDraftSessionPage({
+export default async function LegacyRpsDraftRedirectPage({
   params,
-}: LegacyRpsDraftSessionPageProps) {
+}: LegacyRpsDraftRedirectPageProps) {
   const resolvedParams = await params;
-  redirect(`/draft/rps/${resolvedParams.sessionId}`);
+
+  redirect(`/draft/rps/${resolvedParams.sessionId}/live`);
 }

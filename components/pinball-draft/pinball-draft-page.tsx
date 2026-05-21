@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { DraftUserSearch } from "@/components/draft/draft-user-search";
 import {
   PinballBoard,
   type PinballFinishEntry,
@@ -10,45 +9,50 @@ import {
 } from "@/components/pinball-draft/pinball-board";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
-import type { DraftUserSearchResult } from "@/lib/api/draft-users";
 import { cn } from "@/lib/utils";
 
-type PinballPhase = "setup" | "ready" | "running" | "finished";
+type PinballPhase = "ready" | "running" | "finished";
 type TrackingMode = "leader" | "manual" | "player";
 
-type PinballTeam = {
-  label: string;
-  players: DraftUserSearchResult[];
-};
-
-function buildTeamLabel(index: number) {
-  return `${String.fromCharCode(65 + index)}팀`;
+function parseCandidateNames(value: string) {
+  return value
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
 }
 
-function buildTeams(teamCount: number, currentTeams: PinballTeam[] = []) {
-  return Array.from({ length: teamCount }, (_, index) => ({
-    label: buildTeamLabel(index),
-    players: currentTeams[index]?.players ?? [],
+function findDuplicateCandidateName(names: readonly string[]) {
+  const seenNames = new Set<string>();
+
+  for (const name of names) {
+    const key = name.toLocaleLowerCase("ko-KR");
+
+    if (seenNames.has(key)) {
+      return name;
+    }
+
+    seenNames.add(key);
+  }
+
+  return null;
+}
+
+function buildPlayers(names: readonly string[]): PinballPlayer[] {
+  return names.map((name, index) => ({
+    id: index + 1,
+    userId: name,
+    tier: null,
+    race: null,
+    teamIndex: 0,
+    teamLabel: "1팀",
   }));
 }
 
-function formatMeta(user: DraftUserSearchResult) {
-  return [user.race, user.tier].filter(Boolean).join(" · ") || "정보 없음";
-}
-
-function flattenTeamPlayers(teams: PinballTeam[]): PinballPlayer[] {
-  return teams.flatMap((team, teamIndex) =>
-    team.players.map((player) => ({
-      ...player,
-      teamIndex,
-      teamLabel: team.label,
-    })),
-  );
-}
-
 export function PinballDraftPage() {
-  const [phase, setPhase] = useState<PinballPhase>("setup");
-  const [teams, setTeams] = useState<PinballTeam[]>(() => buildTeams(2));
+  const [phase, setPhase] = useState<PinballPhase>("ready");
+  const [candidateNamesText, setCandidateNamesText] = useState("");
+  const [inputError, setInputError] = useState<string | null>(null);
+  const [players, setPlayers] = useState<PinballPlayer[]>([]);
   const [runId, setRunId] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const [finishOrder, setFinishOrder] = useState<PinballFinishEntry[]>([]);
@@ -57,12 +61,14 @@ export function PinballDraftPage() {
   );
   const [trackingMode, setTrackingMode] = useState<TrackingMode>("leader");
 
-  const players = useMemo(() => flattenTeamPlayers(teams), [teams]);
-  const disabledUserIds = players.map((player) => player.id);
+  const previewNames = useMemo(
+    () => parseCandidateNames(candidateNamesText),
+    [candidateNamesText],
+  );
   const selectedCandidate = players.find(
     (player) => player.id === selectedCandidateId,
   );
-  const canStart = teams.every((team) => team.players.length > 0);
+  const canStart = players.length > 0;
   const trackingLabel =
     trackingMode === "manual"
       ? "자유 시점"
@@ -70,47 +76,32 @@ export function PinballDraftPage() {
         ? `${selectedCandidate.userId} 추적`
         : "선두 추적";
 
-  function handleTeamCountChange(nextTeamCount: number) {
-    setTeams((currentTeams) => buildTeams(nextTeamCount, currentTeams));
+  function resetRunState() {
     setFinishOrder([]);
     setSelectedCandidateId(null);
     setTrackingMode("leader");
   }
 
-  function handleAddTeamPlayer(teamIndex: number, user: DraftUserSearchResult) {
-    setTeams((currentTeams) => {
-      if (
-        currentTeams.some((team) =>
-          team.players.some((player) => player.id === user.id),
-        )
-      ) {
-        return currentTeams;
-      }
+  function applyCandidateNames() {
+    const names = parseCandidateNames(candidateNamesText);
+    const duplicateName = findDuplicateCandidateName(names);
 
-      return currentTeams.map((team, index) =>
-        index === teamIndex
-          ? { ...team, players: [...team.players, user] }
-          : team,
-      );
-    });
-  }
-
-  function handleRemoveTeamPlayer(teamIndex: number, userId: number) {
-    setTeams((currentTeams) =>
-      currentTeams.map((team, index) =>
-        index === teamIndex
-          ? {
-              ...team,
-              players: team.players.filter((player) => player.id !== userId),
-            }
-          : team,
-      ),
-    );
-    setFinishOrder([]);
-    if (selectedCandidateId === userId) {
-      setSelectedCandidateId(null);
-      setTrackingMode("leader");
+    if (names.length === 0) {
+      setInputError("참가자 이름을 1명 이상 입력해 주세요.");
+      return;
     }
+
+    if (duplicateName) {
+      setInputError(`참가자 이름이 중복됩니다: ${duplicateName}`);
+      return;
+    }
+
+    setInputError(null);
+    setPlayers(buildPlayers(names));
+    resetRunState();
+    setPhase("ready");
+    setShuffleSeed(0);
+    setRunId((current) => current + 1);
   }
 
   function handleSelectPlayer(candidateId: number | null) {
@@ -128,176 +119,34 @@ export function PinballDraftPage() {
     setTrackingMode("manual");
   }
 
-  function prepareRun() {
-    if (!canStart) {
-      return;
-    }
-
-    setFinishOrder([]);
-    setSelectedCandidateId(null);
-    setTrackingMode("leader");
-    setRunId((current) => current + 1);
-    setPhase("ready");
-  }
-
   function startRun() {
     if (!canStart || phase === "running") {
       return;
     }
 
-    setFinishOrder([]);
-    setSelectedCandidateId(null);
-    setTrackingMode("leader");
+    resetRunState();
     setRunId((current) => current + 1);
     setPhase("running");
   }
 
   function shuffleStartPositions() {
-    if (phase === "running") {
+    if (phase === "running" || !canStart) {
       return;
     }
 
-    setFinishOrder([]);
-    setSelectedCandidateId(null);
-    setTrackingMode("leader");
+    resetRunState();
     setShuffleSeed((current) => current + 1);
     setPhase("ready");
   }
 
   function resetAll() {
-    setPhase("setup");
-    setTeams(buildTeams(2));
-    setFinishOrder([]);
-    setSelectedCandidateId(null);
-    setTrackingMode("leader");
+    setCandidateNamesText("");
+    setInputError(null);
+    setPlayers([]);
+    resetRunState();
+    setPhase("ready");
     setShuffleSeed(0);
     setRunId((current) => current + 1);
-  }
-
-  function backToSetup() {
-    setPhase("setup");
-    setFinishOrder([]);
-    setSelectedCandidateId(null);
-    setTrackingMode("leader");
-  }
-
-  if (phase === "setup") {
-    return (
-      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-              Front Only Pinball
-            </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
-              핀볼 드래프트 설정
-            </h1>
-            <p className="mt-2 text-sm leading-7 text-muted">
-              팀 수를 정하고 각 팀 카드에서 선수를 추가하면 바로 진행할 수 있습니다.
-            </p>
-          </div>
-          <Link
-            href="/draft"
-            className="rounded-full border border-line-strong bg-white px-5 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
-          >
-            드래프트 목록으로
-          </Link>
-        </div>
-
-        <SurfaceCard className="p-5 sm:p-6">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <label className="w-full max-w-xs space-y-2">
-              <span className="text-sm font-semibold text-foreground">팀 수</span>
-              <select
-                className="w-full rounded-lg border border-line-strong bg-surface-strong px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-white"
-                value={teams.length}
-                onChange={(event) =>
-                  handleTeamCountChange(Number(event.target.value))
-                }
-              >
-                {Array.from({ length: 8 }, (_, index) => index + 1).map(
-                  (count) => (
-                    <option key={count} value={count}>
-                      {count}팀
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm text-muted">
-                총 {players.length}명 · 각 팀 1명 이상 필요
-              </p>
-              <Button variant="accent" disabled={!canStart} onClick={prepareRun}>
-                배치하기
-              </Button>
-            </div>
-          </div>
-        </SurfaceCard>
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          {teams.map((team, teamIndex) => (
-            <SurfaceCard key={team.label} className="p-5 sm:p-6">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-lg font-semibold text-foreground">
-                  {team.label}
-                </p>
-                <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-muted">
-                  {team.players.length}명
-                </span>
-              </div>
-
-              <div className="mt-4">
-                <DraftUserSearch
-                  clearOnSelect
-                  label={`${team.label} 선수 검색`}
-                  onSelect={(user) => handleAddTeamPlayer(teamIndex, user)}
-                  disabledUserIds={disabledUserIds}
-                  disabledUserMessage="이미 다른 팀에 추가된 선수입니다."
-                  placeholder="선수 ID 검색"
-                />
-              </div>
-
-              <div className="mt-4 grid max-h-[420px] gap-3 overflow-y-auto pr-1">
-                {team.players.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-line px-4 py-8 text-sm leading-7 text-muted">
-                    이 팀에 선수를 1명 이상 추가해 주세요.
-                  </div>
-                ) : (
-                  team.players.map((player, index) => (
-                    <div
-                      key={player.id}
-                      className="rounded-lg border border-line bg-white px-4 py-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-foreground">
-                            {index + 1}. {player.userId}
-                          </p>
-                          <p className="mt-1 text-xs text-muted">
-                            {formatMeta(player)}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            handleRemoveTeamPlayer(teamIndex, player.id)
-                          }
-                        >
-                          제거
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </SurfaceCard>
-          ))}
-        </div>
-      </main>
-    );
   }
 
   return (
@@ -305,37 +154,36 @@ export function PinballDraftPage() {
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
-            {phase === "finished" ? "Result" : phase === "ready" ? "Ready" : "Running"}
+            Front Only Pinball
           </p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
             핀볼 드래프트
           </h1>
           <p className="mt-2 text-sm text-muted">
-            {phase === "finished"
-              ? "모든 공이 도착했습니다."
-              : phase === "ready"
-                ? "좌우 위치를 섞은 뒤 시작을 누르면 공이 떨어집니다."
-                : "각 팀 선수가 동시에 출발해 도착 순위를 기록합니다."}
+            쉼표로 구분한 이름을 1팀 참가자로 배치합니다.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={backToSetup}>
-            다시 설정
-          </Button>
+          <Link
+            href="/draft"
+            className="rounded-full border border-line-strong bg-white px-5 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
+          >
+            드래프트 목록
+          </Link>
           <Button variant="outline" onClick={resetAll}>
             리셋
           </Button>
           <Button
             variant="outline"
-            disabled={phase === "running"}
+            disabled={phase === "running" || !canStart}
             onClick={shuffleStartPositions}
           >
-            좌우 섞기
+            위치 섞기
           </Button>
           <Button
             variant="accent"
-            disabled={phase === "running"}
+            disabled={phase === "running" || !canStart}
             onClick={startRun}
           >
             {phase === "finished" ? "다시 시작" : phase === "ready" ? "시작" : "진행 중"}
@@ -343,7 +191,7 @@ export function PinballDraftPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <PinballBoard
           candidates={players}
           followCandidateId={
@@ -364,50 +212,87 @@ export function PinballDraftPage() {
         <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
           <SurfaceCard className="p-5">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-foreground">선수 목록</p>
+              <p className="text-sm font-semibold text-foreground">참가자 입력</p>
+              <span className="shrink-0 rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-muted">
+                {previewNames.length}명
+              </span>
+            </div>
+
+            <textarea
+              value={candidateNamesText}
+              onChange={(event) => {
+                setInputError(null);
+                setCandidateNamesText(event.target.value);
+              }}
+              className="mt-4 min-h-36 w-full resize-y rounded-lg border border-line-strong bg-white px-4 py-3 text-sm leading-7 text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent"
+              placeholder="예: alpha, bravo, charlie"
+              disabled={phase === "running"}
+            />
+
+            {inputError ? (
+              <p className="mt-3 text-sm text-danger-ink">{inputError}</p>
+            ) : null}
+
+            <Button
+              variant="accent"
+              fullWidth
+              className="mt-4"
+              disabled={phase === "running"}
+              onClick={applyCandidateNames}
+            >
+              명단 적용
+            </Button>
+          </SurfaceCard>
+
+          <SurfaceCard className="p-5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-foreground">참가자 목록</p>
               <span className="shrink-0 rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-muted">
                 {trackingLabel}
               </span>
             </div>
-            <div className="mt-4 grid max-h-[calc(100vh-220px)] gap-2 overflow-y-auto pr-1">
-              {players.map((player) => {
-                const isSelected =
-                  trackingMode === "player" && selectedCandidateId === player.id;
-                const rank = finishOrder.find(
-                  (entry) => entry.candidate.id === player.id,
-                )?.rank;
+            <div className="mt-4 grid max-h-[calc(100vh-360px)] gap-2 overflow-y-auto pr-1">
+              {players.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-line px-4 py-6 text-sm text-muted">
+                  이름 목록을 적용하면 보드에 바로 배치됩니다.
+                </p>
+              ) : (
+                players.map((player) => {
+                  const isSelected =
+                    trackingMode === "player" && selectedCandidateId === player.id;
+                  const rank = finishOrder.find(
+                    (entry) => entry.candidate.id === player.id,
+                  )?.rank;
 
-                return (
-                  <button
-                    key={player.id}
-                    type="button"
-                    className={cn(
-                      "rounded-lg border px-4 py-3 text-left transition-colors",
-                      isSelected
-                        ? "border-accent bg-accent-soft text-accent-ink"
-                        : "border-line bg-white hover:border-accent-soft",
-                    )}
-                    onClick={() => handleSelectPlayer(player.id)}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 truncate text-sm font-semibold">
-                        {player.userId}
-                      </span>
-                      <span className="shrink-0 text-xs text-muted">
-                        {rank
-                          ? `${rank}등`
-                          : phase === "running"
-                            ? "진행 중"
-                            : "대기"}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted">
-                      <span>{player.teamLabel}</span>
-                      <span>{formatMeta(player)}</span>
-                    </div>
-                  </button>
-                );
-              })}
+                  return (
+                    <button
+                      key={player.id}
+                      type="button"
+                      className={cn(
+                        "rounded-lg border px-4 py-3 text-left transition-colors",
+                        isSelected
+                          ? "border-accent bg-accent-soft text-accent-ink"
+                          : "border-line bg-white hover:border-accent-soft",
+                      )}
+                      onClick={() => handleSelectPlayer(player.id)}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="min-w-0 truncate text-sm font-semibold">
+                          {player.userId}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted">
+                          {rank
+                            ? `${rank}위`
+                            : phase === "running"
+                              ? "진행 중"
+                              : "대기"}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs text-muted">{player.teamLabel}</p>
+                    </button>
+                  );
+                })
+              )}
             </div>
           </SurfaceCard>
 
@@ -416,7 +301,7 @@ export function PinballDraftPage() {
             <div className="mt-4 grid gap-2">
               {finishOrder.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-line px-4 py-6 text-sm text-muted">
-                  아직 도착한 선수가 없습니다.
+                  아직 완주한 참가자가 없습니다.
                 </p>
               ) : (
                 finishOrder.slice(0, 8).map((entry) => (
@@ -426,15 +311,12 @@ export function PinballDraftPage() {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <p className="truncate text-sm font-semibold text-foreground">
-                        {entry.rank}등 · {entry.candidate.userId}
+                        {entry.rank}위 · {entry.candidate.userId}
                       </p>
                       <span className="text-xs text-muted">
                         {(entry.elapsedMs / 1000).toFixed(1)}초
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-muted">
-                      {entry.candidate.teamLabel}
-                    </p>
                   </div>
                 ))
               )}
@@ -444,87 +326,37 @@ export function PinballDraftPage() {
       </div>
 
       {phase === "finished" ? (
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <SurfaceCard className="p-5 sm:p-6">
-            <h2 className="text-xl font-semibold text-foreground">
-              전체 도착 순위
-            </h2>
+        <SurfaceCard className="mt-4 p-5 sm:p-6">
+          <h2 className="text-xl font-semibold text-foreground">
+            전체 완주 순위
+          </h2>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {finishOrder.map((entry) => (
-                <div
-                  key={entry.candidate.id}
-                  className="rounded-[22px] border border-line bg-white px-4 py-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-muted">
-                        {entry.rank}등
-                      </p>
-                      <p className="mt-1 truncate text-base font-semibold text-foreground">
-                        {entry.candidate.userId}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-muted">
-                      {entry.candidate.teamLabel}
-                    </span>
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {finishOrder.map((entry) => (
+              <div
+                key={entry.candidate.id}
+                className="rounded-lg border border-line bg-white px-4 py-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-muted">
+                      {entry.rank}위
+                    </p>
+                    <p className="mt-1 truncate text-base font-semibold text-foreground">
+                      {entry.candidate.userId}
+                    </p>
                   </div>
-                  <p className="mt-3 text-xs text-muted">
-                    {(entry.elapsedMs / 1000).toFixed(1)}초
-                  </p>
+                  <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-muted">
+                    {entry.candidate.teamLabel}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </SurfaceCard>
-
-          <SurfaceCard className="p-5 sm:p-6">
-            <h2 className="text-xl font-semibold text-foreground">
-              팀별 도착 순위
-            </h2>
-
-            <div className="mt-5 grid gap-4">
-              {teams.map((team, teamIndex) => {
-                const teamEntries = finishOrder.filter(
-                  (entry) => entry.candidate.teamIndex === teamIndex,
-                );
-
-                return (
-                  <div
-                    key={team.label}
-                    className="rounded-[22px] border border-line bg-white px-4 py-4"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground">
-                        {team.label}
-                      </p>
-                      <span className="text-xs text-muted">
-                        {teamEntries.length}명
-                      </span>
-                    </div>
-
-                    <div className="mt-3 grid gap-2">
-                      {teamEntries.map((entry) => (
-                        <div
-                          key={entry.candidate.id}
-                          className="rounded-lg bg-surface-muted px-3 py-2 text-sm"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="truncate font-semibold text-foreground">
-                              {entry.candidate.userId}
-                            </p>
-                            <span className="text-xs text-muted">
-                              {entry.rank}등
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </SurfaceCard>
-        </div>
+                <p className="mt-3 text-xs text-muted">
+                  {(entry.elapsedMs / 1000).toFixed(1)}초
+                </p>
+              </div>
+            ))}
+          </div>
+        </SurfaceCard>
       ) : null}
     </main>
   );

@@ -187,6 +187,7 @@ export function RpsDraftListPage() {
   const [sessions, setSessions] = useState<RpsDraftSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCreateTypeOpen, setIsCreateTypeOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null);
@@ -295,7 +296,16 @@ export function RpsDraftListPage() {
     }));
   }
 
+  function handleOpenCreateTypeDialog() {
+    setIsCreateTypeOpen(true);
+  }
+
+  function handleCloseCreateTypeDialog() {
+    setIsCreateTypeOpen(false);
+  }
+
   function handleOpenCreateDialog() {
+    setIsCreateTypeOpen(false);
     setCreateError(null);
     setForm(
       createEmptyForm(
@@ -304,6 +314,11 @@ export function RpsDraftListPage() {
       ),
     );
     setIsCreateOpen(true);
+  }
+
+  function handleOpenPinballDraft() {
+    setIsCreateTypeOpen(false);
+    router.push("/draft/pinball");
   }
 
   function handleCloseCreateDialog() {
@@ -349,20 +364,14 @@ export function RpsDraftListPage() {
               Draft
             </p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              가위바위보 드래프트
+              드래프트 이력
             </h1>
-            <p className="mt-4 text-base leading-8 text-muted">
-              팀장 2명은 기존 계정에서 선택하고, 후보는 계정 없이 이름 목록으로 진행합니다.
-            </p>
           </div>
 
           {isAuthenticated ? (
             <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Link href="/draft/pinball" className={secondaryLinkClassName}>
-                핀볼 드래프트
-              </Link>
-              <Button variant="accent" onClick={handleOpenCreateDialog}>
-                새 드래프트
+              <Button variant="accent" onClick={handleOpenCreateTypeDialog}>
+                드래프트 생성
               </Button>
             </div>
           ) : status === "loading" ? (
@@ -446,6 +455,30 @@ export function RpsDraftListPage() {
           </div>
         )}
       </SurfaceCard>
+
+      <OverlayDialog
+        open={isCreateTypeOpen}
+        onClose={handleCloseCreateTypeDialog}
+        title="드래프트 생성"
+        panelClassName="max-w-xl bg-white backdrop-blur-none"
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Button
+            variant="accent"
+            className="h-20 rounded-lg text-base"
+            onClick={handleOpenCreateDialog}
+          >
+            가위바위보 드래프트
+          </Button>
+          <Button
+            variant="outline"
+            className="h-20 rounded-lg text-base"
+            onClick={handleOpenPinballDraft}
+          >
+            핀볼 드래프트
+          </Button>
+        </div>
+      </OverlayDialog>
 
       <OverlayDialog
         open={isCreateOpen}

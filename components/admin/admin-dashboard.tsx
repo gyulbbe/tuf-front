@@ -61,6 +61,12 @@ const adminTools: AdminTool[] = [
     description: "상단 메뉴와 관리자 메뉴의 노출 여부를 관리합니다.",
     alwaysVisible: true,
   },
+  {
+    href: "/admin/ai-settings",
+    title: "AI 모델 설정",
+    description: "운영 AI 라우팅 모드와 Cloudflare/Ollama 모델명을 관리합니다.",
+    alwaysVisible: true,
+  },
 ];
 
 function isToolVisible(tool: AdminTool, menuVisibility: MenuVisibilityRecord) {

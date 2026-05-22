@@ -220,6 +220,12 @@ export const siteTabs: SiteTab[] = [
         requiresAdmin: true,
         menuKey: "admin.menuVisibility",
       },
+      {
+        label: "AI 모델 설정",
+        href: "/admin/ai-settings",
+        description: "운영 AI 라우팅과 모델명을 관리합니다.",
+        requiresAdmin: true,
+      },
     ],
   },
   {

@@ -3,11 +3,11 @@ import { RpsDraftListPage } from "@/components/rps-draft/rps-draft-list-page";
 import { requireServerAuth } from "@/lib/auth/server-auth";
 
 export const metadata: Metadata = {
-  title: "컨텐츠 드래프트",
+  title: "엔트리 제출",
 };
 
-export default async function DraftRpsPage() {
-  await requireServerAuth("/draft/rps");
+export default async function DraftEntryListPage() {
+  await requireServerAuth("/draft/entry");
 
-  return <RpsDraftListPage mode="draft" />;
+  return <RpsDraftListPage mode="entry" />;
 }

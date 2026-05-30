@@ -32,7 +32,10 @@ export function formatSessionStatus(status: string | null | undefined) {
       return "가위바위보 대기";
     case "PICKING":
       return "선수 선택 중";
+    case "SUBMITTING":
+      return "엔트리 제출중";
     case "FINISHED":
+    case "COMPLETED":
       return "완료";
     case "WAITING":
       return "대기 중";
@@ -95,8 +98,10 @@ function buildBadgeClassName(status: string | null | undefined) {
     case "RPS_PENDING":
       return "border-accent/20 bg-accent-soft text-accent-ink";
     case "PICKING":
+    case "SUBMITTING":
       return "border-warning-ink/20 bg-warning-soft text-warning-ink";
     case "FINISHED":
+    case "COMPLETED":
     case "PICKED":
       return "border-success-ink/20 bg-success-soft text-success-ink";
     case "EXCLUDED":

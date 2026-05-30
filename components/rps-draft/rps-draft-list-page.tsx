@@ -16,6 +16,12 @@ import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  createEntrySubmissionSession,
+  deleteEntrySubmissionSession,
+  listEntrySubmissionSessions,
+  type EntrySubmissionSessionSummary,
+} from "@/lib/api/entry-submission";
+import {
   createRpsDraftSession,
   deleteRpsDraftSession,
   listRpsDraftSessions,
@@ -25,6 +31,7 @@ import {
 import { buildLoginHref } from "@/lib/auth/auth-navigation";
 import type { AuthUser } from "@/lib/auth/auth-types";
 import { canManageOwnedResource } from "@/lib/auth/roles";
+import { entrySubmissionSessionPath } from "@/lib/entry-submission/routes";
 import { rpsDraftListPath, rpsDraftLivePath } from "@/lib/rps-draft/routes";
 
 const secondaryLinkClassName =
@@ -38,6 +45,35 @@ type RpsDraftCreateFormState = {
   team1Picker: RpsDraftUserSearchResult | null;
   team2Picker: RpsDraftUserSearchResult | null;
   candidateNamesText: string;
+};
+
+type EntrySubmissionCreateFormState = {
+  title: string;
+  team1Captain: RpsDraftUserSearchResult | null;
+  team2Captain: RpsDraftUserSearchResult | null;
+  team1PlayerNamesText: string;
+  team2PlayerNamesText: string;
+  setCountText: string;
+  setCountEdited: boolean;
+};
+
+type DraftHistoryItem = {
+  kind: "rps" | "entry";
+  id: number;
+  title: string;
+  ownerUserId: number;
+  ownerUserLoginId: string | null;
+  status: string;
+  regDate: string | null;
+  updateDate: string | null;
+  href: string;
+  typeLabel: string;
+  progressText: string;
+  metaLabel: string;
+};
+
+type RpsDraftListPageProps = {
+  mode?: "draft" | "entry";
 };
 
 function padNumber(value: number) {
@@ -76,11 +112,62 @@ function createEmptyForm(
   };
 }
 
+function createEmptyEntryForm(
+  title = "",
+  team1Captain: RpsDraftUserSearchResult | null = null,
+): EntrySubmissionCreateFormState {
+  return withAutoEntrySetCount({
+    title,
+    team1Captain,
+    team2Captain: null,
+    team1PlayerNamesText: "",
+    team2PlayerNamesText: "",
+    setCountText: "",
+    setCountEdited: false,
+  });
+}
+
 function parseCandidateNames(value: string) {
   return value
     .split(",")
     .map((name) => name.trim())
     .filter(Boolean);
+}
+
+function countEntryPlayers(
+  captain: RpsDraftUserSearchResult | null,
+  playerNamesText: string,
+) {
+  return parseCandidateNames(playerNamesText).length + (captain ? 1 : 0);
+}
+
+function calculateEntrySetCount(form: EntrySubmissionCreateFormState) {
+  return Math.max(
+    countEntryPlayers(form.team1Captain, form.team1PlayerNamesText),
+    countEntryPlayers(form.team2Captain, form.team2PlayerNamesText),
+    1,
+  );
+}
+
+function withAutoEntrySetCount(
+  form: EntrySubmissionCreateFormState,
+): EntrySubmissionCreateFormState {
+  if (form.setCountEdited) {
+    return form;
+  }
+
+  return {
+    ...form,
+    setCountText: String(calculateEntrySetCount(form)),
+  };
+}
+
+function sanitizePositiveIntegerText(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function isBlockedNumberInputKey(key: string) {
+  return key === "e" || key === "E" || key === "+" || key === "-" || key === ".";
 }
 
 function findDuplicateCandidateName(names: readonly string[]) {
@@ -108,30 +195,17 @@ function toTimestamp(value: string | null | undefined) {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
-function sortSessions(sessions: RpsDraftSessionSummary[]) {
-  return [...sessions].sort((left, right) => {
-    const leftFinished = left.status === "FINISHED";
-    const rightFinished = right.status === "FINISHED";
-    const delta =
+function sortDraftHistoryItems(items: DraftHistoryItem[]) {
+  return [...items].sort((left, right) => {
+    const leftFinished = left.status === "FINISHED" || left.status === "COMPLETED";
+    const rightFinished = right.status === "FINISHED" || right.status === "COMPLETED";
+
+    return (
       Number(leftFinished) - Number(rightFinished) ||
-      toTimestamp(right.regDate ?? right.startedAt) -
-        toTimestamp(left.regDate ?? left.startedAt) ||
-      right.id - left.id;
-
-    return delta;
+      toTimestamp(right.regDate ?? right.updateDate) - toTimestamp(left.regDate ?? left.updateDate) ||
+      right.id - left.id
+    );
   });
-}
-
-function describeSchedule(session: RpsDraftSessionSummary) {
-  if (session.regDate) {
-    return `생성 ${formatDateTime(session.regDate)}`;
-  }
-
-  if (session.startedAt) {
-    return `생성 ${formatDateTime(session.startedAt)}`;
-  }
-
-  return null;
 }
 
 function describeProgress(session: RpsDraftSessionSummary) {
@@ -147,6 +221,48 @@ function describeProgress(session: RpsDraftSessionSummary) {
     default:
       return "진행 상황을 확인해 주세요.";
   }
+}
+
+function describeEntryProgress(session: EntrySubmissionSessionSummary) {
+  return session.status === "COMPLETED"
+    ? "양 팀 엔트리 제출이 완료됐습니다."
+    : "팀장 엔트리 제출을 기다리는 중입니다.";
+}
+
+function buildDraftHistoryItems(
+  rpsSessions: RpsDraftSessionSummary[],
+  entrySessions: EntrySubmissionSessionSummary[],
+) {
+  return sortDraftHistoryItems([
+    ...rpsSessions.map((session) => ({
+      kind: "rps" as const,
+      id: session.id,
+      title: session.title,
+      ownerUserId: session.ownerUserId,
+      ownerUserLoginId: session.ownerUserLoginId,
+      status: session.status,
+      regDate: session.regDate ?? session.startedAt,
+      updateDate: session.updateDate,
+      href: rpsDraftLivePath(session.id),
+      typeLabel: "가위바위보",
+      progressText: describeProgress(session),
+      metaLabel: formatRelativePickNo(session.currentPickNo),
+    })),
+    ...entrySessions.map((session) => ({
+      kind: "entry" as const,
+      id: session.id,
+      title: session.title,
+      ownerUserId: session.ownerUserId,
+      ownerUserLoginId: session.ownerUserLoginId,
+      status: session.status,
+      regDate: session.regDate,
+      updateDate: session.updateDate,
+      href: entrySubmissionSessionPath(session.id),
+      typeLabel: "엔트리 제출",
+      progressText: describeEntryProgress(session),
+      metaLabel: `${session.setCount}세트`,
+    })),
+  ]);
 }
 
 function formatUserLoginId(value: string | null | undefined) {
@@ -181,19 +297,65 @@ function validateCreateForm(form: RpsDraftCreateFormState) {
   return null;
 }
 
-export function RpsDraftListPage() {
+function validateEntryCreateForm(form: EntrySubmissionCreateFormState) {
+  const title = form.title.trim();
+  const team1PlayerNames = parseCandidateNames(form.team1PlayerNamesText);
+  const team2PlayerNames = parseCandidateNames(form.team2PlayerNamesText);
+  const team1Duplicate = findDuplicateCandidateName(team1PlayerNames);
+  const team2Duplicate = findDuplicateCandidateName(team2PlayerNames);
+  const setCountText = form.setCountText.trim();
+
+  if (!title) {
+    return "제목을 입력해 주세요.";
+  }
+  if (!form.team1Captain || !form.team2Captain) {
+    return "팀장 2명을 모두 골라 주세요.";
+  }
+  if (form.team1Captain.id === form.team2Captain.id) {
+    return "서로 다른 팀장을 선택해 주세요.";
+  }
+  if (team1PlayerNames.some((name) => name.toLocaleLowerCase("ko-KR") === form.team1Captain?.userId.toLocaleLowerCase("ko-KR"))) {
+    return "1팀 선수 목록에 팀장 아이디가 중복됐습니다.";
+  }
+  if (team2PlayerNames.some((name) => name.toLocaleLowerCase("ko-KR") === form.team2Captain?.userId.toLocaleLowerCase("ko-KR"))) {
+    return "2팀 선수 목록에 팀장 아이디가 중복됐습니다.";
+  }
+  if (team1Duplicate) {
+    return `1팀 선수 이름이 중복됩니다: ${team1Duplicate}`;
+  }
+  if (team2Duplicate) {
+    return `2팀 선수 이름이 중복됩니다: ${team2Duplicate}`;
+  }
+  if (!setCountText || !Number.isInteger(Number(setCountText)) || Number(setCountText) < 1) {
+    return "세트 수는 1 이상의 정수로 입력해 주세요.";
+  }
+
+  return null;
+}
+
+export function RpsDraftListPage({ mode = "draft" }: RpsDraftListPageProps) {
   const router = useRouter();
   const { isAuthenticated, status, user } = useAuth();
   const [sessions, setSessions] = useState<RpsDraftSessionSummary[]>([]);
+  const [entrySessions, setEntrySessions] = useState<EntrySubmissionSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreateTypeOpen, setIsCreateTypeOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEntryCreateOpen, setIsEntryCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [entryCreating, setEntryCreating] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [entryCreateError, setEntryCreateError] = useState<string | null>(null);
   const [form, setForm] = useState<RpsDraftCreateFormState>(() =>
     createEmptyForm(
+      buildDefaultDraftTitle(user?.username),
+      toCurrentUserSearchResult(user),
+    ),
+  );
+  const [entryForm, setEntryForm] = useState<EntrySubmissionCreateFormState>(() =>
+    createEmptyEntryForm(
       buildDefaultDraftTitle(user?.username),
       toCurrentUserSearchResult(user),
     ),
@@ -207,10 +369,20 @@ export function RpsDraftListPage() {
       setError(null);
 
       try {
-        const nextSessions = await listRpsDraftSessions();
+        const [nextSessions, nextEntrySessions] =
+          mode === "entry"
+            ? await Promise.all([
+                Promise.resolve([] as RpsDraftSessionSummary[]),
+                listEntrySubmissionSessions(),
+              ])
+            : await Promise.all([
+                listRpsDraftSessions(),
+                Promise.resolve([] as EntrySubmissionSessionSummary[]),
+              ]);
 
         if (!cancelled) {
           setSessions(nextSessions);
+          setEntrySessions(nextEntrySessions);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -232,13 +404,22 @@ export function RpsDraftListPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mode]);
 
-  const sortedSessions = sortSessions(sessions);
-  const loginHref = buildLoginHref({ redirectTo: rpsDraftListPath() });
+  const listPath = mode === "entry" ? "/draft/entry" : rpsDraftListPath();
+  const historyItems = buildDraftHistoryItems(sessions, entrySessions);
+  const loginHref = buildLoginHref({ redirectTo: listPath });
   const previewCandidateNames = useMemo(
     () => parseCandidateNames(form.candidateNamesText),
     [form.candidateNamesText],
+  );
+  const previewTeam1EntryNames = useMemo(
+    () => parseCandidateNames(entryForm.team1PlayerNamesText),
+    [entryForm.team1PlayerNamesText],
+  );
+  const previewTeam2EntryNames = useMemo(
+    () => parseCandidateNames(entryForm.team2PlayerNamesText),
+    [entryForm.team2PlayerNamesText],
   );
   const team1DisabledUserIds = [
     form.team2Picker?.id,
@@ -246,6 +427,28 @@ export function RpsDraftListPage() {
   const team2DisabledUserIds = [
     form.team1Picker?.id,
   ].filter((value): value is number => typeof value === "number");
+  const entryTeam1DisabledUserIds = [
+    entryForm.team2Captain?.id,
+  ].filter((value): value is number => typeof value === "number");
+  const entryTeam2DisabledUserIds = [
+    entryForm.team1Captain?.id,
+  ].filter((value): value is number => typeof value === "number");
+  const pageTitle = mode === "entry" ? "엔트리 이력" : "드래프트 이력";
+  const pageLoadingText =
+    mode === "entry"
+      ? "엔트리 이력을 불러오는 중입니다."
+      : "진행 가능한 드래프트를 불러오는 중입니다.";
+  const pageEmptyText =
+    mode === "entry"
+      ? "아직 생성된 엔트리 제출이 없습니다."
+      : "아직 생성된 드래프트가 없습니다.";
+  const createButtonLabel = mode === "entry" ? "엔트리 생성" : "드래프트 생성";
+
+  function updateEntryForm(
+    updater: (current: EntrySubmissionCreateFormState) => EntrySubmissionCreateFormState,
+  ) {
+    setEntryForm((current) => withAutoEntrySetCount(updater(current)));
+  }
 
   async function handleCreateSession() {
     const validationMessage = validateCreateForm(form);
@@ -280,6 +483,41 @@ export function RpsDraftListPage() {
     }
   }
 
+  async function handleCreateEntrySession() {
+    const validationMessage = validateEntryCreateForm(entryForm);
+
+    if (validationMessage) {
+      setEntryCreateError(validationMessage);
+      return;
+    }
+
+    setEntryCreating(true);
+    setEntryCreateError(null);
+
+    try {
+      const createdSnapshot = await createEntrySubmissionSession({
+        title: entryForm.title.trim(),
+        team1CaptainUserId: entryForm.team1Captain!.id,
+        team2CaptainUserId: entryForm.team2Captain!.id,
+        team1PlayerNames: parseCandidateNames(entryForm.team1PlayerNamesText),
+        team2PlayerNames: parseCandidateNames(entryForm.team2PlayerNamesText),
+        setCount: Number(entryForm.setCountText.trim()),
+      });
+
+      setIsEntryCreateOpen(false);
+      setEntryForm(createEmptyEntryForm());
+      router.push(entrySubmissionSessionPath(createdSnapshot.session.id));
+    } catch (createSessionError) {
+      setEntryCreateError(
+        createSessionError instanceof Error
+          ? createSessionError.message
+          : "엔트리 제출을 생성하지 못했습니다.",
+      );
+    } finally {
+      setEntryCreating(false);
+    }
+  }
+
   function handleSelectTeam(teamKey: "team1Picker" | "team2Picker", nextUser: RpsDraftUserSearchResult) {
     setCreateError(null);
     setForm((current) => ({
@@ -296,7 +534,31 @@ export function RpsDraftListPage() {
     }));
   }
 
+  function handleSelectEntryTeam(
+    teamKey: "team1Captain" | "team2Captain",
+    nextUser: RpsDraftUserSearchResult,
+  ) {
+    setEntryCreateError(null);
+    updateEntryForm((current) => ({
+      ...current,
+      [teamKey]: nextUser,
+    }));
+  }
+
+  function handleClearEntryTeam(teamKey: "team1Captain" | "team2Captain") {
+    setEntryCreateError(null);
+    updateEntryForm((current) => ({
+      ...current,
+      [teamKey]: null,
+    }));
+  }
+
   function handleOpenCreateTypeDialog() {
+    if (mode === "entry") {
+      handleOpenEntryCreateDialog();
+      return;
+    }
+
     setIsCreateTypeOpen(true);
   }
 
@@ -321,12 +583,32 @@ export function RpsDraftListPage() {
     router.push("/draft/pinball");
   }
 
+  function handleOpenEntryCreateDialog() {
+    setIsCreateTypeOpen(false);
+    setEntryCreateError(null);
+    setEntryForm(
+      createEmptyEntryForm(
+        buildDefaultDraftTitle(user?.username),
+        toCurrentUserSearchResult(user),
+      ),
+    );
+    setIsEntryCreateOpen(true);
+  }
+
   function handleCloseCreateDialog() {
     if (creating) {
       return;
     }
 
     setIsCreateOpen(false);
+  }
+
+  function handleCloseEntryCreateDialog() {
+    if (entryCreating) {
+      return;
+    }
+
+    setIsEntryCreateOpen(false);
   }
 
   async function handleDeleteSession(sessionId: number, title: string) {
@@ -355,6 +637,32 @@ export function RpsDraftListPage() {
     }
   }
 
+  async function handleDeleteEntrySession(sessionId: number, title: string) {
+    if (
+      !window.confirm(
+        [`"${title}" 엔트리 제출을 삭제할까요?`, "", "삭제 후에는 되돌릴 수 없습니다."].join("\n"),
+      )
+    ) {
+      return;
+    }
+
+    setDeletingSessionId(sessionId);
+    setError(null);
+
+    try {
+      await deleteEntrySubmissionSession(sessionId);
+      setEntrySessions((current) => current.filter((session) => session.id !== sessionId));
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "엔트리 제출을 삭제하지 못했습니다.",
+      );
+    } finally {
+      setDeletingSessionId(null);
+    }
+  }
+
   return (
     <>
       <SurfaceCard className="p-6 sm:p-8">
@@ -364,14 +672,14 @@ export function RpsDraftListPage() {
               Draft
             </p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              드래프트 이력
+              {pageTitle}
             </h1>
           </div>
 
           {isAuthenticated ? (
             <div className="flex flex-wrap gap-2 sm:justify-end">
               <Button variant="accent" onClick={handleOpenCreateTypeDialog}>
-                드래프트 생성
+                {createButtonLabel}
               </Button>
             </div>
           ) : status === "loading" ? (
@@ -393,58 +701,63 @@ export function RpsDraftListPage() {
 
         {loading ? (
           <div className="mt-6 rounded-lg border border-dashed border-line px-6 py-10 text-sm text-muted">
-            진행 가능한 드래프트를 불러오는 중입니다.
+            {pageLoadingText}
           </div>
-        ) : sortedSessions.length === 0 ? (
+        ) : historyItems.length === 0 ? (
           <div className="mt-6 rounded-lg border border-dashed border-line px-6 py-10 text-sm text-muted">
-            아직 생성된 드래프트가 없습니다.
+            {pageEmptyText}
           </div>
         ) : (
           <div className="mt-6 grid gap-3 2xl:grid-cols-2">
-            {sortedSessions.map((session) => {
+            {historyItems.map((item) => {
               const canManage = canManageOwnedResource({
-                ownerUserId: session.ownerUserId,
+                ownerUserId: item.ownerUserId,
                 role: user?.role,
                 userPk: user?.userPk,
               });
-              const ownerLabel = formatUserLoginId(session.ownerUserLoginId);
+              const ownerLabel = formatUserLoginId(item.ownerUserLoginId);
               const liveClassName = canManage
                 ? primaryLinkClassName
                 : secondaryLinkClassName;
 
               return (
-                <SurfaceCard key={session.id} className="p-5 sm:p-6">
+                <SurfaceCard key={`${item.kind}-${item.id}`} className="p-5 sm:p-6">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge status={session.status} />
-                        <ValueBadge>{formatRelativePickNo(session.currentPickNo)}</ValueBadge>
+                        <StatusBadge status={item.status} />
+                        <ValueBadge>{item.typeLabel}</ValueBadge>
+                        <ValueBadge>{item.metaLabel}</ValueBadge>
                         <ValueBadge>방장 {ownerLabel}</ValueBadge>
                       </div>
                       <h2 className="mt-3 text-xl font-semibold text-foreground">
-                        {session.title}
+                        {item.title}
                       </h2>
                       <p className="mt-2 text-sm leading-7 text-muted">
-                        {describeProgress(session)}
+                        {item.progressText}
                       </p>
-                      {describeSchedule(session) ? (
-                        <p className="mt-2 text-sm text-muted">{describeSchedule(session)}</p>
+                      {item.regDate ? (
+                        <p className="mt-2 text-sm text-muted">생성 {formatDateTime(item.regDate)}</p>
                       ) : null}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Link href={rpsDraftLivePath(session.id)} className={liveClassName}>
+                      <Link href={item.href} className={liveClassName}>
                         진행 화면
                       </Link>
                       {canManage ? (
                         <Button
                           variant="danger"
-                          disabled={deletingSessionId === session.id}
+                          disabled={deletingSessionId === item.id}
                           onClick={() => {
-                            void handleDeleteSession(session.id, session.title);
+                            if (item.kind === "entry") {
+                              void handleDeleteEntrySession(item.id, item.title);
+                              return;
+                            }
+                            void handleDeleteSession(item.id, item.title);
                           }}
                         >
-                          {deletingSessionId === session.id ? "삭제 중" : "삭제"}
+                          {deletingSessionId === item.id ? "삭제 중" : "삭제"}
                         </Button>
                       ) : null}
                     </div>
@@ -614,6 +927,179 @@ export function RpsDraftListPage() {
               {isAuthenticated ? (
                 <Button type="submit" variant="accent" disabled={creating}>
                   {creating ? "생성 중" : "생성하고 진행 화면 열기"}
+                </Button>
+              ) : status === "loading" ? (
+                <Button variant="outline" disabled>
+                  로그인 확인 중
+                </Button>
+              ) : (
+                <Link href={loginHref} className={primaryLinkClassName}>
+                  로그인하고 생성
+                </Link>
+              )}
+            </div>
+          </div>
+        </form>
+      </OverlayDialog>
+
+      <OverlayDialog
+        open={isEntryCreateOpen}
+        onClose={handleCloseEntryCreateDialog}
+        closeOnBackdropClick={false}
+        closeOnEscape={false}
+        title="엔트리 제출 생성"
+        description="팀장은 선수 카드에 자동 포함됩니다. 추가 선수만 쉼표로 입력해 주세요."
+        panelClassName="max-w-[1120px] bg-white backdrop-blur-none"
+      >
+        <form
+          className="grid gap-5 lg:grid-cols-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleCreateEntrySession();
+          }}
+        >
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-foreground">제목</p>
+              <Input
+                value={entryForm.title}
+                onChange={(event) => {
+                  setEntryCreateError(null);
+                  setEntryForm((current) => ({ ...current, title: event.target.value }));
+                }}
+                placeholder="예: 4세트 엔트리 제출"
+                disabled={entryCreating}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-foreground">세트 수</p>
+              <Input
+                value={entryForm.setCountText}
+                onChange={(event) => {
+                  setEntryCreateError(null);
+                  setEntryForm((current) => ({
+                    ...current,
+                    setCountText: sanitizePositiveIntegerText(event.target.value),
+                    setCountEdited: true,
+                  }));
+                }}
+                onKeyDown={(event) => {
+                  if (isBlockedNumberInputKey(event.key)) {
+                    event.preventDefault();
+                  }
+                }}
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                placeholder="선수 수에 맞춰 자동 설정"
+                disabled={entryCreating}
+              />
+            </div>
+
+            <SurfaceCard className="bg-surface-strong p-5 shadow-none">
+              <h3 className="text-lg font-semibold text-foreground">1팀 팀장</h3>
+              <div className="mt-4">
+                <RpsDraftUserSearch
+                  label="팀장 검색"
+                  selectedUser={entryForm.team1Captain}
+                  onSelect={(nextUser) => handleSelectEntryTeam("team1Captain", nextUser)}
+                  disabled={entryCreating}
+                  disabledUserIds={entryTeam1DisabledUserIds}
+                  disabledUserMessage="이미 다른 팀장으로 선택된 계정입니다."
+                />
+              </div>
+              {entryForm.team1Captain ? (
+                <div className="mt-4 flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => handleClearEntryTeam("team1Captain")}
+                    disabled={entryCreating}
+                  >
+                    선택 해제
+                  </Button>
+                </div>
+              ) : null}
+            </SurfaceCard>
+
+            <SurfaceCard className="bg-surface-strong p-5 shadow-none">
+              <h3 className="text-lg font-semibold text-foreground">2팀 팀장</h3>
+              <div className="mt-4">
+                <RpsDraftUserSearch
+                  label="팀장 검색"
+                  selectedUser={entryForm.team2Captain}
+                  onSelect={(nextUser) => handleSelectEntryTeam("team2Captain", nextUser)}
+                  disabled={entryCreating}
+                  disabledUserIds={entryTeam2DisabledUserIds}
+                  disabledUserMessage="이미 다른 팀장으로 선택된 계정입니다."
+                />
+              </div>
+              {entryForm.team2Captain ? (
+                <div className="mt-4 flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => handleClearEntryTeam("team2Captain")}
+                    disabled={entryCreating}
+                  >
+                    선택 해제
+                  </Button>
+                </div>
+              ) : null}
+            </SurfaceCard>
+          </div>
+
+          <div className="space-y-5">
+            <SurfaceCard className="bg-surface-strong p-5 shadow-none">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-lg font-semibold text-foreground">1팀 추가 선수</h3>
+                <ValueBadge>팀장 포함 {previewTeam1EntryNames.length + (entryForm.team1Captain ? 1 : 0)}명</ValueBadge>
+              </div>
+              <textarea
+                value={entryForm.team1PlayerNamesText}
+                onChange={(event) => {
+                  setEntryCreateError(null);
+                  updateEntryForm((current) => ({
+                    ...current,
+                    team1PlayerNamesText: event.target.value,
+                  }));
+                }}
+                className="mt-4 min-h-36 w-full resize-y rounded-lg border border-line-strong bg-white px-4 py-3 text-sm leading-7 text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent"
+                placeholder="예: a, b, c"
+                disabled={entryCreating}
+              />
+            </SurfaceCard>
+
+            <SurfaceCard className="bg-surface-strong p-5 shadow-none">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-lg font-semibold text-foreground">2팀 추가 선수</h3>
+                <ValueBadge>팀장 포함 {previewTeam2EntryNames.length + (entryForm.team2Captain ? 1 : 0)}명</ValueBadge>
+              </div>
+              <textarea
+                value={entryForm.team2PlayerNamesText}
+                onChange={(event) => {
+                  setEntryCreateError(null);
+                  updateEntryForm((current) => ({
+                    ...current,
+                    team2PlayerNamesText: event.target.value,
+                  }));
+                }}
+                className="mt-4 min-h-36 w-full resize-y rounded-lg border border-line-strong bg-white px-4 py-3 text-sm leading-7 text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent"
+                placeholder="예: e, f, g"
+                disabled={entryCreating}
+              />
+            </SurfaceCard>
+          </div>
+
+          <div className="space-y-3 border-t border-line/80 pt-4 lg:col-span-2">
+            {entryCreateError ? (
+              <p className="text-sm text-danger-ink">{entryCreateError}</p>
+            ) : null}
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              {isAuthenticated ? (
+                <Button type="submit" variant="accent" disabled={entryCreating}>
+                  {entryCreating ? "생성 중" : "생성하고 엔트리 화면 열기"}
                 </Button>
               ) : status === "loading" ? (
                 <Button variant="outline" disabled>

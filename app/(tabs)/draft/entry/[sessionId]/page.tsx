@@ -1,20 +1,18 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { RpsDraftLivePage } from "@/components/rps-draft/rps-draft-live-page";
+import { EntrySubmissionPage } from "@/components/entry-submission/entry-submission-page";
 
 export const metadata: Metadata = {
-  title: "컨텐츠 드래프트 진행",
+  title: "엔트리 제출",
 };
 
-type DraftRpsLivePageProps = {
+type DraftEntryPageProps = {
   params: Promise<{
     sessionId: string;
   }>;
 };
 
-export default async function DraftRpsLivePage({
-  params,
-}: DraftRpsLivePageProps) {
+export default async function DraftEntryPage({ params }: DraftEntryPageProps) {
   const resolvedParams = await params;
   const sessionId = Number(resolvedParams.sessionId);
 
@@ -22,5 +20,5 @@ export default async function DraftRpsLivePage({
     notFound();
   }
 
-  return <RpsDraftLivePage sessionId={sessionId} />;
+  return <EntrySubmissionPage sessionId={sessionId} />;
 }

@@ -61,13 +61,13 @@ export const siteMenuVisibilityItems: SiteMenuVisibilityMeta[] = [
   },
   {
     menuKey: "draft.proleague",
-    label: "프로리그 드래프트",
-    description: "드래프트 메뉴의 프로리그 드래프트 항목 표시 여부를 관리합니다.",
+    label: "프로리그",
+    description: "상단 프로리그 탭 표시 여부를 관리합니다.",
   },
   {
     menuKey: "draft.content",
-    label: "컨텐츠 드래프트",
-    description: "드래프트 메뉴의 컨텐츠 드래프트 항목 표시 여부를 관리합니다.",
+    label: "컨텐츠",
+    description: "상단 컨텐츠 탭 표시 여부를 관리합니다.",
   },
   {
     menuKey: "game",
@@ -129,20 +129,35 @@ export const siteTabs: SiteTab[] = [
     menuKey: "chat",
   },
   {
-    label: "드래프트",
-    href: "/draft",
-    description: "드래프트 화면과 운영 화면으로 이동합니다.",
+    label: "프로리그",
+    href: "/proleague",
+    description: "프로리그 화면으로 이동합니다.",
+    menuKey: "draft.proleague",
     items: [
       {
-        label: "프로리그 드래프트",
+        label: "드래프트",
         href: "/proleague/draft",
         description: "프로리그 드래프트 화면으로 이동합니다.",
         menuKey: "draft.proleague",
       },
+    ],
+  },
+  {
+    label: "컨텐츠",
+    href: "/draft",
+    description: "컨텐츠 드래프트와 엔트리 제출 화면으로 이동합니다.",
+    menuKey: "draft.content",
+    items: [
       {
-        label: "컨텐츠 드래프트",
+        label: "드래프트",
         href: "/draft",
-        description: "팀배/컨텐츠 드래프트 화면으로 이동합니다.",
+        description: "가위바위보/핀볼 컨텐츠 드래프트 화면으로 이동합니다.",
+        menuKey: "draft.content",
+      },
+      {
+        label: "엔트리",
+        href: "/draft/entry",
+        description: "컨텐츠 엔트리 제출 화면으로 이동합니다.",
         menuKey: "draft.content",
       },
     ],

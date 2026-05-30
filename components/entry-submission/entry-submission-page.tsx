@@ -7,6 +7,7 @@ import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import {
   getEntrySubmissionSnapshot,
+  restartEntrySubmissionSession,
   submitEntrySubmissionEntries,
   type EntrySubmissionPermissions,
   type EntrySubmissionPlayer,
@@ -67,6 +68,12 @@ function derivePermissions(
 ): EntrySubmissionPermissions {
   const myTeam = findMyTeam(snapshot, user);
   const isOwner = Boolean(user && snapshot.session.ownerUserId === user.userPk);
+  const isAdmin = Boolean(
+    user &&
+      (user.role === "ROLE_MASTER" ||
+        user.role === "ROLE_MANAGER" ||
+        user.role === "ROLE_ADMIN"),
+  );
   const myRole = isOwner && myTeam
     ? "OWNER_CAPTAIN"
     : isOwner
@@ -80,7 +87,8 @@ function derivePermissions(
       snapshot.session.status === "SUBMITTING" &&
       Boolean(myTeam) &&
       !myTeam?.submitted,
-    canDelete: isOwner,
+    canDelete: isOwner || isAdmin,
+    canRestart: isOwner || isAdmin,
     myTeamId: myTeam?.id ?? null,
     myRole,
   };
@@ -112,6 +120,26 @@ function getPlayerName(players: EntrySubmissionPlayer[], playerId: number | null
     return null;
   }
   return players.find((player) => player.id === playerId)?.playerName ?? null;
+}
+
+function isRestartedSnapshot(
+  previous: EntrySubmissionSnapshot | null,
+  next: EntrySubmissionSnapshot,
+) {
+  if (!previous) {
+    return false;
+  }
+
+  const hadSavedProgress =
+    previous.session.status === "COMPLETED" ||
+    previous.entries.length > 0 ||
+    previous.teams.some((team) => team.submitted);
+  const returnedToInitialState =
+    next.session.status === "SUBMITTING" &&
+    next.entries.length === 0 &&
+    next.teams.every((team) => !team.submitted);
+
+  return hadSavedProgress && returnedToInitialState;
 }
 
 function StatusPill({ submitted }: { submitted: boolean }) {
@@ -171,13 +199,20 @@ export function EntrySubmissionPage({ sessionId }: { sessionId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const backgroundRefreshInFlightRef = useRef(false);
   const lastBackgroundRefreshAtRef = useRef(0);
+  const lastSnapshotRef = useRef<EntrySubmissionSnapshot | null>(null);
 
   const applySnapshot = useCallback(
     (nextSnapshot: EntrySubmissionSnapshot) => {
       const nextPermissions =
         nextSnapshot.permissions ?? derivePermissions(nextSnapshot, user);
+      if (isRestartedSnapshot(lastSnapshotRef.current, nextSnapshot)) {
+        setAssignments({});
+        setAssignmentTeamId(null);
+      }
+      lastSnapshotRef.current = nextSnapshot;
       setLiveState({
         permissions: nextPermissions,
         snapshot: {
@@ -324,6 +359,7 @@ export function EntrySubmissionPage({ sessionId }: { sessionId: number }) {
     snapshot && myTeam && snapshot.session.setCount > myPlayers.length,
   );
   const canSubmit = Boolean(permissions?.canSubmit && myTeam && snapshot);
+  const canRestart = Boolean(permissions?.canRestart && snapshot);
   const isCompleted = snapshot?.session.status === "COMPLETED";
   const loginHref = buildLoginHref({ redirectTo: `/draft/entry/${sessionId}` });
   const assignedPlayerIds = useMemo(
@@ -417,6 +453,39 @@ export function EntrySubmissionPage({ sessionId }: { sessionId: number }) {
     }
   }
 
+  async function handleRestart() {
+    if (!snapshot || !canRestart || restarting) {
+      return;
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("제출된 엔트리를 삭제하고 처음 세팅으로 되돌릴까요?")
+    ) {
+      return;
+    }
+
+    setRestarting(true);
+    setActionMessage(null);
+
+    try {
+      const nextSnapshot = await restartEntrySubmissionSession(sessionId);
+      applySnapshot(nextSnapshot);
+      setAssignments({});
+      setAssignmentTeamId(null);
+      setActionMessage("엔트리 제출을 처음 세팅으로 되돌렸습니다.");
+      setError(null);
+    } catch (restartError) {
+      setActionMessage(
+        restartError instanceof Error
+          ? restartError.message
+          : "엔트리 제출을 다시 시작하지 못했습니다.",
+      );
+    } finally {
+      setRestarting(false);
+    }
+  }
+
   return (
     <div className="grid gap-4">
       <SurfaceCard className="p-6 sm:p-8">
@@ -447,9 +516,22 @@ export function EntrySubmissionPage({ sessionId }: { sessionId: number }) {
               </p>
             ) : null}
           </div>
-          <Link href="/draft" className={secondaryLinkClassName}>
-            드래프트 이력
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {canRestart ? (
+              <Button
+                variant="outline"
+                disabled={restarting}
+                onClick={() => {
+                  void handleRestart();
+                }}
+              >
+                {restarting ? "되돌리는 중" : "다시 시작"}
+              </Button>
+            ) : null}
+            <Link href="/draft" className={secondaryLinkClassName}>
+              드래프트 이력
+            </Link>
+          </div>
         </div>
 
         {!isAuthenticated && status !== "loading" ? (

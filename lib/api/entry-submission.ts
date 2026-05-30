@@ -71,6 +71,7 @@ export type EntrySubmissionMatch = {
 export type EntrySubmissionPermissions = {
   canSubmit: boolean;
   canDelete: boolean;
+  canRestart: boolean;
   myTeamId: number | null;
   myRole: EntrySubmissionMyRole | string | null;
 };
@@ -84,7 +85,10 @@ export type EntrySubmissionSnapshot = {
   permissions: EntrySubmissionPermissions | null;
 };
 
-export type EntrySubmissionEventType = "TEAM_SUBMITTED" | "SESSION_COMPLETED";
+export type EntrySubmissionEventType =
+  | "TEAM_SUBMITTED"
+  | "SESSION_COMPLETED"
+  | "SESSION_RESTARTED";
 
 export type EntrySubmissionEvent = {
   type: EntrySubmissionEventType | string;
@@ -212,6 +216,19 @@ export async function submitEntrySubmissionEntries(
       { validateStatus: () => true },
     ),
     "엔트리를 제출하지 못했습니다.",
+  );
+
+  return normalizeSnapshot(snapshot);
+}
+
+export async function restartEntrySubmissionSession(sessionId: number) {
+  const snapshot = await unwrapResponse(
+    apiClient.post<ApiEnvelope<EntrySubmissionSnapshot>>(
+      `/entry-submissions/sessions/${sessionId}/restart`,
+      null,
+      { validateStatus: () => true },
+    ),
+    "엔트리 제출을 다시 시작하지 못했습니다.",
   );
 
   return normalizeSnapshot(snapshot);

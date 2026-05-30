@@ -129,6 +129,16 @@ export function PinballDraftPage() {
     setPhase("running");
   }
 
+  function restartRun() {
+    if (!canStart) {
+      return;
+    }
+
+    resetRunState();
+    setRunId((current) => current + 1);
+    setPhase("ready");
+  }
+
   function shuffleStartPositions() {
     if (phase === "running" || !canStart) {
       return;
@@ -181,10 +191,15 @@ export function PinballDraftPage() {
           >
             위치 섞기
           </Button>
+          {phase === "running" ? (
+            <Button variant="outline" disabled={!canStart} onClick={restartRun}>
+              다시 시작
+            </Button>
+          ) : null}
           <Button
             variant="accent"
             disabled={phase === "running" || !canStart}
-            onClick={startRun}
+            onClick={phase === "finished" ? restartRun : startRun}
           >
             {phase === "finished" ? "다시 시작" : phase === "ready" ? "시작" : "진행 중"}
           </Button>

@@ -18,6 +18,7 @@ export type EntrySubmissionSessionSummary = {
   title: string;
   ownerUserId: number;
   ownerUserLoginId: string | null;
+  sourceRpsDraftSessionId: number | null;
   status: EntrySubmissionStatus | string;
   setCount: number;
   completedAt: string | null;
@@ -105,9 +106,17 @@ export type EntrySubmissionSessionCreateRequest = {
   title: string;
   team1CaptainUserId: number;
   team2CaptainUserId: number;
+  sourceRpsDraftSessionId?: number | null;
+  allowDuplicateSource?: boolean;
   team1PlayerNames: string[];
   team2PlayerNames: string[];
   setCount?: number | null;
+};
+
+export type EntrySubmissionSourceRpsStatus = {
+  sourceRpsDraftSessionId: number;
+  count: number;
+  exists: boolean;
 };
 
 export type EntrySubmissionSubmitRequest = {
@@ -191,6 +200,16 @@ export async function createEntrySubmissionSession(
   );
 
   return normalizeSnapshot(snapshot);
+}
+
+export async function getEntrySubmissionSourceRpsStatus(rpsDraftSessionId: number) {
+  return unwrapResponse(
+    apiClient.get<ApiEnvelope<EntrySubmissionSourceRpsStatus>>(
+      `/entry-submissions/sessions/source-rps/${rpsDraftSessionId}/status`,
+      { validateStatus: () => true },
+    ),
+    "엔트리 등록 여부를 확인하지 못했습니다.",
+  );
 }
 
 export async function getEntrySubmissionSnapshot(sessionId: number) {

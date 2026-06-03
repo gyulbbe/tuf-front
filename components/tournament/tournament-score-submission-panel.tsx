@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { HomeScheduleMapSearch } from "@/components/admin/home-schedule-map-search";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   approveTournamentMatchScoreSubmission,
+  getTournament,
   listTournamentMatchScoreSubmissions,
   rejectTournamentMatchScoreSubmission,
   submitTournamentMatchScore,
@@ -14,6 +16,7 @@ import {
   type TournamentSubmitScoreRequest,
 } from "@/lib/api/tournament";
 import { isAdminRole } from "@/lib/auth/roles";
+import type { HomeScheduleMapSearchResult } from "@/lib/api/home-schedule";
 import {
   buildScorePresets,
   clampScorePresetIndex,
@@ -37,6 +40,11 @@ type TournamentScoreSubmissionPanelProps = {
     submissions: TournamentMatchScoreSubmission[],
   ) => void;
   onTournamentChange: (tournament: Tournament) => void;
+};
+
+type MatchMapSelection = {
+  mapId: number | null;
+  mapName: string;
 };
 
 function isActualPlayableSlot(slot: TournamentMatchSlot) {
@@ -425,6 +433,10 @@ export function TournamentScoreSubmissionPanel({
   const [submissions, setSubmissions] = useState<
     TournamentMatchScoreSubmission[]
   >([]);
+  const [selectedMap, setSelectedMap] = useState<MatchMapSelection>({
+    mapId: null,
+    mapName: "",
+  });
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -481,6 +493,20 @@ export function TournamentScoreSubmissionPanel({
           ),
       )
     : null;
+  const hasLockedScoreSubmission = submissions.some(
+    (submission) =>
+      submission.status === "PENDING" || submission.status === "APPROVED",
+  );
+  const mapSelectionDisabled =
+    submitting ||
+    loadingSubmissions ||
+    hasLockedScoreSubmission ||
+    Boolean(!canAdmin && myPendingSubmission);
+  const canSubmitSelectedScore =
+    canSubmitScore &&
+    Boolean(selectedMap.mapId) &&
+    !loadingSubmissions &&
+    !Boolean(!canAdmin && myPendingSubmission);
   const presets = useMemo(
     () =>
       buildScorePresets(
@@ -499,6 +525,20 @@ export function TournamentScoreSubmissionPanel({
       )
     : 0;
   const selectedPreset = presets[selectedPresetIndex] ?? presets[0] ?? [0, 0];
+
+  useEffect(() => {
+    setSelectedMap({
+      mapId: selectedMatch?.mapId ?? null,
+      mapName: selectedMatch?.mapName ?? "",
+    });
+    setSubmissionError(null);
+  }, [selectedMatch?.id, selectedMatch?.mapId, selectedMatch?.mapName]);
+
+  useEffect(() => {
+    setSubmissions([]);
+    setRejectingSubmissionId(null);
+    setRejectNote("");
+  }, [selectedMatch?.id]);
 
   useEffect(() => {
     if (!selectedMatch || !canViewSubmissions) {
@@ -571,12 +611,36 @@ export function TournamentScoreSubmissionPanel({
     onSubmissionsChange?.(match.id, nextSubmissions);
   }
 
+  async function reloadTournamentAfterMutation() {
+    try {
+      const nextTournament = await getTournament(tournamentId);
+      onTournamentChange(nextTournament);
+    } catch (error) {
+      setSubmissionError(
+        error instanceof Error
+          ? error.message
+          : "토너먼트 정보를 다시 불러오지 못했습니다.",
+      );
+    }
+  }
+
   async function submitScore() {
-    if (!selectedMatch || !canSubmitScore || (!canAdmin && myPendingSubmission)) {
+    if (
+      !selectedMatch ||
+      !canSubmitScore ||
+      loadingSubmissions ||
+      (!canAdmin && myPendingSubmission)
+    ) {
+      return;
+    }
+
+    if (!selectedMap.mapId) {
+      setSubmissionError("맵을 선택한 뒤 결과를 제출해 주세요.");
       return;
     }
 
     const payload: TournamentSubmitScoreRequest = {
+      mapId: selectedMap.mapId,
       scores: selectedMatch.slots.map((slot, index) => ({
         slotNo: slot.slotNo === 2 ? 2 : 1,
         score: selectedPreset[index],
@@ -589,6 +653,7 @@ export function TournamentScoreSubmissionPanel({
     try {
       await submitTournamentMatchScore(tournamentId, selectedMatch.id, payload);
       await reloadSubmissions(selectedMatch);
+      await reloadTournamentAfterMutation();
     } catch (error) {
       setSubmissionError(
         error instanceof Error
@@ -615,6 +680,7 @@ export function TournamentScoreSubmissionPanel({
         submission.id,
       );
       onTournamentChange(nextTournament);
+      await reloadTournamentAfterMutation();
       const nextSubmissions: TournamentMatchScoreSubmission[] = submissions.map(
         (item) =>
           item.id === submission.id
@@ -734,6 +800,9 @@ export function TournamentScoreSubmissionPanel({
                 "미정"}
             </strong>
           </p>
+          <p className="mt-2 text-sm text-success-ink">
+            맵: <strong>{selectedMatch.mapName ?? "미지정"}</strong>
+          </p>
         </div>
       ) : null}
 
@@ -741,6 +810,39 @@ export function TournamentScoreSubmissionPanel({
         <>
           {canSubmitScore ? (
             <>
+              <div className="rounded-lg border border-line bg-surface-strong p-4">
+                <div className="mb-3 space-y-1">
+                  <p className="text-sm font-semibold text-foreground">맵</p>
+                  <p className="text-xs leading-5 text-muted">
+                    결과 제출 전에 경기 맵을 선택해 주세요.
+                  </p>
+                </div>
+                <HomeScheduleMapSearch
+                  disabled={mapSelectionDisabled}
+                  mapName={selectedMap.mapName}
+                  onClear={() => {
+                    setSelectedMap({ mapId: null, mapName: "" });
+                    setSubmissionError(null);
+                  }}
+                  onSelect={(map: HomeScheduleMapSearchResult) => {
+                    setSelectedMap({
+                      mapId: map.id,
+                      mapName: map.mapName,
+                    });
+                    setSubmissionError(null);
+                  }}
+                />
+                {hasLockedScoreSubmission ? (
+                  <p className="mt-2 text-xs leading-5 text-muted">
+                    제출된 결과가 있어 맵을 변경할 수 없습니다.
+                  </p>
+                ) : !selectedMap.mapId ? (
+                  <p className="mt-2 text-xs leading-5 text-warning-ink">
+                    맵을 선택해야 결과를 제출할 수 있습니다.
+                  </p>
+                ) : null}
+              </div>
+
               <ScoreStepper
                 disabled={submitting || Boolean(!canAdmin && myPendingSubmission)}
                 match={selectedMatch}
@@ -760,7 +862,7 @@ export function TournamentScoreSubmissionPanel({
               <Button
                 variant="accent"
                 fullWidth
-                disabled={submitting || Boolean(!canAdmin && myPendingSubmission)}
+                disabled={submitting || !canSubmitSelectedScore}
                 onClick={submitScore}
               >
                 {submitting ? "제출 중..." : "결과 제출"}

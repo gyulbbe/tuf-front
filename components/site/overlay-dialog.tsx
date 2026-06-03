@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type OverlayDialogProps = {
@@ -82,9 +81,14 @@ export function OverlayDialog({
             ) : null}
           </div>
 
-          <Button aria-label="닫기" onClick={onClose} size="sm">
-            닫기
-          </Button>
+          <button
+            type="button"
+            aria-label="닫기"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line-strong bg-white text-xl font-semibold leading-none text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            onClick={onClose}
+          >
+            X
+          </button>
         </div>
 
         <div className="mt-5 overflow-y-auto pr-1 sm:pr-2">{children}</div>

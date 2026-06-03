@@ -1,4 +1,7 @@
-import type { TournamentBracketType } from "@/lib/tournament/types";
+import type {
+  TournamentBracketType,
+  TournamentMatchRole,
+} from "@/lib/tournament/types";
 
 export const DEFAULT_TOURNAMENT_BEST_OF = 3;
 export const MIN_TOURNAMENT_BEST_OF = 1;
@@ -36,9 +39,24 @@ export type TournamentCreateGroupRequest = {
   slots: TournamentCreateSlotRequest[];
 };
 
+export type TournamentCreateMapDefaultTarget = "ROUND" | "MATCH_ROLE";
+
+export type TournamentCreateMapDefaultRole = Extract<
+  TournamentMatchRole,
+  "OPENING" | "WINNERS" | "LOSERS" | "DECIDER" | "FINAL"
+>;
+
+export type TournamentCreateMapDefaultRequest = {
+  target: TournamentCreateMapDefaultTarget;
+  roundNo?: number;
+  matchRole?: TournamentCreateMapDefaultRole;
+  mapId: number;
+};
+
 export type TournamentCreateRequest = {
   title: string;
   bracketType: TournamentBracketType;
   bestOf: TournamentBestOf;
   groups: TournamentCreateGroupRequest[];
+  mapDefaults?: TournamentCreateMapDefaultRequest[];
 };

@@ -16,7 +16,10 @@ import { OverlayDialog } from "@/components/site/overlay-dialog";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createEntrySubmissionSession } from "@/lib/api/entry-submission";
+import {
+  createEntrySubmissionSession,
+  getEntrySubmissionSourceRpsStatus,
+} from "@/lib/api/entry-submission";
 import {
   getRpsDraftSnapshot,
   pickRpsDraftCandidate,
@@ -56,6 +59,8 @@ type EntryFromRpsFormState = {
   team2PlayerNamesText: string;
   setCountText: string;
   setCountEdited: boolean;
+  sourceRpsDraftSessionId: number | null;
+  allowDuplicateSource: boolean;
 };
 
 const INITIAL_LIVE_STATE: LiveState = {
@@ -71,6 +76,8 @@ const RPS_CHOICES: readonly { label: string; value: RpsChoice }[] = [
 
 const secondaryLinkClassName =
   "inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-4 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink";
+
+const DUPLICATE_ENTRY_MESSAGE = "이미 엔트리가 등록되어있습니다.";
 
 function buildNoticeClassName(tone: NoticeTone) {
   switch (tone) {
@@ -201,6 +208,8 @@ function buildEntryFormFromRpsSnapshot(
     team2PlayerNamesText: rosterNamesText(team2),
     setCountText: "",
     setCountEdited: false,
+    sourceRpsDraftSessionId: snapshot.session.id,
+    allowDuplicateSource: false,
   });
 }
 
@@ -422,6 +431,7 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
   const [entryCreating, setEntryCreating] = useState(false);
   const backgroundRefreshInFlightRef = useRef(false);
   const lastBackgroundRefreshAtRef = useRef(0);
+  const entryAutoPromptInFlightRef = useRef(false);
 
   const applySnapshot = useCallback(
     (nextSnapshot: RpsDraftLiveSnapshot) => {
@@ -668,14 +678,32 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
     });
   }
 
-  function handleOpenEntryCreateDialog() {
+  function isDuplicateEntrySourceError(error: unknown) {
+    return error instanceof Error && error.message.includes(DUPLICATE_ENTRY_MESSAGE);
+  }
+
+  async function handleOpenEntryCreateDialog() {
     if (!snapshot) {
       return;
     }
 
     try {
       setEntryCreateError(null);
-      setEntryForm(buildEntryFormFromRpsSnapshot(snapshot));
+      const nextForm = buildEntryFormFromRpsSnapshot(snapshot);
+      const sourceStatus = await getEntrySubmissionSourceRpsStatus(snapshot.session.id);
+      const allowDuplicateSource =
+        sourceStatus.exists &&
+        typeof window !== "undefined" &&
+        window.confirm("이미 엔트리가 등록되어있습니다. 또 다시 등록하시겠습니까?");
+
+      if (sourceStatus.exists && !allowDuplicateSource) {
+        return;
+      }
+
+      setEntryForm({
+        ...nextForm,
+        allowDuplicateSource,
+      });
       setIsEntryCreateOpen(true);
     } catch (openError) {
       setNotice({
@@ -696,6 +724,22 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
     setIsEntryCreateOpen(false);
   }
 
+  async function createEntrySessionFromForm(
+    currentEntryForm: EntryFromRpsFormState,
+    allowDuplicateSource: boolean,
+  ) {
+    return createEntrySubmissionSession({
+      title: currentEntryForm.title.trim(),
+      team1CaptainUserId: currentEntryForm.team1Captain.id,
+      team2CaptainUserId: currentEntryForm.team2Captain.id,
+      sourceRpsDraftSessionId: currentEntryForm.sourceRpsDraftSessionId,
+      allowDuplicateSource,
+      team1PlayerNames: parsePlayerNames(currentEntryForm.team1PlayerNamesText),
+      team2PlayerNames: parsePlayerNames(currentEntryForm.team2PlayerNamesText),
+      setCount: Number(currentEntryForm.setCountText.trim()),
+    });
+  }
+
   async function handleCreateEntrySession() {
     const currentEntryForm = entryForm;
     const validationMessage = validateEntryFromRpsForm(currentEntryForm);
@@ -712,19 +756,38 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
     setEntryCreateError(null);
 
     try {
-      const createdSnapshot = await createEntrySubmissionSession({
-        title: currentEntryForm.title.trim(),
-        team1CaptainUserId: currentEntryForm.team1Captain.id,
-        team2CaptainUserId: currentEntryForm.team2Captain.id,
-        team1PlayerNames: parsePlayerNames(currentEntryForm.team1PlayerNamesText),
-        team2PlayerNames: parsePlayerNames(currentEntryForm.team2PlayerNamesText),
-        setCount: Number(currentEntryForm.setCountText.trim()),
-      });
+      const createdSnapshot = await createEntrySessionFromForm(
+        currentEntryForm,
+        currentEntryForm.allowDuplicateSource,
+      );
 
       setIsEntryCreateOpen(false);
       setEntryForm(null);
       router.push(entrySubmissionSessionPath(createdSnapshot.session.id));
     } catch (createError) {
+      if (
+        currentEntryForm.sourceRpsDraftSessionId &&
+        !currentEntryForm.allowDuplicateSource &&
+        isDuplicateEntrySourceError(createError) &&
+        typeof window !== "undefined" &&
+        window.confirm("이미 엔트리가 등록되어있습니다. 또 다시 등록하시겠습니까?")
+      ) {
+        try {
+          const createdSnapshot = await createEntrySessionFromForm(currentEntryForm, true);
+          setIsEntryCreateOpen(false);
+          setEntryForm(null);
+          router.push(entrySubmissionSessionPath(createdSnapshot.session.id));
+          return;
+        } catch (retryError) {
+          setEntryCreateError(
+            retryError instanceof Error
+              ? retryError.message
+              : "엔트리 제출을 생성하지 못했습니다.",
+          );
+          return;
+        }
+      }
+
       setEntryCreateError(
         createError instanceof Error
           ? createError.message
@@ -753,11 +816,48 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
   const canCreateEntryFromRps = Boolean(
     isAuthenticated &&
       snapshot?.session.status === "FINISHED" &&
-      permissions?.canControl,
+      (permissions?.canControl || permissions?.myTeamId),
   );
   const loginHref = buildLoginHref({
     redirectTo: rpsDraftLivePath(sessionId),
   });
+
+  useEffect(() => {
+    if (!canCreateEntryFromRps || !snapshot || !user || isEntryCreateOpen) {
+      return;
+    }
+
+    const promptKey = `rps-entry-create-prompt:${sessionId}:${user.userPk}`;
+    if (
+      entryAutoPromptInFlightRef.current ||
+      (typeof window !== "undefined" && window.sessionStorage.getItem(promptKey))
+    ) {
+      return;
+    }
+
+    entryAutoPromptInFlightRef.current = true;
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(promptKey, "1");
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      window.confirm("드래프트가 종료되었습니다. 이어서 엔트리 제출을 생성하시겠습니까?")
+    ) {
+      void handleOpenEntryCreateDialog().finally(() => {
+        entryAutoPromptInFlightRef.current = false;
+      });
+      return;
+    }
+
+    entryAutoPromptInFlightRef.current = false;
+  }, [
+    canCreateEntryFromRps,
+    isEntryCreateOpen,
+    sessionId,
+    snapshot,
+    user,
+  ]);
 
   return (
     <div className="grid gap-4">
@@ -796,7 +896,12 @@ export function RpsDraftLivePage({ sessionId }: { sessionId: number }) {
 
           <div className="flex flex-wrap gap-2">
             {canCreateEntryFromRps ? (
-              <Button variant="accent" onClick={handleOpenEntryCreateDialog}>
+              <Button
+                variant="accent"
+                onClick={() => {
+                  void handleOpenEntryCreateDialog();
+                }}
+              >
                 엔트리 제출 이어서
               </Button>
             ) : null}

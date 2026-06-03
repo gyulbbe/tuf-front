@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useRouter } from "next/navigation";
+import { HomeScheduleMapSearch } from "@/components/admin/home-schedule-map-search";
 import { DraftUserSearch } from "@/components/draft/draft-user-search";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import {
   type TournamentCreateSlotRequest,
 } from "@/lib/api/tournament";
 import type { DraftUserSearchResult } from "@/lib/api/draft-users";
+import type { HomeScheduleMapSearchResult } from "@/lib/api/home-schedule";
 import {
   DEFAULT_TOURNAMENT_BEST_OF,
   isValidTournamentBestOf,
@@ -25,6 +27,7 @@ import {
   normalizeTournamentBestOf,
   type TournamentBestOf,
   type TournamentBracketType,
+  type TournamentCreateMapDefaultRequest,
 } from "@/lib/tournament/create-types";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +55,17 @@ type DualGroupState = {
 
 type RaceSurvivalRace = "TERRAN" | "ZERG" | "PROTOSS";
 type RaceSurvivalGroupState = Record<RaceSurvivalRace, string[]>;
+type DualMapDefaultRole = "OPENING" | "WINNERS" | "LOSERS" | "DECIDER";
+
+type MapDefaultSelection = {
+  mapId: number | null;
+  mapName: string;
+};
+
+type SingleRoundMapDefaultOption = {
+  roundNo: number;
+  label: string;
+};
 
 type SlotReference =
   | {
@@ -106,6 +120,15 @@ const RACE_SURVIVAL_RACES: RaceSurvivalRace[] = [
   "ZERG",
   "PROTOSS",
 ];
+const DUAL_MAP_DEFAULT_ROLES: Array<{
+  label: string;
+  role: DualMapDefaultRole;
+}> = [
+  { role: "OPENING", label: "첫세트" },
+  { role: "WINNERS", label: "승자전" },
+  { role: "LOSERS", label: "패자전" },
+  { role: "DECIDER", label: "최종전" },
+];
 
 let localIdSeed = 0;
 
@@ -156,6 +179,53 @@ function createInitialRaceSurvivalGroups(): RaceSurvivalGroupState {
     ZERG: [],
     PROTOSS: [],
   };
+}
+
+function createEmptyMapDefaultSelection(): MapDefaultSelection {
+  return {
+    mapId: null,
+    mapName: "",
+  };
+}
+
+function getNextPowerOfTwo(value: number) {
+  let power = 1;
+
+  while (power < value) {
+    power *= 2;
+  }
+
+  return power;
+}
+
+function getSingleRoundLabel(
+  roundNo: number,
+  roundCount: number,
+  bracketSize: number,
+) {
+  if (roundNo === roundCount) {
+    return "결승";
+  }
+
+  const remainingEntrants = bracketSize / 2 ** (roundNo - 1);
+
+  return `${remainingEntrants}강`;
+}
+
+function getSingleRoundMapDefaultOptions(
+  assignedSlotCount: number,
+): SingleRoundMapDefaultOption[] {
+  const bracketSize = getNextPowerOfTwo(Math.max(2, assignedSlotCount));
+  const roundCount = Math.max(1, Math.ceil(Math.log2(bracketSize)));
+
+  return Array.from({ length: roundCount }, (_, index) => {
+    const roundNo = index + 1;
+
+    return {
+      roundNo,
+      label: getSingleRoundLabel(roundNo, roundCount, bracketSize),
+    };
+  });
 }
 
 function cloneSingleMatches(matches: SingleMatchState[]) {
@@ -529,6 +599,14 @@ export function TournamentCreatePage() {
   );
   const [raceSurvivalGroups, setRaceSurvivalGroups] =
     useState<RaceSurvivalGroupState>(createInitialRaceSurvivalGroups);
+  const [singleMapDefaults, setSingleMapDefaults] = useState<
+    Record<number, MapDefaultSelection>
+  >({});
+  const [dualMapDefaults, setDualMapDefaults] = useState<
+    Partial<Record<DualMapDefaultRole, MapDefaultSelection>>
+  >({});
+  const [ultimateMapDefault, setUltimateMapDefault] =
+    useState<MapDefaultSelection>(createEmptyMapDefaultSelection);
   const [selectedParticipantId, setSelectedParticipantId] = useState<
     string | null
   >(null);
@@ -584,6 +662,10 @@ export function TournamentCreatePage() {
     return assignedIds;
   }, [bracketType, dualGroups, participants, raceSurvivalGroups, singleMatches]);
   const assignedSlotCount = assignedParticipantIds.size;
+  const singleRoundMapDefaultOptions = useMemo(
+    () => getSingleRoundMapDefaultOptions(assignedSlotCount),
+    [assignedSlotCount],
+  );
   const totalSlotCount =
     bracketType === "SINGLE_ELIMINATION"
       ? singleMatches.length * 2
@@ -676,6 +758,9 @@ export function TournamentCreatePage() {
     }
 
     setRaceSurvivalGroups(createInitialRaceSurvivalGroups());
+    setSingleMapDefaults({});
+    setDualMapDefaults({});
+    setUltimateMapDefault(createEmptyMapDefaultSelection());
     setSelectedParticipantId(null);
   }
 
@@ -685,6 +770,9 @@ export function TournamentCreatePage() {
     setSingleMatches(createInitialSingleMatches());
     setDualGroups(createInitialDualGroups());
     setRaceSurvivalGroups(createInitialRaceSurvivalGroups());
+    setSingleMapDefaults({});
+    setDualMapDefaults({});
+    setUltimateMapDefault(createEmptyMapDefaultSelection());
     setSelectedParticipantId(null);
   }
 
@@ -796,6 +884,65 @@ export function TournamentCreatePage() {
 
     setSubmitError(null);
     setDualGroups((current) => current.slice(0, -1));
+  }
+
+  function handleSelectSingleRoundMap(
+    roundNo: number,
+    map: HomeScheduleMapSearchResult,
+  ) {
+    setSubmitError(null);
+    setSingleMapDefaults((current) => ({
+      ...current,
+      [roundNo]: {
+        mapId: map.id,
+        mapName: map.mapName,
+      },
+    }));
+  }
+
+  function handleClearSingleRoundMap(roundNo: number) {
+    setSubmitError(null);
+    setSingleMapDefaults((current) => {
+      const next = { ...current };
+      delete next[roundNo];
+      return next;
+    });
+  }
+
+  function handleSelectDualRoleMap(
+    role: DualMapDefaultRole,
+    map: HomeScheduleMapSearchResult,
+  ) {
+    setSubmitError(null);
+    setDualMapDefaults((current) => ({
+      ...current,
+      [role]: {
+        mapId: map.id,
+        mapName: map.mapName,
+      },
+    }));
+  }
+
+  function handleClearDualRoleMap(role: DualMapDefaultRole) {
+    setSubmitError(null);
+    setDualMapDefaults((current) => {
+      const next = { ...current };
+      delete next[role];
+      return next;
+    });
+  }
+
+  function handleSelectUltimateMap(map: HomeScheduleMapSearchResult) {
+    setSubmitError(null);
+    setUltimateMapDefault({
+      mapId: map.id,
+      mapName: map.mapName,
+    });
+  }
+
+  function handleClearUltimateMap() {
+    setSubmitError(null);
+    setUltimateMapDefault(createEmptyMapDefaultSelection());
   }
 
   function clearSlot(slotReference: SlotReference) {
@@ -1040,6 +1187,52 @@ export function TournamentCreatePage() {
     }));
   }
 
+  function buildMapDefaultsPayload(): TournamentCreateMapDefaultRequest[] | undefined {
+    if (!bracketType || bracketType === "RACE_SURVIVAL") {
+      return undefined;
+    }
+
+    const mapDefaults: TournamentCreateMapDefaultRequest[] = [];
+
+    if (bracketType === "SINGLE_ELIMINATION") {
+      singleRoundMapDefaultOptions.forEach(({ roundNo }) => {
+        const mapDefault = singleMapDefaults[roundNo];
+
+        if (mapDefault?.mapId) {
+          mapDefaults.push({
+            target: "ROUND",
+            roundNo,
+            mapId: mapDefault.mapId,
+          });
+        }
+      });
+    }
+
+    if (bracketType === "DUAL_GROUP") {
+      DUAL_MAP_DEFAULT_ROLES.forEach(({ role }) => {
+        const mapDefault = dualMapDefaults[role];
+
+        if (mapDefault?.mapId) {
+          mapDefaults.push({
+            target: "MATCH_ROLE",
+            matchRole: role,
+            mapId: mapDefault.mapId,
+          });
+        }
+      });
+    }
+
+    if (bracketType === "ULTIMATE_BATTLE" && ultimateMapDefault.mapId) {
+      mapDefaults.push({
+        target: "MATCH_ROLE",
+        matchRole: "FINAL",
+        mapId: ultimateMapDefault.mapId,
+      });
+    }
+
+    return mapDefaults.length > 0 ? mapDefaults : undefined;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1063,6 +1256,7 @@ export function TournamentCreatePage() {
         bracketType,
         bestOf: normalizeTournamentBestOf(bestOf),
         groups: buildGroupsPayload(),
+        mapDefaults: buildMapDefaultsPayload(),
       });
 
       router.push(`/tournament/${createdTournament.id}`);
@@ -1205,6 +1399,21 @@ export function TournamentCreatePage() {
               </div>
             )}
 
+            <TournamentMapDefaultsPanel
+              bracketType={bracketType}
+              disabled={creating}
+              dualMapDefaults={dualMapDefaults}
+              singleMapDefaults={singleMapDefaults}
+              singleRoundOptions={singleRoundMapDefaultOptions}
+              ultimateMapDefault={ultimateMapDefault}
+              onClearDualRoleMap={handleClearDualRoleMap}
+              onClearSingleRoundMap={handleClearSingleRoundMap}
+              onClearUltimateMap={handleClearUltimateMap}
+              onSelectDualRoleMap={handleSelectDualRoleMap}
+              onSelectSingleRoundMap={handleSelectSingleRoundMap}
+              onSelectUltimateMap={handleSelectUltimateMap}
+            />
+
             <DraftUserSearch
               clearOnSelect
               label="내부 유저 검색"
@@ -1325,6 +1534,128 @@ export function TournamentCreatePage() {
         </div>
       )}
     </form>
+  );
+}
+
+function TournamentMapDefaultsPanel({
+  bracketType,
+  disabled,
+  dualMapDefaults,
+  singleMapDefaults,
+  singleRoundOptions,
+  ultimateMapDefault,
+  onClearDualRoleMap,
+  onClearSingleRoundMap,
+  onClearUltimateMap,
+  onSelectDualRoleMap,
+  onSelectSingleRoundMap,
+  onSelectUltimateMap,
+}: {
+  bracketType: TournamentBracketType;
+  disabled: boolean;
+  dualMapDefaults: Partial<Record<DualMapDefaultRole, MapDefaultSelection>>;
+  singleMapDefaults: Record<number, MapDefaultSelection>;
+  singleRoundOptions: SingleRoundMapDefaultOption[];
+  ultimateMapDefault: MapDefaultSelection;
+  onClearDualRoleMap: (role: DualMapDefaultRole) => void;
+  onClearSingleRoundMap: (roundNo: number) => void;
+  onClearUltimateMap: () => void;
+  onSelectDualRoleMap: (
+    role: DualMapDefaultRole,
+    map: HomeScheduleMapSearchResult,
+  ) => void;
+  onSelectSingleRoundMap: (
+    roundNo: number,
+    map: HomeScheduleMapSearchResult,
+  ) => void;
+  onSelectUltimateMap: (map: HomeScheduleMapSearchResult) => void;
+}) {
+  if (bracketType === "RACE_SURVIVAL") {
+    return null;
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-line bg-surface-strong p-4">
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-foreground">맵 기본값</p>
+        <p className="text-xs leading-5 text-muted">
+          선택 사항입니다. 결과 제출 시에는 경기별 맵을 다시 확정합니다.
+        </p>
+      </div>
+
+      {bracketType === "SINGLE_ELIMINATION" ? (
+        <div className="grid gap-3">
+          {singleRoundOptions.map((roundOption) => (
+            <MapDefaultPicker
+              key={roundOption.roundNo}
+              disabled={disabled}
+              label={`${roundOption.label} 기본 맵`}
+              selection={
+                singleMapDefaults[roundOption.roundNo] ??
+                createEmptyMapDefaultSelection()
+              }
+              onClear={() => onClearSingleRoundMap(roundOption.roundNo)}
+              onSelect={(map) =>
+                onSelectSingleRoundMap(roundOption.roundNo, map)
+              }
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {bracketType === "DUAL_GROUP" ? (
+        <div className="grid gap-3">
+          {DUAL_MAP_DEFAULT_ROLES.map(({ label, role }) => (
+            <MapDefaultPicker
+              key={role}
+              disabled={disabled}
+              label={`${label} 기본 맵`}
+              selection={
+                dualMapDefaults[role] ?? createEmptyMapDefaultSelection()
+              }
+              onClear={() => onClearDualRoleMap(role)}
+              onSelect={(map) => onSelectDualRoleMap(role, map)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {bracketType === "ULTIMATE_BATTLE" ? (
+        <MapDefaultPicker
+          disabled={disabled}
+          label="끝장전 기본 맵"
+          selection={ultimateMapDefault}
+          onClear={onClearUltimateMap}
+          onSelect={onSelectUltimateMap}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function MapDefaultPicker({
+  disabled,
+  label,
+  selection,
+  onClear,
+  onSelect,
+}: {
+  disabled: boolean;
+  label: string;
+  selection: MapDefaultSelection;
+  onClear: () => void;
+  onSelect: (map: HomeScheduleMapSearchResult) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      <p className="text-xs font-semibold text-muted">{label}</p>
+      <HomeScheduleMapSearch
+        disabled={disabled}
+        mapName={selection.mapName}
+        onClear={onClear}
+        onSelect={onSelect}
+      />
+    </div>
   );
 }
 

@@ -32,6 +32,7 @@ export type {
   TournamentBestOf,
   TournamentBracketType,
   TournamentCreateGroupRequest,
+  TournamentCreateMapDefaultRequest,
   TournamentCreateRequest,
   TournamentCreateSlotRequest,
 } from "@/lib/tournament/create-types";
@@ -67,12 +68,14 @@ export type TournamentMatchScoreSubmission = {
   slot1Score: number;
   slot2Score: number;
   winnerSlotNo: 1 | 2;
+  mapId: number | null;
   status: TournamentScoreSubmissionStatus;
   adminNote?: string | null;
   regDate?: string | null;
 };
 
 export type TournamentSubmitScoreRequest = {
+  mapId?: number | null;
   scores: Array<{
     slotNo: 1 | 2;
     score: number;
@@ -836,6 +839,7 @@ function normalizeScoreSubmission(
     slot1Score,
     slot2Score,
     winnerSlotNo: winnerSlotNo === 2 ? 2 : 1,
+    mapId: readNullableNumber(raw.mapId),
     status: normalizeScoreSubmissionStatus(raw.status),
     adminNote: readString(raw.adminNote) || null,
     regDate: readString(raw.regDate) || null,

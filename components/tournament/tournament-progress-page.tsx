@@ -7,7 +7,10 @@ import { DuelTournamentBoard } from "@/components/tournament/duel-tournament-boa
 import { TournamentScoreSubmissionPanel } from "@/components/tournament/tournament-score-submission-panel";
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
-import { submitClanShareTestPayload } from "@/lib/api/clan-share";
+import {
+  submitClanShareMatches,
+  type ClanShareMatchPayload,
+} from "@/lib/api/clan-share";
 import {
   getTournament,
   listTournamentMatchScoreSubmissions,
@@ -43,6 +46,95 @@ function canPromptClanShare(tournament: Tournament) {
   );
 }
 
+function getClanShareMatchType(
+  tournament: Tournament,
+): ClanShareMatchPayload["matchType"] | null {
+  switch (tournament.bracketType) {
+    case "SINGLE_ELIMINATION":
+    case "DUAL_GROUP":
+      return "개인리그";
+    case "ULTIMATE_BATTLE":
+      return "끝장전";
+    case "RACE_SURVIVAL":
+      return "종족 최강전";
+    default:
+      return null;
+  }
+}
+
+function getKoreaDate() {
+  return new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+  }).format(new Date());
+}
+
+function getMatchSlot(match: TournamentMatch, slotNo: 1 | 2) {
+  return (
+    match.slots.find((slot) => slot.slotNo === slotNo) ??
+    match.slots[slotNo - 1] ??
+    null
+  );
+}
+
+function buildClanShareMatches(tournament: Tournament) {
+  const matchType = getClanShareMatchType(tournament);
+
+  if (!matchType) {
+    return [];
+  }
+
+  const playedDate = getKoreaDate();
+  const matchName = tournament.title.trim() || "이름 없는 토너먼트";
+
+  return getMatches(tournament)
+    .map((match): ClanShareMatchPayload | null => {
+      if (match.status !== "FINISHED") {
+        return null;
+      }
+
+      const slot1 = getMatchSlot(match, 1);
+      const slot2 = getMatchSlot(match, 2);
+
+      if (
+        !slot1?.participant ||
+        !slot2?.participant ||
+        slot1.isBye ||
+        slot2.isBye
+      ) {
+        return null;
+      }
+
+      const winnerSlot = [slot1, slot2].find(
+        (slot) => slot.isWinner && slot.participant,
+      );
+
+      if (!winnerSlot?.participant) {
+        return null;
+      }
+
+      const loserSlot = winnerSlot.slotNo === slot1.slotNo ? slot2 : slot1;
+
+      if (!loserSlot.participant) {
+        return null;
+      }
+
+      return {
+        player1: slot1.participant.displayName,
+        player2: slot2.participant.displayName,
+        winner: winnerSlot.participant.displayName,
+        loser: loserSlot.participant.displayName,
+        map: match.mapName ?? "",
+        matchType,
+        matchName,
+        playedDate,
+      };
+    })
+    .filter((match): match is ClanShareMatchPayload => match !== null);
+}
+
 export function TournamentProgressPage({
   tournamentId,
 }: TournamentProgressPageProps) {
@@ -66,6 +158,8 @@ export function TournamentProgressPage({
   const matches = useMemo(() => getMatches(tournament), [tournament]);
   const selectedMatch =
     matches.find((match) => match.id === selectedMatchId) ?? null;
+  const canManuallyOpenClanShare =
+    tournament?.status === "FINISHED" && canPromptClanShare(tournament);
   const refreshPendingApprovalIndicators = useCallback(() => {
     setPendingApprovalRefreshKey((current) => current + 1);
   }, []);
@@ -80,8 +174,18 @@ export function TournamentProgressPage({
     setClanShareError(null);
   }
 
-  async function submitClanShare() {
+  function openClanShareDialog() {
     if (clanShareSending) {
+      return;
+    }
+
+    setClanShareSuccess(false);
+    setClanShareError(null);
+    setClanShareDialogOpen(true);
+  }
+
+  async function submitClanShare() {
+    if (clanShareSending || !tournament) {
       return;
     }
 
@@ -90,7 +194,7 @@ export function TournamentProgressPage({
     setClanShareError(null);
 
     try {
-      await submitClanShareTestPayload();
+      await submitClanShareMatches(buildClanShareMatches(tournament));
       setClanShareSuccess(true);
     } catch (error) {
       setClanShareError(
@@ -219,12 +323,23 @@ export function TournamentProgressPage({
               {tournament?.title ?? "토너먼트 진행 관리"}
             </h1>
           </div>
-          <Link
-            href={`/tournament/${tournamentId}`}
-            className="inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-5 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
-          >
-            시청자 화면
-          </Link>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center lg:justify-end">
+            <Link
+              href={`/tournament/${tournamentId}`}
+              className="inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-5 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
+            >
+              시청자 화면
+            </Link>
+            {canManuallyOpenClanShare ? (
+              <Button
+                disabled={clanShareSending}
+                onClick={openClanShareDialog}
+                variant="accent"
+              >
+                ELO/시트 연동
+              </Button>
+            ) : null}
+          </div>
         </div>
       </SurfaceCard>
 
@@ -288,7 +403,7 @@ export function TournamentProgressPage({
       <OverlayDialog
         closeOnBackdropClick={!clanShareSending}
         closeOnEscape={!clanShareSending}
-        description="토너먼트 종료가 감지되었습니다. 지금은 테스트 payload 1건만 전송합니다."
+        description="완료된 경기 결과를 ELO API와 Google Sheet에 전송합니다."
         onClose={closeClanShareDialog}
         open={clanShareDialogOpen}
         title="ELO와 시트에 반영하시겠습니까?"
@@ -296,10 +411,10 @@ export function TournamentProgressPage({
         <div className="space-y-4">
           <div className="rounded-lg border border-line bg-surface-strong px-4 py-4 text-sm leading-6 text-muted">
             <p className="font-semibold text-foreground">
-              clan-share 테스트 전송
+              완료 경기 전송
             </p>
             <p className="mt-2">
-              예를 누르면 ELO 반영 API로 테스트 경기 1건을 전송합니다.
+              예를 누르면 완료된 모든 경기 결과를 ELO API와 시트에 전송합니다.
             </p>
           </div>
 

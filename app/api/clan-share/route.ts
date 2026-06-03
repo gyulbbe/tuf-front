@@ -6,13 +6,17 @@ const CLAN_SHARE_ENDPOINT = "https://tufelo.vercel.app/api/clan-share";
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
-const TEST_CLAN_SHARE_PAYLOAD = {
-  player1: "test계정1",
-  player2: "test계정2",
-  winner: "test계정1",
-  map: "투혼",
-  matchType: "개인리그",
-  playedDate: "2026-05-31",
+const CLAN_SHARE_MATCH_TYPES = new Set(["개인리그", "끝장전", "종족 최강전"]);
+
+type ClanShareMatchRequest = {
+  player1: string;
+  player2: string;
+  winner: string;
+  loser: string;
+  map: string;
+  matchType: "개인리그" | "끝장전" | "종족 최강전";
+  matchName: string;
+  playedDate: string;
 };
 
 type GoogleTokenResponse = {
@@ -27,6 +31,76 @@ type SheetEnv = {
   range: string;
   spreadsheetId: string;
 };
+
+class ClanShareRequestError extends Error {}
+
+function readObject(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readRequiredString(
+  raw: Record<string, unknown>,
+  key: string,
+  index: number,
+) {
+  const value = raw[key];
+
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ClanShareRequestError(
+      `${index + 1}번째 경기의 ${key} 값이 필요합니다.`,
+    );
+  }
+
+  return value.trim();
+}
+
+function readOptionalString(raw: Record<string, unknown>, key: string) {
+  const value = raw[key];
+
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseClanShareMatches(body: unknown): ClanShareMatchRequest[] {
+  const raw = readObject(body);
+  const matches = Array.isArray(raw?.matches) ? raw.matches : [];
+
+  if (matches.length === 0) {
+    throw new ClanShareRequestError("전송할 완료 경기가 없습니다.");
+  }
+
+  return matches.map((match, index) => {
+    const rawMatch = readObject(match);
+
+    if (!rawMatch) {
+      throw new ClanShareRequestError(
+        `${index + 1}번째 경기 데이터 형식이 올바르지 않습니다.`,
+      );
+    }
+
+    const matchType = readRequiredString(rawMatch, "matchType", index);
+
+    if (!CLAN_SHARE_MATCH_TYPES.has(matchType)) {
+      throw new ClanShareRequestError(
+        `${index + 1}번째 경기 유형이 올바르지 않습니다.`,
+      );
+    }
+
+    return {
+      player1: readRequiredString(rawMatch, "player1", index),
+      player2: readRequiredString(rawMatch, "player2", index),
+      winner: readRequiredString(rawMatch, "winner", index),
+      loser: readRequiredString(rawMatch, "loser", index),
+      map: readOptionalString(rawMatch, "map"),
+      matchType: matchType as ClanShareMatchRequest["matchType"],
+      matchName: readRequiredString(rawMatch, "matchName", index),
+      playedDate: readRequiredString(rawMatch, "playedDate", index),
+    };
+  });
+}
 
 async function readApiError(response: Response, fallbackMessage: string) {
   const contentType = response.headers.get("content-type") ?? "";
@@ -200,28 +274,14 @@ function formatRegisteredDate() {
     .replace(/-/g, ".");
 }
 
-function getLoserName() {
-  const { player1, player2, winner } = TEST_CLAN_SHARE_PAYLOAD;
-
-  if (winner === player1) {
-    return player2;
-  }
-
-  if (winner === player2) {
-    return player1;
-  }
-
-  return player1;
-}
-
-function buildSheetRow() {
+function buildSheetRow(match: ClanShareMatchRequest) {
   return [
-    TEST_CLAN_SHARE_PAYLOAD.winner,
-    getLoserName(),
-    TEST_CLAN_SHARE_PAYLOAD.map,
-    TEST_CLAN_SHARE_PAYLOAD.matchType,
-    "",
-    formatSheetDate(TEST_CLAN_SHARE_PAYLOAD.playedDate),
+    match.winner,
+    match.loser,
+    match.map,
+    match.matchType,
+    match.matchName,
+    formatSheetDate(match.playedDate),
     formatRegisteredDate(),
   ];
 }
@@ -238,8 +298,11 @@ async function readGoogleApiError(response: Response) {
   );
 }
 
-async function appendToGoogleSheet(env: SheetEnv) {
-  const accessToken = await getGoogleAccessToken(env);
+async function appendToGoogleSheet(
+  env: SheetEnv,
+  accessToken: string,
+  match: ClanShareMatchRequest,
+) {
   const response = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${env.spreadsheetId}/values/${encodeURIComponent(
       env.range,
@@ -252,7 +315,7 @@ async function appendToGoogleSheet(env: SheetEnv) {
       },
       body: JSON.stringify({
         majorDimension: "ROWS",
-        values: [buildSheetRow()],
+        values: [buildSheetRow(match)],
       }),
     },
   );
@@ -262,20 +325,34 @@ async function appendToGoogleSheet(env: SheetEnv) {
   }
 }
 
-async function submitToClanShareApi() {
+function getClanShareToken() {
   const token = process.env.TUF_ELO_CLAN_SHARE_TOKEN?.trim();
 
   if (!token) {
     throw new Error("TUF_ELO_CLAN_SHARE_TOKEN 환경 변수가 설정되지 않았습니다.");
   }
 
+  return token;
+}
+
+async function submitToClanShareApi(
+  token: string,
+  match: ClanShareMatchRequest,
+) {
   const response = await fetch(CLAN_SHARE_ENDPOINT, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(TEST_CLAN_SHARE_PAYLOAD),
+    body: JSON.stringify({
+      player1: match.player1,
+      player2: match.player2,
+      winner: match.winner,
+      map: match.map,
+      matchType: match.matchType,
+      playedDate: match.playedDate,
+    }),
   });
 
   if (!response.ok) {
@@ -285,7 +362,7 @@ async function submitToClanShareApi() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const session = await getServerAuthSession();
 
   if (!session || !isAdminRole(session.user.role)) {
@@ -296,8 +373,15 @@ export async function POST() {
   }
 
   try {
-    await submitToClanShareApi();
-    await appendToGoogleSheet(getRequiredEnv());
+    const matches = parseClanShareMatches(await request.json().catch(() => null));
+    const env = getRequiredEnv();
+    const token = getClanShareToken();
+    const accessToken = await getGoogleAccessToken(env);
+
+    for (const match of matches) {
+      await submitToClanShareApi(token, match);
+      await appendToGoogleSheet(env, accessToken, match);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -308,7 +392,7 @@ export async function POST() {
             ? error.message
             : "clan-share 또는 Google Sheets 전송에 실패했습니다.",
       },
-      { status: 502 },
+      { status: error instanceof ClanShareRequestError ? 400 : 502 },
     );
   }
 }

@@ -2,16 +2,17 @@ import { NextResponse } from "next/server";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getServerAuthSession } from "@/lib/auth/server-auth";
 
+const CLAN_SHARE_ENDPOINT = "https://tufelo.vercel.app/api/clan-share";
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
 const TEST_CLAN_SHARE_PAYLOAD = {
-  player1: "닉네임1",
-  player2: "닉네임2",
-  winner: "이긴사람닉네임",
-  map: "맵이름",
-  matchType: "친선",
-  playedDate: "2026-05-10",
+  player1: "test계정1",
+  player2: "test계정2",
+  winner: "test계정1",
+  map: "투혼",
+  matchType: "개인리그",
+  playedDate: "2026-05-31",
 };
 
 type GoogleTokenResponse = {
@@ -26,6 +27,31 @@ type SheetEnv = {
   range: string;
   spreadsheetId: string;
 };
+
+async function readApiError(response: Response, fallbackMessage: string) {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    const body = await response.json().catch(() => null);
+
+    if (body && typeof body === "object") {
+      const message = (body as { message?: unknown; error?: unknown }).message;
+      const error = (body as { message?: unknown; error?: unknown }).error;
+
+      if (typeof message === "string" && message.trim()) {
+        return message;
+      }
+
+      if (typeof error === "string" && error.trim()) {
+        return error;
+      }
+    }
+  }
+
+  const text = await response.text().catch(() => "");
+
+  return text.trim() || fallbackMessage;
+}
 
 function getRequiredEnv(): SheetEnv {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID?.trim();
@@ -236,6 +262,29 @@ async function appendToGoogleSheet(env: SheetEnv) {
   }
 }
 
+async function submitToClanShareApi() {
+  const token = process.env.TUF_ELO_CLAN_SHARE_TOKEN?.trim();
+
+  if (!token) {
+    throw new Error("TUF_ELO_CLAN_SHARE_TOKEN 환경 변수가 설정되지 않았습니다.");
+  }
+
+  const response = await fetch(CLAN_SHARE_ENDPOINT, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(TEST_CLAN_SHARE_PAYLOAD),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiError(response, "clan-share API 호출에 실패했습니다."),
+    );
+  }
+}
+
 export async function POST() {
   const session = await getServerAuthSession();
 
@@ -247,6 +296,7 @@ export async function POST() {
   }
 
   try {
+    await submitToClanShareApi();
     await appendToGoogleSheet(getRequiredEnv());
 
     return NextResponse.json({ ok: true });
@@ -256,7 +306,7 @@ export async function POST() {
         message:
           error instanceof Error
             ? error.message
-            : "Google Sheets 전송에 실패했습니다.",
+            : "clan-share 또는 Google Sheets 전송에 실패했습니다.",
       },
       { status: 502 },
     );

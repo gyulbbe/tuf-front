@@ -155,6 +155,10 @@ export function TournamentProgressPage({
   const [clanShareSending, setClanShareSending] = useState(false);
   const [clanShareSuccess, setClanShareSuccess] = useState(false);
   const [clanShareError, setClanShareError] = useState<string | null>(null);
+  const [clanShareResultMessage, setClanShareResultMessage] = useState<
+    string | null
+  >(null);
+  const [clanShareHasFailure, setClanShareHasFailure] = useState(false);
   const matches = useMemo(() => getMatches(tournament), [tournament]);
   const selectedMatch =
     matches.find((match) => match.id === selectedMatchId) ?? null;
@@ -172,6 +176,8 @@ export function TournamentProgressPage({
     setClanShareDialogOpen(false);
     setClanShareSuccess(false);
     setClanShareError(null);
+    setClanShareResultMessage(null);
+    setClanShareHasFailure(false);
   }
 
   function openClanShareDialog() {
@@ -181,6 +187,8 @@ export function TournamentProgressPage({
 
     setClanShareSuccess(false);
     setClanShareError(null);
+    setClanShareResultMessage(null);
+    setClanShareHasFailure(false);
     setClanShareDialogOpen(true);
   }
 
@@ -192,9 +200,18 @@ export function TournamentProgressPage({
     setClanShareSending(true);
     setClanShareSuccess(false);
     setClanShareError(null);
+    setClanShareResultMessage(null);
+    setClanShareHasFailure(false);
 
     try {
-      await submitClanShareMatches(buildClanShareMatches(tournament));
+      const result = await submitClanShareMatches(buildClanShareMatches(tournament));
+
+      setClanShareResultMessage(
+        result.failureCount > 0
+          ? `전송 결과: 성공 ${result.successCount}건, 실패 ${result.failureCount}건. 실패 이유는 시트 H열에 기록되었습니다.`
+          : `전송 결과: 성공 ${result.successCount}건, 실패 0건.`,
+      );
+      setClanShareHasFailure(result.failureCount > 0);
       setClanShareSuccess(true);
     } catch (error) {
       setClanShareError(
@@ -415,12 +432,19 @@ export function TournamentProgressPage({
             </p>
             <p className="mt-2">
               예를 누르면 완료된 모든 경기 결과를 ELO API와 시트에 전송합니다.
+              시트 H열에는 경기별 결과가 기록됩니다.
             </p>
           </div>
 
           {clanShareSuccess ? (
-            <div className="rounded-lg border border-success-ink/20 bg-success-soft px-4 py-3 text-sm font-semibold text-success-ink">
-              clan-share 전송이 완료되었습니다.
+            <div
+              className={
+                clanShareHasFailure
+                  ? "rounded-lg border border-warning-ink/20 bg-warning-soft px-4 py-3 text-sm font-semibold text-warning-ink"
+                  : "rounded-lg border border-success-ink/20 bg-success-soft px-4 py-3 text-sm font-semibold text-success-ink"
+              }
+            >
+              {clanShareResultMessage ?? "clan-share 전송이 완료되었습니다."}
             </div>
           ) : null}
 
@@ -651,6 +675,7 @@ export function RaceSurvivalProgressBoard({
     slot2ParticipantId !== "" &&
     savingAssignmentMatchId !== selectedMatch?.id;
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!selectedMatch) {
       setSlot1ParticipantId("");
@@ -665,6 +690,7 @@ export function RaceSurvivalProgressBoard({
     setSlot2ParticipantId(nextSlot2);
     setAssignmentError(null);
   }, [fixedWinnerParticipant, selectedMatch]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function saveMatchParticipants() {
     if (!selectedMatch || !tournamentId || !onTournamentChange || !canSaveAssignment) {

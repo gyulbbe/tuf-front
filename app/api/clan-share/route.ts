@@ -32,6 +32,16 @@ type SheetEnv = {
   spreadsheetId: string;
 };
 
+type ClanShareMatchResult = {
+  eloOk: boolean;
+  index: number;
+  loser: string;
+  sheetError?: string;
+  sheetOk: boolean;
+  statusMessage: string;
+  winner: string;
+};
+
 class ClanShareRequestError extends Error {}
 
 function readObject(value: unknown) {
@@ -274,7 +284,14 @@ function formatRegisteredDate() {
     .replace(/-/g, ".");
 }
 
-function buildSheetRow(match: ClanShareMatchRequest) {
+function normalizeResultMessage(error: unknown, fallbackMessage: string) {
+  const message = error instanceof Error ? error.message : fallbackMessage;
+  const normalized = message.replace(/\s+/g, " ").trim();
+
+  return (normalized || fallbackMessage).slice(0, 500);
+}
+
+function buildSheetRow(match: ClanShareMatchRequest, statusMessage: string) {
   return [
     match.winner,
     match.loser,
@@ -283,6 +300,7 @@ function buildSheetRow(match: ClanShareMatchRequest) {
     match.matchName,
     formatSheetDate(match.playedDate),
     formatRegisteredDate(),
+    statusMessage,
   ];
 }
 
@@ -302,6 +320,7 @@ async function appendToGoogleSheet(
   env: SheetEnv,
   accessToken: string,
   match: ClanShareMatchRequest,
+  statusMessage: string,
 ) {
   const response = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${env.spreadsheetId}/values/${encodeURIComponent(
@@ -315,7 +334,7 @@ async function appendToGoogleSheet(
       },
       body: JSON.stringify({
         majorDimension: "ROWS",
-        values: [buildSheetRow(match)],
+        values: [buildSheetRow(match, statusMessage)],
       }),
     },
   );
@@ -362,6 +381,83 @@ async function submitToClanShareApi(
   }
 }
 
+async function processClanShareMatch(
+  env: SheetEnv,
+  accessToken: string,
+  token: string,
+  match: ClanShareMatchRequest,
+  index: number,
+): Promise<ClanShareMatchResult> {
+  let eloOk = true;
+  let statusMessage = "SUCCESS";
+
+  try {
+    await submitToClanShareApi(token, match);
+  } catch (error) {
+    eloOk = false;
+    statusMessage = normalizeResultMessage(
+      error,
+      "clan-share API 호출에 실패했습니다.",
+    );
+  }
+
+  try {
+    await appendToGoogleSheet(env, accessToken, match, statusMessage);
+  } catch (error) {
+    return {
+      eloOk,
+      index: index + 1,
+      loser: match.loser,
+      sheetError: normalizeResultMessage(
+        error,
+        "Google Sheets API 호출에 실패했습니다.",
+      ),
+      sheetOk: false,
+      statusMessage,
+      winner: match.winner,
+    };
+  }
+
+  return {
+    eloOk,
+    index: index + 1,
+    loser: match.loser,
+    sheetOk: true,
+    statusMessage,
+    winner: match.winner,
+  };
+}
+
+function buildSubmitSummary(results: ClanShareMatchResult[]) {
+  const successCount = results.filter(
+    (result) => result.eloOk && result.sheetOk,
+  ).length;
+  const failureCount = results.length - successCount;
+
+  return {
+    failureCount,
+    successCount,
+    total: results.length,
+  };
+}
+
+function buildSheetFailureMessage(results: ClanShareMatchResult[]) {
+  const failedResults = results.filter((result) => !result.sheetOk);
+
+  if (failedResults.length === 0) {
+    return null;
+  }
+
+  return failedResults
+    .map(
+      (result) =>
+        `${result.index}번째 경기(${result.winner} vs ${result.loser}): ${
+          result.sheetError ?? "Google Sheets API 호출에 실패했습니다."
+        }`,
+    )
+    .join(" / ");
+}
+
 export async function POST(request: Request) {
   const session = await getServerAuthSession();
 
@@ -377,13 +473,34 @@ export async function POST(request: Request) {
     const env = getRequiredEnv();
     const token = getClanShareToken();
     const accessToken = await getGoogleAccessToken(env);
+    const results: ClanShareMatchResult[] = [];
 
-    for (const match of matches) {
-      await submitToClanShareApi(token, match);
-      await appendToGoogleSheet(env, accessToken, match);
+    for (const [index, match] of matches.entries()) {
+      results.push(
+        await processClanShareMatch(env, accessToken, token, match, index),
+      );
     }
 
-    return NextResponse.json({ ok: true });
+    const summary = buildSubmitSummary(results);
+    const sheetFailureMessage = buildSheetFailureMessage(results);
+
+    if (sheetFailureMessage) {
+      return NextResponse.json(
+        {
+          ...summary,
+          message: `Google Sheets 기록에 실패했습니다. ${sheetFailureMessage}`,
+          ok: false,
+          results,
+        },
+        { status: 502 },
+      );
+    }
+
+    return NextResponse.json({
+      ...summary,
+      ok: summary.failureCount === 0,
+      results,
+    });
   } catch (error) {
     return NextResponse.json(
       {

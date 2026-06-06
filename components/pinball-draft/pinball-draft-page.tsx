@@ -60,6 +60,7 @@ export function PinballDraftPage() {
     null,
   );
   const [trackingMode, setTrackingMode] = useState<TrackingMode>("leader");
+  const [rankingCopied, setRankingCopied] = useState(false);
 
   const previewNames = useMemo(
     () => parseCandidateNames(candidateNamesText),
@@ -80,6 +81,7 @@ export function PinballDraftPage() {
     setFinishOrder([]);
     setSelectedCandidateId(null);
     setTrackingMode("leader");
+    setRankingCopied(false);
   }
 
   function applyCandidateNames() {
@@ -111,12 +113,47 @@ export function PinballDraftPage() {
       return;
     }
 
+    if (trackingMode === "player" && selectedCandidateId === candidateId) {
+      setSelectedCandidateId(null);
+      setTrackingMode("leader");
+      return;
+    }
+
     setSelectedCandidateId(candidateId);
     setTrackingMode("player");
   }
 
+  function handleFollowCandidateFinished(candidateId: number) {
+    if (trackingMode !== "player" || selectedCandidateId !== candidateId) {
+      return;
+    }
+
+    setSelectedCandidateId(null);
+    setTrackingMode("leader");
+  }
+
   function handleManualCamera() {
     setTrackingMode("manual");
+  }
+
+  async function copyCurrentRanking() {
+    const rankingText = finishOrder
+      .map((entry) => entry.candidate.userId)
+      .join(",");
+
+    if (!rankingText) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(rankingText);
+      setRankingCopied(true);
+      window.setTimeout(() => {
+        setRankingCopied(false);
+      }, 1400);
+    } catch {
+      setRankingCopied(false);
+    }
   }
 
   function startRun() {
@@ -215,6 +252,7 @@ export function PinballDraftPage() {
           isRunning={phase === "running"}
           runId={runId}
           shuffleSeed={shuffleSeed}
+          onFollowCandidateFinished={handleFollowCandidateFinished}
           onManualCamera={handleManualCamera}
           onSelectCandidate={handleSelectPlayer}
           onProgressOrder={setFinishOrder}
@@ -312,7 +350,19 @@ export function PinballDraftPage() {
           </SurfaceCard>
 
           <SurfaceCard className="p-5">
-            <p className="text-sm font-semibold text-foreground">현재 순위</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-foreground">현재 순위</p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={finishOrder.length === 0}
+                onClick={() => {
+                  void copyCurrentRanking();
+                }}
+              >
+                {rankingCopied ? "복사됨" : "복사"}
+              </Button>
+            </div>
             <div className="mt-4 grid gap-2">
               {finishOrder.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-line px-4 py-6 text-sm text-muted">

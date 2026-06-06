@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/immutability */
+
 import {
   type PointerEvent as ReactPointerEvent,
   useEffect,
@@ -26,6 +28,7 @@ type PinballBoardProps = {
   followCandidateId: number | null;
   isRunning: boolean;
   onFinishOrder: (order: PinballFinishEntry[]) => void;
+  onFollowCandidateFinished?: (candidateId: number) => void;
   onManualCamera?: () => void;
   onProgressOrder?: (order: PinballFinishEntry[]) => void;
   onSelectCandidate?: (candidateId: number | null) => void;
@@ -63,6 +66,7 @@ type TiltBar = {
 };
 
 type Bumper = {
+  bounceMultiplier?: number;
   x: number;
   y: number;
   radius: number;
@@ -86,6 +90,9 @@ const WORLD_WIDTH = 900;
 const WORLD_HEIGHT = 2200;
 const FINISH_Y = 2040;
 const BALL_RADIUS = 13;
+const GOAL_BAR_CENTER = { x: WORLD_WIDTH / 2, y: 1690 };
+const GOAL_BAR_LENGTH = 340;
+const GOAL_BAR_SPEED = 4.7;
 const COLORS = [
   "#e65d3f",
   "#1f8f7a",
@@ -122,6 +129,7 @@ const BUMPERS: Bumper[] = [
   { x: 450, y: 1210, radius: 70, kind: "round" },
   { x: 250, y: 1470, radius: 58, kind: "half-right" },
   { x: 650, y: 1470, radius: 58, kind: "half-left" },
+  { x: 450, y: 1885, radius: 44, kind: "round", bounceMultiplier: 3.1 },
 ];
 
 function buildPins() {
@@ -390,7 +398,13 @@ function createBalls(
   };
 }
 
-function collideCircle(ball: BallState, cx: number, cy: number, radius: number) {
+function collideCircle(
+  ball: BallState,
+  cx: number,
+  cy: number,
+  radius: number,
+  bounceMultiplier = 1,
+) {
   const dx = ball.x - cx;
   const dy = ball.y - cy;
   const distance = Math.hypot(dx, dy);
@@ -409,12 +423,12 @@ function collideCircle(ball: BallState, cx: number, cy: number, radius: number) 
   ball.y += ny * overlap;
 
   if (velocityAlongNormal < 0) {
-    ball.vx -= (1.38 * velocityAlongNormal) * nx;
-    ball.vy -= (1.38 * velocityAlongNormal) * ny;
+    ball.vx -= (1.38 * bounceMultiplier * velocityAlongNormal) * nx;
+    ball.vy -= (1.38 * bounceMultiplier * velocityAlongNormal) * ny;
   }
 
-  ball.vx += nx * 18;
-  ball.vy += ny * 18;
+  ball.vx += nx * 18 * bounceMultiplier;
+  ball.vy += ny * 18 * bounceMultiplier;
   return true;
 }
 
@@ -598,6 +612,7 @@ export function PinballBoard({
   followCandidateId,
   isRunning,
   onFinishOrder,
+  onFollowCandidateFinished,
   onManualCamera,
   onProgressOrder,
   onSelectCandidate,
@@ -620,6 +635,7 @@ export function PinballBoard({
   const sizeRef = useRef({ width: 900, height: 620 });
   const finishCallbackRef = useRef(onFinishOrder);
   const isRunningRef = useRef(isRunning);
+  const followCandidateFinishedCallbackRef = useRef(onFollowCandidateFinished);
   const manualCameraCallbackRef = useRef(onManualCamera);
   const progressCallbackRef = useRef(onProgressOrder);
   const followCandidateIdRef = useRef(followCandidateId);
@@ -632,6 +648,10 @@ export function PinballBoard({
   useEffect(() => {
     isRunningRef.current = isRunning;
   }, [isRunning]);
+
+  useEffect(() => {
+    followCandidateFinishedCallbackRef.current = onFollowCandidateFinished;
+  }, [onFollowCandidateFinished]);
 
   useEffect(() => {
     manualCameraCallbackRef.current = onManualCamera;
@@ -732,7 +752,6 @@ export function PinballBoard({
       }
     };
     // The animation loop is driven by refs so camera changes do not restart physics.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidates, runId, shuffleSeed]);
 
   function updateBalls(dt: number, elapsedSeconds: number, elapsedMs: number) {
@@ -740,14 +759,12 @@ export function PinballBoard({
     const tiltBars = tiltBarsRef.current;
     const gateOpening = getGateOpening(elapsedSeconds);
     const gateSegments = buildGateSegments(gateOpening);
-    const barAngle = elapsedSeconds * 2.35;
-    const barLength = 270;
-    const barCenter = { x: WORLD_WIDTH / 2, y: 1690 };
+    const barAngle = elapsedSeconds * GOAL_BAR_SPEED;
     const barSegment: Segment = {
-      ax: barCenter.x - Math.cos(barAngle) * barLength * 0.5,
-      ay: barCenter.y - Math.sin(barAngle) * barLength * 0.5,
-      bx: barCenter.x + Math.cos(barAngle) * barLength * 0.5,
-      by: barCenter.y + Math.sin(barAngle) * barLength * 0.5,
+      ax: GOAL_BAR_CENTER.x - Math.cos(barAngle) * GOAL_BAR_LENGTH * 0.5,
+      ay: GOAL_BAR_CENTER.y - Math.sin(barAngle) * GOAL_BAR_LENGTH * 0.5,
+      bx: GOAL_BAR_CENTER.x + Math.cos(barAngle) * GOAL_BAR_LENGTH * 0.5,
+      by: GOAL_BAR_CENTER.y + Math.sin(barAngle) * GOAL_BAR_LENGTH * 0.5,
       tone: "guard",
     };
     const gravity = 560 + Math.min(elapsedSeconds, 18) * 18;
@@ -816,7 +833,13 @@ export function PinballBoard({
       }
 
       for (const bumper of BUMPERS) {
-        collideCircle(ball, bumper.x, bumper.y, bumper.radius);
+        collideCircle(
+          ball,
+          bumper.x,
+          bumper.y,
+          bumper.radius,
+          bumper.bounceMultiplier,
+        );
       }
 
       const inGate =
@@ -836,6 +859,10 @@ export function PinballBoard({
 
         finishOrderRef.current = [...finishOrderRef.current, nextEntry];
         progressCallbackRef.current?.(finishOrderRef.current);
+
+        if (followCandidateIdRef.current === ball.candidate.id) {
+          followCandidateFinishedCallbackRef.current?.(ball.candidate.id);
+        }
 
         if (finishOrderRef.current.length === balls.length) {
           finishCallbackRef.current(finishOrderRef.current);
@@ -876,7 +903,11 @@ export function PinballBoard({
     const balls = ballsRef.current;
     const followedBall =
       typeof followCandidateIdRef.current === "number"
-        ? balls.find((ball) => ball.candidate.id === followCandidateIdRef.current)
+        ? balls.find(
+            (ball) =>
+              ball.candidate.id === followCandidateIdRef.current &&
+              ball.finishElapsedMs === null,
+          )
         : null;
     const leader =
       followedBall ??
@@ -957,22 +988,23 @@ export function PinballBoard({
       ctx.fill();
     }
 
-    const barAngle = elapsedSeconds * 2.35;
+    const barAngle = elapsedSeconds * GOAL_BAR_SPEED;
+    const halfBarLength = GOAL_BAR_LENGTH / 2;
     ctx.save();
-    ctx.translate(WORLD_WIDTH / 2, 1690);
+    ctx.translate(GOAL_BAR_CENTER.x, GOAL_BAR_CENTER.y);
     ctx.rotate(barAngle);
     ctx.strokeStyle = "#f8f1e4";
     ctx.lineCap = "round";
     ctx.lineWidth = 28;
     ctx.beginPath();
-    ctx.moveTo(-135, 0);
-    ctx.lineTo(135, 0);
+    ctx.moveTo(-halfBarLength, 0);
+    ctx.lineTo(halfBarLength, 0);
     ctx.stroke();
     ctx.strokeStyle = "#274152";
     ctx.lineWidth = 18;
     ctx.beginPath();
-    ctx.moveTo(-132, 0);
-    ctx.lineTo(132, 0);
+    ctx.moveTo(-halfBarLength + 3, 0);
+    ctx.lineTo(halfBarLength - 3, 0);
     ctx.stroke();
     ctx.restore();
 

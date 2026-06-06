@@ -1,6 +1,9 @@
 type ClanShareResponseBody = {
+  failureCount?: number;
   message?: string;
   ok?: boolean;
+  successCount?: number;
+  total?: number;
 };
 
 export type ClanShareMatchPayload = {
@@ -14,12 +17,26 @@ export type ClanShareMatchPayload = {
   playedDate: string;
 };
 
-async function readMessage(response: Response) {
-  const body = (await response.json().catch(() => null)) as
+export type ClanShareSubmitResult = {
+  failureCount: number;
+  ok: boolean;
+  successCount: number;
+  total: number;
+};
+
+async function readResponseBody(response: Response) {
+  return (await response.json().catch(() => null)) as
     | ClanShareResponseBody
     | null;
+}
 
-  return body?.message || "clan-share 전송에 실패했습니다.";
+function toSubmitResult(body: ClanShareResponseBody | null): ClanShareSubmitResult {
+  return {
+    failureCount: body?.failureCount ?? 0,
+    ok: body?.ok ?? true,
+    successCount: body?.successCount ?? 0,
+    total: body?.total ?? 0,
+  };
 }
 
 export async function submitClanShareMatches(matches: ClanShareMatchPayload[]) {
@@ -30,8 +47,11 @@ export async function submitClanShareMatches(matches: ClanShareMatchPayload[]) {
     },
     body: JSON.stringify({ matches }),
   });
+  const body = await readResponseBody(response);
 
   if (!response.ok) {
-    throw new Error(await readMessage(response));
+    throw new Error(body?.message || "clan-share 전송에 실패했습니다.");
   }
+
+  return toSubmitResult(body);
 }

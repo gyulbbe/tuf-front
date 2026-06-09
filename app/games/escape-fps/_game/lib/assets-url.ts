@@ -1,10 +1,4 @@
-const DEFAULT_GAME_ASSETS_URL = "https://assets.tufclan.com";
-const BASE =
-  process.env.NEXT_PUBLIC_GAME_ASSETS_URL ?? DEFAULT_GAME_ASSETS_URL;
-
-function normalizeBaseUrl(url: string): string {
-  return url.replace(/\/+$/, "");
-}
+import { gameAssetUrl } from "@/lib/game-assets-url";
 
 function folderForKey(key: string): string {
   if (key.startsWith("enemy-")) {
@@ -27,5 +21,5 @@ function folderForKey(key: string): string {
 }
 
 export function spriteUrl(key: string): string {
-  return `${normalizeBaseUrl(BASE)}/escape-fps/${folderForKey(key)}/${key}.png`;
+  return gameAssetUrl(`escape-fps/${folderForKey(key)}/${key}.png`);
 }

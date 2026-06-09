@@ -245,6 +245,7 @@ export function PinballDraftPage() {
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
         <PinballBoard
+          className="xl:self-stretch"
           candidates={players}
           followCandidateId={
             trackingMode === "player" ? selectedCandidateId : null

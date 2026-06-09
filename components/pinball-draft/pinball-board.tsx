@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { DraftUserSearchResult } from "@/lib/api/draft-users";
+import { gameAssetUrl } from "@/lib/game-assets-url";
 import { cn } from "@/lib/utils";
 
 export type PinballPlayer = DraftUserSearchResult & {
@@ -56,6 +57,13 @@ type Segment = {
   tone?: "wall" | "guard" | "gate";
 };
 
+type BlockerRect = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
 type TiltBar = {
   angle: number;
   angularVelocity: number;
@@ -86,6 +94,36 @@ type OrderedCandidate = {
   originalIndex: number;
 };
 
+type TrapVisualState = "closed" | "opening" | "open" | "firing" | "closing";
+
+type TrapImageKey =
+  | "trap1"
+  | "trap2"
+  | "trap3"
+  | "trap4"
+  | "trap5"
+  | "trap6"
+  | "trap7";
+
+type TrapImageAssets = Partial<Record<TrapImageKey, HTMLImageElement | null>>;
+
+type TrapState = {
+  angle: number;
+  cooldownSeconds: number;
+  firingSeconds: number;
+  phase: TrapVisualState;
+  phaseElapsedSeconds: number;
+  targetCandidateId: number | null;
+  x: number;
+  y: number;
+};
+
+type TrapHitEffect = {
+  elapsedSeconds: number;
+  x: number;
+  y: number;
+};
+
 const WORLD_WIDTH = 900;
 const WORLD_HEIGHT = 2200;
 const FINISH_Y = 2040;
@@ -105,12 +143,34 @@ const COLORS = [
   "#8a6fd1",
   "#4f7d58",
 ];
+const TRAP_IMAGE_KEYS: TrapImageKey[] = [
+  "trap1",
+  "trap2",
+  "trap3",
+  "trap4",
+  "trap5",
+  "trap6",
+  "trap7",
+];
+const TRAP_RANGE = 300;
+const TRAP_DRAW_SIZE = 150;
+const TRAP_HIT_EFFECT_SIZE = 92;
+const TRAP_OPEN_SECONDS = 0.24;
+const TRAP_CLOSE_SECONDS = 0.2;
+const TRAP_FIRE_SECONDS = 0.1;
+const TRAP_FIRE_COOLDOWN_SECONDS = 0.85;
+const TRAP_FIRST_SHOT_DELAY_SECONDS = 0.14;
+const TRAP_PUSH_FORCE = 540;
+const TRAP_TARGET_LOWER_MARGIN = 8;
+const TRAP_HIT_EFFECT_SECONDS = 0.34;
+const GOAL_SIDE_BLOCKER_TOP = FINISH_Y - 78;
+const GOAL_SIDE_BLOCKER_BOTTOM = FINISH_Y + 150;
 
 const STATIC_SEGMENTS: Segment[] = [
   { ax: 34, ay: 0, bx: 34, by: WORLD_HEIGHT, tone: "wall" },
   { ax: WORLD_WIDTH - 34, ay: 0, bx: WORLD_WIDTH - 34, by: WORLD_HEIGHT, tone: "wall" },
-  { ax: 64, ay: 1790, bx: 350, by: 1980, tone: "gate" },
-  { ax: 836, ay: 1790, bx: 550, by: 1980, tone: "gate" },
+  { ax: 34, ay: 1790, bx: 350, by: 1980, tone: "gate" },
+  { ax: WORLD_WIDTH - 34, ay: 1790, bx: 550, by: 1980, tone: "gate" },
 ];
 
 const TILT_BAR_DEFINITIONS = [
@@ -218,6 +278,27 @@ function buildGateSegments(opening: number): Segment[] {
   ];
 }
 
+function buildGoalSideBlockers(opening: number): BlockerRect[] {
+  const leftEdge = WORLD_WIDTH / 2 - opening / 2;
+  const rightEdge = WORLD_WIDTH / 2 + opening / 2;
+  const height = GOAL_SIDE_BLOCKER_BOTTOM - GOAL_SIDE_BLOCKER_TOP;
+
+  return [
+    {
+      height,
+      width: Math.max(0, leftEdge - 34),
+      x: 34,
+      y: GOAL_SIDE_BLOCKER_TOP,
+    },
+    {
+      height,
+      width: Math.max(0, WORLD_WIDTH - 34 - rightEdge),
+      x: rightEdge,
+      y: GOAL_SIDE_BLOCKER_TOP,
+    },
+  ];
+}
+
 function hashSeed(seed: number) {
   let value = (seed + 0x9e3779b9) >>> 0;
 
@@ -237,6 +318,53 @@ function createSeededRandom(seed: number) {
     mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
     return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function getTrapImageUrl(imageKey: TrapImageKey) {
+  return gameAssetUrl(`pinball/${imageKey}.png`);
+}
+
+function createTrapState(runId: number, shuffleSeed: number, candidateCount: number): TrapState {
+  const random = createSeededRandom(
+    runId * 1009 + shuffleSeed * 9176 + candidateCount * 37 + 0x516d,
+  );
+
+  return {
+    angle: -Math.PI / 2,
+    cooldownSeconds: TRAP_FIRST_SHOT_DELAY_SECONDS,
+    firingSeconds: 0,
+    phase: "closed",
+    phaseElapsedSeconds: 0,
+    targetCandidateId: null,
+    x: WORLD_WIDTH / 2 - 72 + random() * 144,
+    y: FINISH_Y - 120 - random() * 90,
+  };
+}
+
+function getTrapFrameKey(trap: TrapState): TrapImageKey {
+  if (trap.firingSeconds > 0 || trap.phase === "firing") {
+    return "trap6";
+  }
+
+  if (trap.phase === "opening") {
+    const progress = clamp(trap.phaseElapsedSeconds / TRAP_OPEN_SECONDS, 0, 0.999);
+    const frames: TrapImageKey[] = ["trap2", "trap3", "trap4", "trap5"];
+
+    return frames[Math.floor(progress * frames.length)];
+  }
+
+  if (trap.phase === "open") {
+    return "trap5";
+  }
+
+  if (trap.phase === "closing") {
+    const progress = clamp(trap.phaseElapsedSeconds / TRAP_CLOSE_SECONDS, 0, 0.999);
+    const frames: TrapImageKey[] = ["trap4", "trap3", "trap2", "trap1"];
+
+    return frames[Math.floor(progress * frames.length)];
+  }
+
+  return "trap1";
 }
 
 function hasSameCandidateSet(
@@ -484,6 +612,78 @@ function collideSegment(
   return true;
 }
 
+function collideRect(ball: BallState, rect: BlockerRect, restitution = 0.42) {
+  if (rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+
+  const nearestX = clamp(ball.x, rect.x, rect.x + rect.width);
+  const nearestY = clamp(ball.y, rect.y, rect.y + rect.height);
+  let dx = ball.x - nearestX;
+  let dy = ball.y - nearestY;
+  let distance = Math.hypot(dx, dy);
+  let nx = distance > 0 ? dx / distance : 0;
+  let ny = distance > 0 ? dy / distance : 0;
+  let overlap = ball.radius - distance;
+
+  if (distance === 0) {
+    const left = ball.x - rect.x;
+    const right = rect.x + rect.width - ball.x;
+    const top = ball.y - rect.y;
+    const bottom = rect.y + rect.height - ball.y;
+    const minDistance = Math.min(left, right, top, bottom);
+
+    if (minDistance === left) {
+      nx = -1;
+      ny = 0;
+      overlap = left + ball.radius;
+    } else if (minDistance === right) {
+      nx = 1;
+      ny = 0;
+      overlap = right + ball.radius;
+    } else if (minDistance === top) {
+      nx = 0;
+      ny = -1;
+      overlap = top + ball.radius;
+    } else {
+      nx = 0;
+      ny = 1;
+      overlap = bottom + ball.radius;
+    }
+  }
+
+  if (overlap <= 0) {
+    return false;
+  }
+
+  ball.x += nx * overlap;
+  ball.y += ny * overlap;
+
+  const velocityAlongNormal = ball.vx * nx + ball.vy * ny;
+
+  if (velocityAlongNormal < 0) {
+    ball.vx -= ((1 + restitution) * velocityAlongNormal) * nx;
+    ball.vy -= ((1 + restitution) * velocityAlongNormal) * ny;
+  }
+
+  return true;
+}
+
+function collideGoalSideBlockers(ball: BallState, opening: number) {
+  let collided = false;
+
+  for (const blocker of buildGoalSideBlockers(opening)) {
+    collided = collideRect(ball, blocker, 0.36) || collided;
+  }
+
+  if (collided) {
+    ball.vx += ball.x < WORLD_WIDTH / 2 ? 92 : -92;
+    ball.vy -= 26;
+  }
+
+  return collided;
+}
+
 function collideTiltBar(ball: BallState, bar: TiltBar) {
   const segment = tiltBarToSegment(bar);
   const sx = segment.bx - segment.ax;
@@ -606,6 +806,78 @@ function drawBumper(ctx: CanvasRenderingContext2D, bumper: Bumper) {
   ctx.restore();
 }
 
+function drawGoalSideBlockers(ctx: CanvasRenderingContext2D, opening: number) {
+  ctx.save();
+
+  for (const blocker of buildGoalSideBlockers(opening)) {
+    if (blocker.width <= 0 || blocker.height <= 0) {
+      continue;
+    }
+
+    ctx.fillStyle = "rgba(241, 215, 167, 0.88)";
+    ctx.fillRect(blocker.x, blocker.y, blocker.width, blocker.height);
+    ctx.strokeStyle = "rgba(211, 111, 59, 0.16)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(blocker.x, blocker.y, blocker.width, blocker.height);
+  }
+
+  ctx.restore();
+}
+
+function drawTrap(
+  ctx: CanvasRenderingContext2D,
+  trap: TrapState,
+  assets: TrapImageAssets,
+) {
+  const image = assets[getTrapFrameKey(trap)];
+
+  if (!image) {
+    return;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = trap.phase === "closed" ? 0.88 : 1;
+  ctx.shadowColor = "rgba(23, 33, 43, 0.24)";
+  ctx.shadowBlur = 18;
+  ctx.drawImage(
+    image,
+    trap.x - TRAP_DRAW_SIZE / 2,
+    trap.y - TRAP_DRAW_SIZE / 2,
+    TRAP_DRAW_SIZE,
+    TRAP_DRAW_SIZE,
+  );
+  ctx.restore();
+}
+
+function drawTrapHitEffects(
+  ctx: CanvasRenderingContext2D,
+  effects: readonly TrapHitEffect[],
+  assets: TrapImageAssets,
+) {
+  const image = assets.trap7;
+
+  for (const effect of effects) {
+    const progress = clamp(effect.elapsedSeconds / TRAP_HIT_EFFECT_SECONDS, 0, 1);
+
+    if (!image) {
+      continue;
+    }
+
+    const size = TRAP_HIT_EFFECT_SIZE * (0.82 + progress * 0.42);
+
+    ctx.save();
+    ctx.globalAlpha = 1 - progress;
+    ctx.drawImage(
+      image,
+      effect.x - size / 2,
+      effect.y - size / 2,
+      size,
+      size,
+    );
+    ctx.restore();
+  }
+}
+
 export function PinballBoard({
   candidates,
   className,
@@ -621,8 +893,12 @@ export function PinballBoard({
 }: PinballBoardProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const footerRef = useRef<HTMLParagraphElement | null>(null);
   const ballsRef = useRef<BallState[]>([]);
   const tiltBarsRef = useRef<TiltBar[]>([]);
+  const trapRef = useRef<TrapState | null>(null);
+  const trapImagesRef = useRef<TrapImageAssets>({});
+  const trapHitEffectsRef = useRef<TrapHitEffect[]>([]);
   const finishOrderRef = useRef<PinballFinishEntry[]>([]);
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number | null>(null);
@@ -669,6 +945,34 @@ export function PinballBoard({
   }, [followCandidateId]);
 
   useEffect(() => {
+    let isActive = true;
+
+    for (const imageKey of TRAP_IMAGE_KEYS) {
+      const image = new Image();
+
+      image.onload = () => {
+        if (!isActive) {
+          return;
+        }
+
+        trapImagesRef.current = { ...trapImagesRef.current, [imageKey]: image };
+      };
+      image.onerror = () => {
+        if (!isActive) {
+          return;
+        }
+
+        trapImagesRef.current = { ...trapImagesRef.current, [imageKey]: null };
+      };
+      image.src = getTrapImageUrl(imageKey);
+    }
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const wrapper = wrapperRef.current;
 
     if (!wrapper) {
@@ -677,7 +981,28 @@ export function PinballBoard({
 
     const resize = () => {
       const width = Math.max(wrapper.clientWidth, 320);
-      const height = clamp(width * 0.8, 560, 880);
+      const scale = width / WORLD_WIDTH;
+      const baseHeight = clamp(width * 0.8, 560, 880);
+      const wrapperStyle = window.getComputedStyle(wrapper);
+      const footer = footerRef.current;
+      const footerStyle = footer ? window.getComputedStyle(footer) : null;
+      const paddingHeight =
+        Number.parseFloat(wrapperStyle.paddingTop || "0") +
+        Number.parseFloat(wrapperStyle.paddingBottom || "0");
+      const footerHeight = footer
+        ? footer.getBoundingClientRect().height +
+          Number.parseFloat(footerStyle?.marginTop || "0") +
+          Number.parseFloat(footerStyle?.marginBottom || "0")
+        : 0;
+      const stretchedHeight =
+        wrapper.clientHeight > 0
+          ? Math.max(0, wrapper.clientHeight - paddingHeight - footerHeight)
+          : 0;
+      const height = clamp(
+        Math.max(baseHeight, stretchedHeight),
+        560,
+        Math.max(880, WORLD_HEIGHT * scale),
+      );
       const nextSize = { width, height };
 
       sizeRef.current = nextSize;
@@ -687,6 +1012,9 @@ export function PinballBoard({
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(wrapper);
+    if (footerRef.current) {
+      observer.observe(footerRef.current);
+    }
 
     return () => {
       observer.disconnect();
@@ -707,6 +1035,8 @@ export function PinballBoard({
     previousOrderIdsRef.current = nextLayout.orderIds;
     lastShuffleSeedRef.current = shuffleSeed;
     tiltBarsRef.current = createTiltBars();
+    trapRef.current = createTrapState(runId, shuffleSeed, candidates.length);
+    trapHitEffectsRef.current = [];
     finishOrderRef.current = [];
     cameraYRef.current = 0;
     autoCameraRef.current = true;
@@ -753,6 +1083,154 @@ export function PinballBoard({
     };
     // The animation loop is driven by refs so camera changes do not restart physics.
   }, [candidates, runId, shuffleSeed]);
+
+  function setTrapPhase(trap: TrapState, phase: TrapVisualState) {
+    if (trap.phase === phase) {
+      return;
+    }
+
+    trap.phase = phase;
+    trap.phaseElapsedSeconds = 0;
+  }
+
+  function isBallInTrapRange(trap: TrapState, ball: BallState) {
+    return (
+      ball.finishElapsedMs === null &&
+      ball.y <= trap.y + TRAP_TARGET_LOWER_MARGIN &&
+      Math.hypot(ball.x - trap.x, ball.y - trap.y) <= TRAP_RANGE
+    );
+  }
+
+  function findNearestTrapTarget(trap: TrapState) {
+    let nearestBall: BallState | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (const ball of ballsRef.current) {
+      if (ball.finishElapsedMs !== null) {
+        continue;
+      }
+
+      if (!isBallInTrapRange(trap, ball)) {
+        continue;
+      }
+
+      const distance = Math.hypot(ball.x - trap.x, ball.y - trap.y);
+      if (distance <= TRAP_RANGE && distance < nearestDistance) {
+        nearestBall = ball;
+        nearestDistance = distance;
+      }
+    }
+
+    return nearestBall;
+  }
+
+  function getCurrentTrapTarget(trap: TrapState) {
+    if (trap.targetCandidateId === null) {
+      return null;
+    }
+
+    const currentTarget = ballsRef.current.find(
+      (ball) => ball.candidate.id === trap.targetCandidateId,
+    );
+
+    return currentTarget && isBallInTrapRange(trap, currentTarget)
+      ? currentTarget
+      : null;
+  }
+
+  function fireTrapAtBall(trap: TrapState, ball: BallState) {
+    const dx = ball.x - trap.x;
+    const dy = ball.y - trap.y;
+    const distance = Math.hypot(dx, dy);
+    const rawNx = distance > 1 ? dx / distance : Math.cos(trap.angle);
+    const rawNy = distance > 1 ? dy / distance : Math.sin(trap.angle);
+    const pushNy = Math.min(rawNy, 0);
+    const pushLength = Math.hypot(rawNx, pushNy);
+    const nx =
+      pushLength > 0.05
+        ? rawNx / pushLength
+        : ball.x < trap.x
+          ? -1
+          : 1;
+    const ny = pushLength > 0.05 ? pushNy / pushLength : 0;
+
+    ball.vx = clamp(ball.vx + nx * TRAP_PUSH_FORCE, -1120, 1120);
+    ball.vy = clamp(ball.vy + ny * TRAP_PUSH_FORCE, -1120, 1120);
+    ball.idleSeconds = 0;
+    trapHitEffectsRef.current = [
+      ...trapHitEffectsRef.current,
+      { elapsedSeconds: 0, x: ball.x, y: ball.y },
+    ];
+  }
+
+  function updateTrap(dt: number) {
+    const trap = trapRef.current;
+
+    if (!trap) {
+      return;
+    }
+
+    trap.phaseElapsedSeconds += dt;
+    trap.cooldownSeconds = Math.max(0, trap.cooldownSeconds - dt);
+    trap.firingSeconds = Math.max(0, trap.firingSeconds - dt);
+    trapHitEffectsRef.current = trapHitEffectsRef.current
+      .map((effect) => ({
+        ...effect,
+        elapsedSeconds: effect.elapsedSeconds + dt,
+      }))
+      .filter((effect) => effect.elapsedSeconds < TRAP_HIT_EFFECT_SECONDS);
+
+    const target = getCurrentTrapTarget(trap) ?? findNearestTrapTarget(trap);
+    trap.targetCandidateId = target?.candidate.id ?? null;
+
+    if (!target) {
+      trap.cooldownSeconds = TRAP_FIRST_SHOT_DELAY_SECONDS;
+      trap.firingSeconds = 0;
+
+      if (trap.phase === "open" || trap.phase === "opening" || trap.phase === "firing") {
+        setTrapPhase(trap, "closing");
+      }
+
+      if (
+        trap.phase === "closing" &&
+        trap.phaseElapsedSeconds >= TRAP_CLOSE_SECONDS
+      ) {
+        setTrapPhase(trap, "closed");
+      }
+
+      return;
+    }
+
+    trap.angle = Math.atan2(target.y - trap.y, target.x - trap.x);
+
+    if (trap.phase === "closed" || trap.phase === "closing") {
+      setTrapPhase(trap, "opening");
+      trap.cooldownSeconds = TRAP_FIRST_SHOT_DELAY_SECONDS;
+      return;
+    }
+
+    if (
+      trap.phase === "opening" &&
+      trap.phaseElapsedSeconds >= TRAP_OPEN_SECONDS
+    ) {
+      setTrapPhase(trap, "open");
+      trap.cooldownSeconds = Math.max(
+        trap.cooldownSeconds,
+        TRAP_FIRST_SHOT_DELAY_SECONDS,
+      );
+    }
+
+    if (trap.phase === "firing" && trap.firingSeconds <= 0) {
+      setTrapPhase(trap, "open");
+    }
+
+    if (trap.phase === "open" && trap.cooldownSeconds <= 0) {
+      fireTrapAtBall(trap, target);
+      setTrapPhase(trap, "firing");
+      trap.firingSeconds = TRAP_FIRE_SECONDS;
+      trap.cooldownSeconds = TRAP_FIRE_COOLDOWN_SECONDS;
+    }
+  }
 
   function updateBalls(dt: number, elapsedSeconds: number, elapsedMs: number) {
     const balls = ballsRef.current;
@@ -827,6 +1305,7 @@ export function PinballBoard({
       }
 
       collideSegment(ball, barSegment, 0.58, Math.sin(barAngle) * 34);
+      collideGoalSideBlockers(ball, gateOpening);
 
       for (const pin of PINS) {
         collideCircle(ball, pin.x, pin.y, pin.radius);
@@ -890,6 +1369,8 @@ export function PinballBoard({
         ball.idleSeconds = 0;
       }
     }
+
+    updateTrap(dt);
   }
 
   function updateCamera(dt: number) {
@@ -968,6 +1449,9 @@ export function PinballBoard({
 
     ctx.fillStyle = "#f8f1e4";
     ctx.fillRect(58, 30, WORLD_WIDTH - 116, WORLD_HEIGHT - 60);
+    const gateOpening = getGateOpening(elapsedSeconds);
+
+    drawGoalSideBlockers(ctx, gateOpening);
 
     for (const segment of STATIC_SEGMENTS) {
       drawSegment(ctx, segment);
@@ -1008,9 +1492,12 @@ export function PinballBoard({
     ctx.stroke();
     ctx.restore();
 
-    const gateOpening = getGateOpening(elapsedSeconds);
     for (const segment of buildGateSegments(gateOpening)) {
       drawSegment(ctx, segment);
+    }
+
+    if (trapRef.current) {
+      drawTrap(ctx, trapRef.current, trapImagesRef.current);
     }
 
     ctx.save();
@@ -1057,6 +1544,8 @@ export function PinballBoard({
       ctx.fillText(ball.candidate.teamLabel, ball.x, badgeY + 14);
       ctx.restore();
     }
+
+    drawTrapHitEffects(ctx, trapHitEffectsRef.current, trapImagesRef.current);
 
     ctx.restore();
   }
@@ -1146,13 +1635,13 @@ export function PinballBoard({
     <div
       ref={wrapperRef}
       className={cn(
-        "rounded-[28px] border border-line bg-[linear-gradient(180deg,#fbf5ea_0%,#edf4f2_100%)] p-3 shadow-[0_18px_60px_rgba(23,33,43,0.12)]",
+        "flex h-full min-h-0 flex-col rounded-[28px] border border-line bg-[linear-gradient(180deg,#fbf5ea_0%,#edf4f2_100%)] p-3 shadow-[0_18px_60px_rgba(23,33,43,0.12)]",
         className,
       )}
     >
       <canvas
         ref={canvasRef}
-        className="block w-full cursor-grab rounded-[22px] border border-line bg-[#f8f1e4] active:cursor-grabbing"
+        className="block w-full shrink-0 cursor-grab rounded-[22px] border border-line bg-[#f8f1e4] active:cursor-grabbing"
         style={{ height: canvasSize.height }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -1161,7 +1650,7 @@ export function PinballBoard({
           dragRef.current = null;
         }}
       />
-      <p className="mt-3 px-2 text-xs leading-6 text-muted">
+      <p ref={footerRef} className="mt-3 px-2 text-xs leading-6 text-muted">
         기본 카메라는 선두 공을 따라갑니다. 선수를 누르면 해당 공을 따라가고,
         보드를 드래그하면 수동으로 볼 수 있습니다.
       </p>

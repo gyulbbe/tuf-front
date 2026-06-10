@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   PinballBoard,
   type PinballFinishEntry,
+  type PinballLiveRankEntry,
   type PinballPlayer,
 } from "@/components/pinball-draft/pinball-board";
 import { SurfaceCard } from "@/components/site/surface-card";
@@ -56,6 +57,7 @@ export function PinballDraftPage() {
   const [runId, setRunId] = useState(0);
   const [shuffleSeed, setShuffleSeed] = useState(0);
   const [finishOrder, setFinishOrder] = useState<PinballFinishEntry[]>([]);
+  const [liveRanking, setLiveRanking] = useState<PinballLiveRankEntry[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<number | null>(
     null,
   );
@@ -76,9 +78,22 @@ export function PinballDraftPage() {
       : trackingMode === "player" && selectedCandidate
         ? `${selectedCandidate.userId} 추적`
         : "선두 추적";
+  const rankedPlayers = useMemo<PinballLiveRankEntry[]>(
+    () =>
+      liveRanking.length > 0
+        ? liveRanking
+        : players.map((player, index) => ({
+            candidate: player,
+            elapsedMs: null,
+            isFinished: false,
+            rank: index + 1,
+          })),
+    [liveRanking, players],
+  );
 
   function resetRunState() {
     setFinishOrder([]);
+    setLiveRanking([]);
     setSelectedCandidateId(null);
     setTrackingMode("leader");
     setRankingCopied(false);
@@ -254,6 +269,7 @@ export function PinballDraftPage() {
           runId={runId}
           shuffleSeed={shuffleSeed}
           onFollowCandidateFinished={handleFollowCandidateFinished}
+          onLiveRankingChange={setLiveRanking}
           onManualCamera={handleManualCamera}
           onSelectCandidate={handleSelectPlayer}
           onProgressOrder={setFinishOrder}
@@ -301,22 +317,32 @@ export function PinballDraftPage() {
           <SurfaceCard className="p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-foreground">참가자 목록</p>
-              <span className="shrink-0 rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-muted">
-                {trackingLabel}
-              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-muted">
+                  {trackingLabel}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={finishOrder.length === 0}
+                  onClick={() => {
+                    void copyCurrentRanking();
+                  }}
+                >
+                  {rankingCopied ? "복사됨" : "복사"}
+                </Button>
+              </div>
             </div>
-            <div className="mt-4 grid max-h-[calc(100vh-360px)] gap-2 overflow-y-auto pr-1">
+            <div className="mt-4 grid max-h-[calc(100vh-300px)] gap-2 overflow-y-auto pr-1">
               {players.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-line px-4 py-6 text-sm text-muted">
                   이름 목록을 적용하면 보드에 바로 배치됩니다.
                 </p>
               ) : (
-                players.map((player) => {
+                rankedPlayers.map((entry) => {
+                  const player = entry.candidate;
                   const isSelected =
                     trackingMode === "player" && selectedCandidateId === player.id;
-                  const rank = finishOrder.find(
-                    (entry) => entry.candidate.id === player.id,
-                  )?.rank;
 
                   return (
                     <button
@@ -326,7 +352,9 @@ export function PinballDraftPage() {
                         "rounded-lg border px-4 py-3 text-left transition-colors",
                         isSelected
                           ? "border-accent bg-accent-soft text-accent-ink"
-                          : "border-line bg-white hover:border-accent-soft",
+                          : entry.isFinished
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                            : "border-line bg-white hover:border-accent-soft",
                       )}
                       onClick={() => handleSelectPlayer(player.id)}
                     >
@@ -334,96 +362,37 @@ export function PinballDraftPage() {
                         <span className="min-w-0 truncate text-sm font-semibold">
                           {player.userId}
                         </span>
-                        <span className="shrink-0 text-xs text-muted">
-                          {rank
-                            ? `${rank}위`
-                            : phase === "running"
-                              ? "진행 중"
-                              : "대기"}
+                        <span
+                          className={cn(
+                            "shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold",
+                            entry.isFinished
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-surface-muted text-muted",
+                          )}
+                        >
+                          {entry.rank}위
                         </span>
                       </div>
-                      <p className="mt-2 text-xs text-muted">{player.teamLabel}</p>
+                      <p
+                        className={cn(
+                          "mt-2 text-xs",
+                          entry.isFinished ? "text-emerald-700" : "text-muted",
+                        )}
+                      >
+                        {entry.isFinished
+                          ? "완주"
+                          : phase === "running"
+                            ? "진행 중"
+                            : player.teamLabel}
+                      </p>
                     </button>
                   );
                 })
               )}
             </div>
           </SurfaceCard>
-
-          <SurfaceCard className="p-5">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-foreground">현재 순위</p>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={finishOrder.length === 0}
-                onClick={() => {
-                  void copyCurrentRanking();
-                }}
-              >
-                {rankingCopied ? "복사됨" : "복사"}
-              </Button>
-            </div>
-            <div className="mt-4 grid gap-2">
-              {finishOrder.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-line px-4 py-6 text-sm text-muted">
-                  아직 완주한 참가자가 없습니다.
-                </p>
-              ) : (
-                finishOrder.slice(0, 8).map((entry) => (
-                  <div
-                    key={entry.candidate.id}
-                    className="rounded-lg bg-surface-muted px-4 py-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-sm font-semibold text-foreground">
-                        {entry.rank}위 · {entry.candidate.userId}
-                      </p>
-                      <span className="text-xs text-muted">
-                        {(entry.elapsedMs / 1000).toFixed(1)}초
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </SurfaceCard>
         </div>
       </div>
-
-      {phase === "finished" ? (
-        <SurfaceCard className="mt-4 p-5 sm:p-6">
-          <h2 className="text-xl font-semibold text-foreground">
-            전체 완주 순위
-          </h2>
-
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {finishOrder.map((entry) => (
-              <div
-                key={entry.candidate.id}
-                className="rounded-lg border border-line bg-white px-4 py-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-muted">
-                      {entry.rank}위
-                    </p>
-                    <p className="mt-1 truncate text-base font-semibold text-foreground">
-                      {entry.candidate.userId}
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-semibold text-muted">
-                    {entry.candidate.teamLabel}
-                  </span>
-                </div>
-                <p className="mt-3 text-xs text-muted">
-                  {(entry.elapsedMs / 1000).toFixed(1)}초
-                </p>
-              </div>
-            ))}
-          </div>
-        </SurfaceCard>
-      ) : null}
     </main>
   );
 }

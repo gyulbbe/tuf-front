@@ -23,6 +23,13 @@ export type PinballFinishEntry = {
   rank: number;
 };
 
+export type PinballLiveRankEntry = {
+  candidate: PinballPlayer;
+  elapsedMs: number | null;
+  isFinished: boolean;
+  rank: number;
+};
+
 type PinballBoardProps = {
   candidates: PinballPlayer[];
   className?: string;
@@ -30,6 +37,7 @@ type PinballBoardProps = {
   isRunning: boolean;
   onFinishOrder: (order: PinballFinishEntry[]) => void;
   onFollowCandidateFinished?: (candidateId: number) => void;
+  onLiveRankingChange?: (ranking: PinballLiveRankEntry[]) => void;
   onManualCamera?: () => void;
   onProgressOrder?: (order: PinballFinishEntry[]) => void;
   onSelectCandidate?: (candidateId: number | null) => void;
@@ -94,34 +102,64 @@ type OrderedCandidate = {
   originalIndex: number;
 };
 
-type TrapVisualState = "closed" | "opening" | "open" | "firing" | "closing";
+type ObstacleVisualState = "closed" | "opening" | "open" | "firing" | "closing";
 
-type TrapImageKey =
+type ObstacleKind = "trap" | "missile" | "fire";
+
+type ObstacleId = "trap" | "missile" | "fireLeft" | "fireRight";
+
+type PinballTrapAssetKey =
   | "trap1"
   | "trap2"
   | "trap3"
   | "trap4"
   | "trap5"
   | "trap6"
-  | "trap7";
+  | "trap7"
+  | "missile1"
+  | "missile2"
+  | "missile3"
+  | "missile4"
+  | "missile5"
+  | "missile6"
+  | "fire1"
+  | "fire2"
+  | "fire3"
+  | "fire4"
+  | "fire5"
+  | "fire6";
 
-type TrapImageAssets = Partial<Record<TrapImageKey, HTMLImageElement | null>>;
+type PinballTrapAssets = Partial<Record<PinballTrapAssetKey, HTMLImageElement | null>>;
 
-type TrapState = {
+type ObstacleState = {
   angle: number;
   cooldownSeconds: number;
+  drawSize: number;
   firingSeconds: number;
-  phase: TrapVisualState;
+  halfWidth: number;
+  id: ObstacleId;
+  kind: ObstacleKind;
+  phase: ObstacleVisualState;
   phaseElapsedSeconds: number;
+  range: number;
   targetCandidateId: number | null;
   x: number;
   y: number;
 };
 
-type TrapHitEffect = {
+type ObstacleHitEffect = {
   elapsedSeconds: number;
+  kind: ObstacleKind;
   x: number;
   y: number;
+};
+
+type MissileShotEffect = {
+  elapsedSeconds: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
 };
 
 const WORLD_WIDTH = 900;
@@ -130,7 +168,7 @@ const FINISH_Y = 2040;
 const BALL_RADIUS = 13;
 const GOAL_BAR_CENTER = { x: WORLD_WIDTH / 2, y: 1690 };
 const GOAL_BAR_LENGTH = 340;
-const GOAL_BAR_SPEED = 4.7;
+const GOAL_BAR_SPEED = 2.35;
 const COLORS = [
   "#e65d3f",
   "#1f8f7a",
@@ -143,7 +181,7 @@ const COLORS = [
   "#8a6fd1",
   "#4f7d58",
 ];
-const TRAP_IMAGE_KEYS: TrapImageKey[] = [
+const PINBALL_TRAP_ASSET_KEYS: PinballTrapAssetKey[] = [
   "trap1",
   "trap2",
   "trap3",
@@ -151,18 +189,45 @@ const TRAP_IMAGE_KEYS: TrapImageKey[] = [
   "trap5",
   "trap6",
   "trap7",
+  "missile1",
+  "missile2",
+  "missile3",
+  "missile4",
+  "missile5",
+  "missile6",
+  "fire1",
+  "fire2",
+  "fire3",
+  "fire4",
+  "fire5",
+  "fire6",
 ];
 const TRAP_RANGE = 300;
 const TRAP_DRAW_SIZE = 150;
+const MISSILE_RANGE = 300;
+const MISSILE_DRAW_SIZE = 136;
+const FIRE_RANGE = 190;
+const FIRE_DRAW_SIZE = 132;
 const TRAP_HIT_EFFECT_SIZE = 92;
-const TRAP_OPEN_SECONDS = 0.24;
-const TRAP_CLOSE_SECONDS = 0.2;
-const TRAP_FIRE_SECONDS = 0.1;
-const TRAP_FIRE_COOLDOWN_SECONDS = 0.85;
-const TRAP_FIRST_SHOT_DELAY_SECONDS = 0.14;
-const TRAP_PUSH_FORCE = 540;
-const TRAP_TARGET_LOWER_MARGIN = 8;
+const MISSILE_HIT_EFFECT_SIZE = 112;
+const FIRE_HIT_EFFECT_SIZE = 112;
+const TRAP_FIRE_COOLDOWN_SECONDS = 2.1;
+const TRAP_PUSH_FORCE = 380;
+const MISSILE_FIRE_COOLDOWN_SECONDS = 1.85;
+const MISSILE_PUSH_FORCE = 410;
+const FIRE_FIRE_COOLDOWN_SECONDS = 2;
+const FIRE_PUSH_FORCE = 340;
+const MISSILE_TRAP_OFFSET_X = 240;
+const OBSTACLE_OPEN_SECONDS = 0.24;
+const OBSTACLE_CLOSE_SECONDS = 0.2;
+const OBSTACLE_FIRE_SECONDS = 0.1;
+const OBSTACLE_FIRST_SHOT_DELAY_SECONDS = 0.14;
+const TRAP_TARGET_MIN_ABOVE = 36;
+const TRAP_TARGET_HALF_WIDTH = 115;
+const MISSILE_TARGET_HALF_WIDTH = 120;
+const FIRE_TARGET_LOWER_MARGIN = 12;
 const TRAP_HIT_EFFECT_SECONDS = 0.34;
+const MISSILE_SHOT_EFFECT_SECONDS = 0.22;
 const GOAL_SIDE_BLOCKER_TOP = FINISH_Y - 78;
 const GOAL_SIDE_BLOCKER_BOTTOM = FINISH_Y + 150;
 
@@ -189,7 +254,6 @@ const BUMPERS: Bumper[] = [
   { x: 450, y: 1210, radius: 70, kind: "round" },
   { x: 250, y: 1470, radius: 58, kind: "half-right" },
   { x: 650, y: 1470, radius: 58, kind: "half-left" },
-  { x: 450, y: 1885, radius: 44, kind: "round", bounceMultiplier: 3.1 },
 ];
 
 function buildPins() {
@@ -320,51 +384,204 @@ function createSeededRandom(seed: number) {
   };
 }
 
-function getTrapImageUrl(imageKey: TrapImageKey) {
+function getPinballTrapAssetUrl(imageKey: PinballTrapAssetKey) {
   return gameAssetUrl(`pinball/${imageKey}.png`);
 }
 
-function createTrapState(runId: number, shuffleSeed: number, candidateCount: number): TrapState {
-  const random = createSeededRandom(
-    runId * 1009 + shuffleSeed * 9176 + candidateCount * 37 + 0x516d,
-  );
-
+function createObstacleState(
+  entry: Omit<
+    ObstacleState,
+    | "angle"
+    | "cooldownSeconds"
+    | "firingSeconds"
+    | "phase"
+    | "phaseElapsedSeconds"
+    | "targetCandidateId"
+  >,
+): ObstacleState {
   return {
+    ...entry,
     angle: -Math.PI / 2,
-    cooldownSeconds: TRAP_FIRST_SHOT_DELAY_SECONDS,
+    cooldownSeconds: OBSTACLE_FIRST_SHOT_DELAY_SECONDS,
     firingSeconds: 0,
     phase: "closed",
     phaseElapsedSeconds: 0,
     targetCandidateId: null,
-    x: WORLD_WIDTH / 2 - 72 + random() * 144,
-    y: FINISH_Y - 120 - random() * 90,
   };
 }
 
-function getTrapFrameKey(trap: TrapState): TrapImageKey {
-  if (trap.firingSeconds > 0 || trap.phase === "firing") {
-    return "trap6";
+function createObstacleStates(
+  runId: number,
+  shuffleSeed: number,
+  candidateCount: number,
+): ObstacleState[] {
+  const random = createSeededRandom(
+    runId * 1009 + shuffleSeed * 9176 + candidateCount * 37 + 0x516d,
+  );
+  const trapX = WORLD_WIDTH / 2 - 72 + random() * 144;
+  const trapY = FINISH_Y - 120 - random() * 90;
+  const jitter = () => random() * 20 - 10;
+
+  return [
+    createObstacleState({
+      drawSize: TRAP_DRAW_SIZE,
+      halfWidth: TRAP_TARGET_HALF_WIDTH,
+      id: "trap",
+      kind: "trap",
+      range: TRAP_RANGE,
+      x: trapX,
+      y: trapY,
+    }),
+    createObstacleState({
+      drawSize: MISSILE_DRAW_SIZE,
+      halfWidth: MISSILE_TARGET_HALF_WIDTH,
+      id: "missile",
+      kind: "missile",
+      range: MISSILE_RANGE,
+      x: clamp(trapX + MISSILE_TRAP_OFFSET_X, 560, WORLD_WIDTH - 100),
+      y: trapY + jitter(),
+    }),
+    createObstacleState({
+      drawSize: FIRE_DRAW_SIZE,
+      halfWidth: FIRE_RANGE,
+      id: "fireLeft",
+      kind: "fire",
+      range: FIRE_RANGE,
+      x: WORLD_WIDTH / 2 - 170 + jitter(),
+      y: FINISH_Y - 145 + jitter(),
+    }),
+    createObstacleState({
+      drawSize: FIRE_DRAW_SIZE,
+      halfWidth: FIRE_RANGE,
+      id: "fireRight",
+      kind: "fire",
+      range: FIRE_RANGE,
+      x: WORLD_WIDTH / 2 + 170 + jitter(),
+      y: FINISH_Y - 145 + jitter(),
+    }),
+  ];
+}
+
+function getObstacleCooldownSeconds(kind: ObstacleKind) {
+  if (kind === "missile") {
+    return MISSILE_FIRE_COOLDOWN_SECONDS;
   }
 
-  if (trap.phase === "opening") {
-    const progress = clamp(trap.phaseElapsedSeconds / TRAP_OPEN_SECONDS, 0, 0.999);
-    const frames: TrapImageKey[] = ["trap2", "trap3", "trap4", "trap5"];
+  if (kind === "fire") {
+    return FIRE_FIRE_COOLDOWN_SECONDS;
+  }
+
+  return TRAP_FIRE_COOLDOWN_SECONDS;
+}
+
+function getObstaclePushForce(kind: ObstacleKind) {
+  if (kind === "missile") {
+    return MISSILE_PUSH_FORCE;
+  }
+
+  if (kind === "fire") {
+    return FIRE_PUSH_FORCE;
+  }
+
+  return TRAP_PUSH_FORCE;
+}
+
+function getHitEffectSize(kind: ObstacleKind) {
+  if (kind === "missile") {
+    return MISSILE_HIT_EFFECT_SIZE;
+  }
+
+  if (kind === "fire") {
+    return FIRE_HIT_EFFECT_SIZE;
+  }
+
+  return TRAP_HIT_EFFECT_SIZE;
+}
+
+function getHitEffectAssetKey(kind: ObstacleKind): PinballTrapAssetKey {
+  if (kind === "missile") {
+    return "missile6";
+  }
+
+  if (kind === "fire") {
+    return "fire6";
+  }
+
+  return "trap7";
+}
+
+function getObstacleFrameKey(obstacle: ObstacleState): PinballTrapAssetKey {
+  if (obstacle.kind === "trap") {
+    if (obstacle.firingSeconds > 0 || obstacle.phase === "firing") {
+      return "trap6";
+    }
+
+    if (obstacle.phase === "opening") {
+      const progress = clamp(obstacle.phaseElapsedSeconds / OBSTACLE_OPEN_SECONDS, 0, 0.999);
+      const frames: PinballTrapAssetKey[] = ["trap2", "trap3", "trap4", "trap5"];
+
+      return frames[Math.floor(progress * frames.length)];
+    }
+
+    if (obstacle.phase === "open") {
+      return "trap5";
+    }
+
+    if (obstacle.phase === "closing") {
+      const progress = clamp(obstacle.phaseElapsedSeconds / OBSTACLE_CLOSE_SECONDS, 0, 0.999);
+      const frames: PinballTrapAssetKey[] = ["trap4", "trap3", "trap2", "trap1"];
+
+      return frames[Math.floor(progress * frames.length)];
+    }
+
+    return "trap1";
+  }
+
+  if (obstacle.kind === "missile") {
+    if (obstacle.phase === "opening") {
+      const progress = clamp(obstacle.phaseElapsedSeconds / OBSTACLE_OPEN_SECONDS, 0, 0.999);
+      const frames: PinballTrapAssetKey[] = ["missile1", "missile2", "missile3", "missile4"];
+
+      return frames[Math.floor(progress * frames.length)];
+    }
+
+    if (obstacle.phase === "open" || obstacle.phase === "firing") {
+      return "missile4";
+    }
+
+    if (obstacle.phase === "closing") {
+      const progress = clamp(obstacle.phaseElapsedSeconds / OBSTACLE_CLOSE_SECONDS, 0, 0.999);
+      const frames: PinballTrapAssetKey[] = ["missile4", "missile3", "missile2", "missile1"];
+
+      return frames[Math.floor(progress * frames.length)];
+    }
+
+    return "missile1";
+  }
+
+  if (obstacle.phase === "firing") {
+    return "fire5";
+  }
+
+  if (obstacle.phase === "opening") {
+    const progress = clamp(obstacle.phaseElapsedSeconds / OBSTACLE_OPEN_SECONDS, 0, 0.999);
+    const frames: PinballTrapAssetKey[] = ["fire1", "fire2", "fire3", "fire4"];
 
     return frames[Math.floor(progress * frames.length)];
   }
 
-  if (trap.phase === "open") {
-    return "trap5";
+  if (obstacle.phase === "open") {
+    return "fire4";
   }
 
-  if (trap.phase === "closing") {
-    const progress = clamp(trap.phaseElapsedSeconds / TRAP_CLOSE_SECONDS, 0, 0.999);
-    const frames: TrapImageKey[] = ["trap4", "trap3", "trap2", "trap1"];
+  if (obstacle.phase === "closing") {
+    const progress = clamp(obstacle.phaseElapsedSeconds / OBSTACLE_CLOSE_SECONDS, 0, 0.999);
+    const frames: PinballTrapAssetKey[] = ["fire4", "fire3", "fire2", "fire1"];
 
     return frames[Math.floor(progress * frames.length)];
   }
 
-  return "trap1";
+  return "fire1";
 }
 
 function hasSameCandidateSet(
@@ -824,46 +1041,72 @@ function drawGoalSideBlockers(ctx: CanvasRenderingContext2D, opening: number) {
   ctx.restore();
 }
 
-function drawTrap(
+function drawObstacle(
   ctx: CanvasRenderingContext2D,
-  trap: TrapState,
-  assets: TrapImageAssets,
+  obstacle: ObstacleState,
+  assets: PinballTrapAssets,
 ) {
-  const image = assets[getTrapFrameKey(trap)];
+  const image = assets[getObstacleFrameKey(obstacle)];
 
   if (!image) {
     return;
   }
 
   ctx.save();
-  ctx.globalAlpha = trap.phase === "closed" ? 0.88 : 1;
+  ctx.globalAlpha = obstacle.phase === "closed" ? 0.88 : 1;
   ctx.shadowColor = "rgba(23, 33, 43, 0.24)";
   ctx.shadowBlur = 18;
   ctx.drawImage(
     image,
-    trap.x - TRAP_DRAW_SIZE / 2,
-    trap.y - TRAP_DRAW_SIZE / 2,
-    TRAP_DRAW_SIZE,
-    TRAP_DRAW_SIZE,
+    obstacle.x - obstacle.drawSize / 2,
+    obstacle.y - obstacle.drawSize / 2,
+    obstacle.drawSize,
+    obstacle.drawSize,
   );
   ctx.restore();
 }
 
-function drawTrapHitEffects(
+function drawMissileShotEffects(
   ctx: CanvasRenderingContext2D,
-  effects: readonly TrapHitEffect[],
-  assets: TrapImageAssets,
+  effects: readonly MissileShotEffect[],
+  assets: PinballTrapAssets,
 ) {
-  const image = assets.trap7;
+  const image = assets.missile5;
+
+  if (!image) {
+    return;
+  }
 
   for (const effect of effects) {
-    const progress = clamp(effect.elapsedSeconds / TRAP_HIT_EFFECT_SECONDS, 0, 1);
+    const progress = clamp(effect.elapsedSeconds / MISSILE_SHOT_EFFECT_SECONDS, 0, 1);
+    const x = effect.fromX + (effect.toX - effect.fromX) * progress;
+    const y = effect.fromY + (effect.toY - effect.fromY) * progress;
+    const angle = Math.atan2(effect.toY - effect.fromY, effect.toX - effect.fromX);
+    const size = 70;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.PI);
+    ctx.globalAlpha = 1 - progress * 0.25;
+    ctx.drawImage(image, -size / 2, -size / 2, size, size);
+    ctx.restore();
+  }
+}
+
+function drawObstacleHitEffects(
+  ctx: CanvasRenderingContext2D,
+  effects: readonly ObstacleHitEffect[],
+  assets: PinballTrapAssets,
+) {
+  for (const effect of effects) {
+    const image = assets[getHitEffectAssetKey(effect.kind)];
 
     if (!image) {
       continue;
     }
 
-    const size = TRAP_HIT_EFFECT_SIZE * (0.82 + progress * 0.42);
+    const progress = clamp(effect.elapsedSeconds / TRAP_HIT_EFFECT_SECONDS, 0, 1);
+    const size = getHitEffectSize(effect.kind) * (0.82 + progress * 0.42);
 
     ctx.save();
     ctx.globalAlpha = 1 - progress;
@@ -885,6 +1128,7 @@ export function PinballBoard({
   isRunning,
   onFinishOrder,
   onFollowCandidateFinished,
+  onLiveRankingChange,
   onManualCamera,
   onProgressOrder,
   onSelectCandidate,
@@ -896,9 +1140,10 @@ export function PinballBoard({
   const footerRef = useRef<HTMLParagraphElement | null>(null);
   const ballsRef = useRef<BallState[]>([]);
   const tiltBarsRef = useRef<TiltBar[]>([]);
-  const trapRef = useRef<TrapState | null>(null);
-  const trapImagesRef = useRef<TrapImageAssets>({});
-  const trapHitEffectsRef = useRef<TrapHitEffect[]>([]);
+  const obstaclesRef = useRef<ObstacleState[]>([]);
+  const trapAssetsRef = useRef<PinballTrapAssets>({});
+  const obstacleHitEffectsRef = useRef<ObstacleHitEffect[]>([]);
+  const missileShotEffectsRef = useRef<MissileShotEffect[]>([]);
   const finishOrderRef = useRef<PinballFinishEntry[]>([]);
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number | null>(null);
@@ -914,6 +1159,9 @@ export function PinballBoard({
   const followCandidateFinishedCallbackRef = useRef(onFollowCandidateFinished);
   const manualCameraCallbackRef = useRef(onManualCamera);
   const progressCallbackRef = useRef(onProgressOrder);
+  const liveRankingCallbackRef = useRef(onLiveRankingChange);
+  const lastLiveRankingSignatureRef = useRef("");
+  const lastLiveRankingEmitMsRef = useRef(0);
   const followCandidateIdRef = useRef(followCandidateId);
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: 760 });
 
@@ -938,6 +1186,10 @@ export function PinballBoard({
   }, [onProgressOrder]);
 
   useEffect(() => {
+    liveRankingCallbackRef.current = onLiveRankingChange;
+  }, [onLiveRankingChange]);
+
+  useEffect(() => {
     followCandidateIdRef.current = followCandidateId;
     if (typeof followCandidateId === "number") {
       autoCameraRef.current = true;
@@ -947,7 +1199,7 @@ export function PinballBoard({
   useEffect(() => {
     let isActive = true;
 
-    for (const imageKey of TRAP_IMAGE_KEYS) {
+    for (const imageKey of PINBALL_TRAP_ASSET_KEYS) {
       const image = new Image();
 
       image.onload = () => {
@@ -955,16 +1207,16 @@ export function PinballBoard({
           return;
         }
 
-        trapImagesRef.current = { ...trapImagesRef.current, [imageKey]: image };
+        trapAssetsRef.current = { ...trapAssetsRef.current, [imageKey]: image };
       };
       image.onerror = () => {
         if (!isActive) {
           return;
         }
 
-        trapImagesRef.current = { ...trapImagesRef.current, [imageKey]: null };
+        trapAssetsRef.current = { ...trapAssetsRef.current, [imageKey]: null };
       };
-      image.src = getTrapImageUrl(imageKey);
+      image.src = getPinballTrapAssetUrl(imageKey);
     }
 
     return () => {
@@ -1035,14 +1287,18 @@ export function PinballBoard({
     previousOrderIdsRef.current = nextLayout.orderIds;
     lastShuffleSeedRef.current = shuffleSeed;
     tiltBarsRef.current = createTiltBars();
-    trapRef.current = createTrapState(runId, shuffleSeed, candidates.length);
-    trapHitEffectsRef.current = [];
+    obstaclesRef.current = createObstacleStates(runId, shuffleSeed, candidates.length);
+    obstacleHitEffectsRef.current = [];
+    missileShotEffectsRef.current = [];
     finishOrderRef.current = [];
     cameraYRef.current = 0;
     autoCameraRef.current = true;
     lastFrameRef.current = null;
     startedAtRef.current = null;
+    lastLiveRankingSignatureRef.current = "";
+    lastLiveRankingEmitMsRef.current = 0;
     progressCallbackRef.current?.([]);
+    emitLiveRanking(0, true);
 
     function tick(now: number) {
       const canvas = canvasRef.current;
@@ -1084,24 +1340,119 @@ export function PinballBoard({
     // The animation loop is driven by refs so camera changes do not restart physics.
   }, [candidates, runId, shuffleSeed]);
 
-  function setTrapPhase(trap: TrapState, phase: TrapVisualState) {
-    if (trap.phase === phase) {
+  function buildLiveRanking(): PinballLiveRankEntry[] {
+    const finishedEntries: PinballLiveRankEntry[] = finishOrderRef.current.map(
+      (entry) => ({
+        candidate: entry.candidate,
+        elapsedMs: entry.elapsedMs,
+        isFinished: true,
+        rank: entry.rank,
+      }),
+    );
+    const finishedCandidateIds = new Set(
+      finishedEntries.map((entry) => entry.candidate.id),
+    );
+    const activeEntries: PinballLiveRankEntry[] = ballsRef.current
+      .filter(
+        (ball) =>
+          ball.finishElapsedMs === null &&
+          !finishedCandidateIds.has(ball.candidate.id),
+      )
+      .sort((left, right) => {
+        const yDelta = right.y - left.y;
+
+        if (Math.abs(yDelta) > 0.001) {
+          return yDelta;
+        }
+
+        return left.candidate.id - right.candidate.id;
+      })
+      .map((ball, index) => ({
+        candidate: ball.candidate,
+        elapsedMs: null,
+        isFinished: false,
+        rank: finishedEntries.length + index + 1,
+      }));
+
+    return [...finishedEntries, ...activeEntries];
+  }
+
+  function getLiveRankingSignature(ranking: readonly PinballLiveRankEntry[]) {
+    return ranking
+      .map((entry) =>
+        `${entry.candidate.id}:${entry.rank}:${entry.isFinished ? "F" : "R"}`,
+      )
+      .join("|");
+  }
+
+  function emitLiveRanking(elapsedMs: number, force = false) {
+    const callback = liveRankingCallbackRef.current;
+
+    if (!callback) {
       return;
     }
 
-    trap.phase = phase;
-    trap.phaseElapsedSeconds = 0;
+    const ranking = buildLiveRanking();
+    const signature = getLiveRankingSignature(ranking);
+    const shouldEmit =
+      force ||
+      signature !== lastLiveRankingSignatureRef.current ||
+      elapsedMs - lastLiveRankingEmitMsRef.current >= 120;
+
+    if (!shouldEmit) {
+      return;
+    }
+
+    lastLiveRankingSignatureRef.current = signature;
+    lastLiveRankingEmitMsRef.current = elapsedMs;
+    callback(ranking);
   }
 
-  function isBallInTrapRange(trap: TrapState, ball: BallState) {
+  function stopObstacleAttacks() {
+    obstacleHitEffectsRef.current = [];
+    missileShotEffectsRef.current = [];
+
+    for (const obstacle of obstaclesRef.current) {
+      obstacle.targetCandidateId = null;
+      obstacle.cooldownSeconds = OBSTACLE_FIRST_SHOT_DELAY_SECONDS;
+      obstacle.firingSeconds = 0;
+      setObstaclePhase(obstacle, "closed");
+    }
+  }
+
+  function setObstaclePhase(obstacle: ObstacleState, phase: ObstacleVisualState) {
+    if (obstacle.phase === phase) {
+      return;
+    }
+
+    obstacle.phase = phase;
+    obstacle.phaseElapsedSeconds = 0;
+  }
+
+  function isSingleObstacleTarget(obstacle: ObstacleState, ball: BallState) {
+    if (ball.finishElapsedMs !== null) {
+      return false;
+    }
+
+    const dx = ball.x - obstacle.x;
+    const aboveDistance = obstacle.y - ball.y;
+
     return (
-      ball.finishElapsedMs === null &&
-      ball.y <= trap.y + TRAP_TARGET_LOWER_MARGIN &&
-      Math.hypot(ball.x - trap.x, ball.y - trap.y) <= TRAP_RANGE
+      aboveDistance >= TRAP_TARGET_MIN_ABOVE &&
+      Math.abs(dx) <= obstacle.halfWidth &&
+      Math.hypot(dx, aboveDistance) <= obstacle.range
     );
   }
 
-  function findNearestTrapTarget(trap: TrapState) {
+  function isFireObstacleTarget(obstacle: ObstacleState, ball: BallState) {
+    return (
+      ball.finishElapsedMs === null &&
+      ball.y <= obstacle.y + FIRE_TARGET_LOWER_MARGIN &&
+      Math.hypot(ball.x - obstacle.x, ball.y - obstacle.y) <= obstacle.range
+    );
+  }
+
+  function findNearestObstacleTarget(obstacle: ObstacleState) {
     let nearestBall: BallState | null = null;
     let nearestDistance = Number.POSITIVE_INFINITY;
 
@@ -1110,12 +1461,12 @@ export function PinballBoard({
         continue;
       }
 
-      if (!isBallInTrapRange(trap, ball)) {
+      if (!isSingleObstacleTarget(obstacle, ball)) {
         continue;
       }
 
-      const distance = Math.hypot(ball.x - trap.x, ball.y - trap.y);
-      if (distance <= TRAP_RANGE && distance < nearestDistance) {
+      const distance = Math.hypot(ball.x - obstacle.x, ball.y - obstacle.y);
+      if (distance <= obstacle.range && distance < nearestDistance) {
         nearestBall = ball;
         nearestDistance = distance;
       }
@@ -1124,111 +1475,194 @@ export function PinballBoard({
     return nearestBall;
   }
 
-  function getCurrentTrapTarget(trap: TrapState) {
-    if (trap.targetCandidateId === null) {
+  function getCurrentObstacleTarget(obstacle: ObstacleState) {
+    if (obstacle.targetCandidateId === null) {
       return null;
     }
 
     const currentTarget = ballsRef.current.find(
-      (ball) => ball.candidate.id === trap.targetCandidateId,
+      (ball) => ball.candidate.id === obstacle.targetCandidateId,
     );
 
-    return currentTarget && isBallInTrapRange(trap, currentTarget)
+    return currentTarget && isSingleObstacleTarget(obstacle, currentTarget)
       ? currentTarget
       : null;
   }
 
-  function fireTrapAtBall(trap: TrapState, ball: BallState) {
-    const dx = ball.x - trap.x;
-    const dy = ball.y - trap.y;
-    const distance = Math.hypot(dx, dy);
-    const rawNx = distance > 1 ? dx / distance : Math.cos(trap.angle);
-    const rawNy = distance > 1 ? dy / distance : Math.sin(trap.angle);
-    const pushNy = Math.min(rawNy, 0);
-    const pushLength = Math.hypot(rawNx, pushNy);
-    const nx =
-      pushLength > 0.05
-        ? rawNx / pushLength
-        : ball.x < trap.x
-          ? -1
-          : 1;
-    const ny = pushLength > 0.05 ? pushNy / pushLength : 0;
+  function findFireObstacleTargets(obstacle: ObstacleState) {
+    return ballsRef.current.filter((ball) => isFireObstacleTarget(obstacle, ball));
+  }
 
-    ball.vx = clamp(ball.vx + nx * TRAP_PUSH_FORCE, -1120, 1120);
-    ball.vy = clamp(ball.vy + ny * TRAP_PUSH_FORCE, -1120, 1120);
+  function launchBallUp(kind: ObstacleKind, ball: BallState) {
+    const pushForce = getObstaclePushForce(kind);
+
+    ball.vx = clamp(ball.vx * 0.9, -1120, 1120);
+    ball.vy = clamp(Math.min(ball.vy * 0.25, 0) - pushForce, -1120, 1120);
     ball.idleSeconds = 0;
-    trapHitEffectsRef.current = [
-      ...trapHitEffectsRef.current,
-      { elapsedSeconds: 0, x: ball.x, y: ball.y },
+  }
+
+  function addObstacleHitEffect(kind: ObstacleKind, ball: BallState) {
+    obstacleHitEffectsRef.current = [
+      ...obstacleHitEffectsRef.current,
+      { elapsedSeconds: 0, kind, x: ball.x, y: ball.y },
     ];
   }
 
-  function updateTrap(dt: number) {
-    const trap = trapRef.current;
+  function fireSingleObstacle(obstacle: ObstacleState, ball: BallState) {
+    launchBallUp(obstacle.kind, ball);
+    addObstacleHitEffect(obstacle.kind, ball);
 
-    if (!trap) {
+    if (obstacle.kind === "missile") {
+      missileShotEffectsRef.current = [
+        ...missileShotEffectsRef.current,
+        {
+          elapsedSeconds: 0,
+          fromX: obstacle.x,
+          fromY: obstacle.y,
+          toX: ball.x,
+          toY: ball.y,
+        },
+      ];
+    }
+  }
+
+  function fireAreaObstacle(obstacle: ObstacleState, targets: BallState[]) {
+    for (const ball of targets) {
+      launchBallUp(obstacle.kind, ball);
+      addObstacleHitEffect(obstacle.kind, ball);
+    }
+  }
+
+  function closeIdleObstacle(obstacle: ObstacleState) {
+    obstacle.cooldownSeconds = OBSTACLE_FIRST_SHOT_DELAY_SECONDS;
+    obstacle.firingSeconds = 0;
+
+    if (
+      obstacle.phase === "open" ||
+      obstacle.phase === "opening" ||
+      obstacle.phase === "firing"
+    ) {
+      setObstaclePhase(obstacle, "closing");
+    }
+
+    if (
+      obstacle.phase === "closing" &&
+      obstacle.phaseElapsedSeconds >= OBSTACLE_CLOSE_SECONDS
+    ) {
+      setObstaclePhase(obstacle, "closed");
+    }
+  }
+
+  function readyObstacleForAttack(obstacle: ObstacleState) {
+    if (obstacle.phase === "closed" || obstacle.phase === "closing") {
+      setObstaclePhase(obstacle, "opening");
+      obstacle.cooldownSeconds = OBSTACLE_FIRST_SHOT_DELAY_SECONDS;
+      return false;
+    }
+
+    if (
+      obstacle.phase === "opening" &&
+      obstacle.phaseElapsedSeconds >= OBSTACLE_OPEN_SECONDS
+    ) {
+      setObstaclePhase(obstacle, "open");
+      obstacle.cooldownSeconds = Math.max(
+        obstacle.cooldownSeconds,
+        OBSTACLE_FIRST_SHOT_DELAY_SECONDS,
+      );
+    }
+
+    if (obstacle.phase === "firing" && obstacle.firingSeconds <= 0) {
+      setObstaclePhase(obstacle, "open");
+    }
+
+    return obstacle.phase === "open" && obstacle.cooldownSeconds <= 0;
+  }
+
+  function updateSingleTargetObstacle(obstacle: ObstacleState) {
+    const currentTarget = getCurrentObstacleTarget(obstacle);
+
+    if (!currentTarget) {
+      obstacle.targetCandidateId = null;
+    }
+
+    const target = currentTarget ?? findNearestObstacleTarget(obstacle);
+    obstacle.targetCandidateId = target?.candidate.id ?? null;
+
+    if (!target) {
+      closeIdleObstacle(obstacle);
       return;
     }
 
-    trap.phaseElapsedSeconds += dt;
-    trap.cooldownSeconds = Math.max(0, trap.cooldownSeconds - dt);
-    trap.firingSeconds = Math.max(0, trap.firingSeconds - dt);
-    trapHitEffectsRef.current = trapHitEffectsRef.current
+    obstacle.angle = Math.atan2(target.y - obstacle.y, target.x - obstacle.x);
+
+    if (!readyObstacleForAttack(obstacle)) {
+      return;
+    }
+
+    fireSingleObstacle(obstacle, target);
+    setObstaclePhase(obstacle, "firing");
+    obstacle.firingSeconds = OBSTACLE_FIRE_SECONDS;
+    obstacle.cooldownSeconds = getObstacleCooldownSeconds(obstacle.kind);
+  }
+
+  function updateAreaObstacle(obstacle: ObstacleState) {
+    obstacle.targetCandidateId = null;
+    const targets = findFireObstacleTargets(obstacle);
+
+    if (targets.length === 0) {
+      closeIdleObstacle(obstacle);
+      return;
+    }
+
+    if (!readyObstacleForAttack(obstacle)) {
+      return;
+    }
+
+    fireAreaObstacle(obstacle, targets);
+    setObstaclePhase(obstacle, "firing");
+    obstacle.firingSeconds = OBSTACLE_FIRE_SECONDS;
+    obstacle.cooldownSeconds = getObstacleCooldownSeconds(obstacle.kind);
+  }
+
+  function updateObstacle(dt: number, obstacle: ObstacleState) {
+    obstacle.phaseElapsedSeconds += dt;
+    obstacle.cooldownSeconds = Math.max(0, obstacle.cooldownSeconds - dt);
+    obstacle.firingSeconds = Math.max(0, obstacle.firingSeconds - dt);
+
+    if (obstacle.kind === "fire") {
+      updateAreaObstacle(obstacle);
+      return;
+    }
+
+    updateSingleTargetObstacle(obstacle);
+  }
+
+  function updateObstacles(dt: number) {
+    const activeBallCount = ballsRef.current.filter(
+      (ball) => ball.finishElapsedMs === null,
+    ).length;
+
+    if (activeBallCount <= 1) {
+      stopObstacleAttacks();
+      return;
+    }
+
+    obstacleHitEffectsRef.current = obstacleHitEffectsRef.current
       .map((effect) => ({
         ...effect,
         elapsedSeconds: effect.elapsedSeconds + dt,
       }))
       .filter((effect) => effect.elapsedSeconds < TRAP_HIT_EFFECT_SECONDS);
 
-    const target = getCurrentTrapTarget(trap) ?? findNearestTrapTarget(trap);
-    trap.targetCandidateId = target?.candidate.id ?? null;
+    missileShotEffectsRef.current = missileShotEffectsRef.current
+      .map((effect) => ({
+        ...effect,
+        elapsedSeconds: effect.elapsedSeconds + dt,
+      }))
+      .filter((effect) => effect.elapsedSeconds < MISSILE_SHOT_EFFECT_SECONDS);
 
-    if (!target) {
-      trap.cooldownSeconds = TRAP_FIRST_SHOT_DELAY_SECONDS;
-      trap.firingSeconds = 0;
-
-      if (trap.phase === "open" || trap.phase === "opening" || trap.phase === "firing") {
-        setTrapPhase(trap, "closing");
-      }
-
-      if (
-        trap.phase === "closing" &&
-        trap.phaseElapsedSeconds >= TRAP_CLOSE_SECONDS
-      ) {
-        setTrapPhase(trap, "closed");
-      }
-
-      return;
-    }
-
-    trap.angle = Math.atan2(target.y - trap.y, target.x - trap.x);
-
-    if (trap.phase === "closed" || trap.phase === "closing") {
-      setTrapPhase(trap, "opening");
-      trap.cooldownSeconds = TRAP_FIRST_SHOT_DELAY_SECONDS;
-      return;
-    }
-
-    if (
-      trap.phase === "opening" &&
-      trap.phaseElapsedSeconds >= TRAP_OPEN_SECONDS
-    ) {
-      setTrapPhase(trap, "open");
-      trap.cooldownSeconds = Math.max(
-        trap.cooldownSeconds,
-        TRAP_FIRST_SHOT_DELAY_SECONDS,
-      );
-    }
-
-    if (trap.phase === "firing" && trap.firingSeconds <= 0) {
-      setTrapPhase(trap, "open");
-    }
-
-    if (trap.phase === "open" && trap.cooldownSeconds <= 0) {
-      fireTrapAtBall(trap, target);
-      setTrapPhase(trap, "firing");
-      trap.firingSeconds = TRAP_FIRE_SECONDS;
-      trap.cooldownSeconds = TRAP_FIRE_COOLDOWN_SECONDS;
+    for (const obstacle of obstaclesRef.current) {
+      updateObstacle(dt, obstacle);
     }
   }
 
@@ -1370,7 +1804,8 @@ export function PinballBoard({
       }
     }
 
-    updateTrap(dt);
+    updateObstacles(dt);
+    emitLiveRanking(elapsedMs);
   }
 
   function updateCamera(dt: number) {
@@ -1496,8 +1931,8 @@ export function PinballBoard({
       drawSegment(ctx, segment);
     }
 
-    if (trapRef.current) {
-      drawTrap(ctx, trapRef.current, trapImagesRef.current);
+    for (const obstacle of obstaclesRef.current) {
+      drawObstacle(ctx, obstacle, trapAssetsRef.current);
     }
 
     ctx.save();
@@ -1545,7 +1980,8 @@ export function PinballBoard({
       ctx.restore();
     }
 
-    drawTrapHitEffects(ctx, trapHitEffectsRef.current, trapImagesRef.current);
+    drawMissileShotEffects(ctx, missileShotEffectsRef.current, trapAssetsRef.current);
+    drawObstacleHitEffects(ctx, obstacleHitEffectsRef.current, trapAssetsRef.current);
 
     ctx.restore();
   }

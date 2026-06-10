@@ -207,10 +207,10 @@ const TRAP_DRAW_SIZE = 150;
 const MISSILE_RANGE = 300;
 const MISSILE_DRAW_SIZE = 136;
 const FIRE_RANGE = 190;
-const FIRE_DRAW_SIZE = 132;
+const FIRE_DRAW_SIZE = 150;
 const TRAP_HIT_EFFECT_SIZE = 92;
 const MISSILE_HIT_EFFECT_SIZE = 112;
-const FIRE_HIT_EFFECT_SIZE = 112;
+const FIRE_HIT_EFFECT_SIZE = 168;
 const TRAP_FIRE_COOLDOWN_SECONDS = 2.1;
 const TRAP_PUSH_FORCE = 380;
 const MISSILE_FIRE_COOLDOWN_SECONDS = 1.85;
@@ -221,12 +221,14 @@ const MISSILE_TRAP_OFFSET_X = 240;
 const OBSTACLE_OPEN_SECONDS = 0.24;
 const OBSTACLE_CLOSE_SECONDS = 0.2;
 const OBSTACLE_FIRE_SECONDS = 0.1;
+const FIRE_OBSTACLE_FIRE_SECONDS = 0.22;
 const OBSTACLE_FIRST_SHOT_DELAY_SECONDS = 0.14;
 const TRAP_TARGET_MIN_ABOVE = 36;
 const TRAP_TARGET_HALF_WIDTH = 115;
 const MISSILE_TARGET_HALF_WIDTH = 120;
 const FIRE_TARGET_LOWER_MARGIN = 12;
 const TRAP_HIT_EFFECT_SECONDS = 0.34;
+const FIRE_HIT_EFFECT_SECONDS = 0.72;
 const MISSILE_SHOT_EFFECT_SECONDS = 0.22;
 const GOAL_SIDE_BLOCKER_TOP = FINISH_Y - 78;
 const GOAL_SIDE_BLOCKER_BOTTOM = FINISH_Y + 150;
@@ -486,6 +488,10 @@ function getObstaclePushForce(kind: ObstacleKind) {
   return TRAP_PUSH_FORCE;
 }
 
+function getObstacleFireSeconds(kind: ObstacleKind) {
+  return kind === "fire" ? FIRE_OBSTACLE_FIRE_SECONDS : OBSTACLE_FIRE_SECONDS;
+}
+
 function getHitEffectSize(kind: ObstacleKind) {
   if (kind === "missile") {
     return MISSILE_HIT_EFFECT_SIZE;
@@ -496,6 +502,10 @@ function getHitEffectSize(kind: ObstacleKind) {
   }
 
   return TRAP_HIT_EFFECT_SIZE;
+}
+
+function getHitEffectSeconds(kind: ObstacleKind) {
+  return kind === "fire" ? FIRE_HIT_EFFECT_SECONDS : TRAP_HIT_EFFECT_SECONDS;
 }
 
 function getHitEffectAssetKey(kind: ObstacleKind): PinballTrapAssetKey {
@@ -1105,11 +1115,23 @@ function drawObstacleHitEffects(
       continue;
     }
 
-    const progress = clamp(effect.elapsedSeconds / TRAP_HIT_EFFECT_SECONDS, 0, 1);
-    const size = getHitEffectSize(effect.kind) * (0.82 + progress * 0.42);
+    const progress = clamp(
+      effect.elapsedSeconds / getHitEffectSeconds(effect.kind),
+      0,
+      1,
+    );
+    const isFireEffect = effect.kind === "fire";
+    const size =
+      getHitEffectSize(effect.kind) *
+      (isFireEffect ? 1 + progress * 0.7 : 0.82 + progress * 0.42);
+    const alpha = isFireEffect ? 1 - Math.pow(progress, 1.7) : 1 - progress;
 
     ctx.save();
-    ctx.globalAlpha = 1 - progress;
+    if (isFireEffect) {
+      ctx.shadowColor = "rgba(255, 126, 38, 0.58)";
+      ctx.shadowBlur = 24;
+    }
+    ctx.globalAlpha = alpha;
     ctx.drawImage(
       image,
       effect.x - size / 2,
@@ -1601,7 +1623,7 @@ export function PinballBoard({
 
     fireSingleObstacle(obstacle, target);
     setObstaclePhase(obstacle, "firing");
-    obstacle.firingSeconds = OBSTACLE_FIRE_SECONDS;
+    obstacle.firingSeconds = getObstacleFireSeconds(obstacle.kind);
     obstacle.cooldownSeconds = getObstacleCooldownSeconds(obstacle.kind);
   }
 
@@ -1620,7 +1642,7 @@ export function PinballBoard({
 
     fireAreaObstacle(obstacle, targets);
     setObstaclePhase(obstacle, "firing");
-    obstacle.firingSeconds = OBSTACLE_FIRE_SECONDS;
+    obstacle.firingSeconds = getObstacleFireSeconds(obstacle.kind);
     obstacle.cooldownSeconds = getObstacleCooldownSeconds(obstacle.kind);
   }
 
@@ -1652,7 +1674,7 @@ export function PinballBoard({
         ...effect,
         elapsedSeconds: effect.elapsedSeconds + dt,
       }))
-      .filter((effect) => effect.elapsedSeconds < TRAP_HIT_EFFECT_SECONDS);
+      .filter((effect) => effect.elapsedSeconds < getHitEffectSeconds(effect.kind));
 
     missileShotEffectsRef.current = missileShotEffectsRef.current
       .map((effect) => ({

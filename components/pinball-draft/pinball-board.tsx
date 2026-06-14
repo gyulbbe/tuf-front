@@ -4,6 +4,7 @@
 
 import {
   type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
   useEffect,
   useRef,
   useState,
@@ -65,6 +66,11 @@ type Segment = {
   tone?: "wall" | "guard" | "gate";
 };
 
+type TrackPoint = {
+  x: number;
+  y: number;
+};
+
 type BlockerRect = {
   height: number;
   width: number;
@@ -92,6 +98,7 @@ type Bumper = {
 type DragState = {
   moved: boolean;
   pointerId: number;
+  startCameraX: number;
   startCameraY: number;
   startClientX: number;
   startClientY: number;
@@ -162,13 +169,16 @@ type MissileShotEffect = {
   toY: number;
 };
 
-const WORLD_WIDTH = 900;
-const WORLD_HEIGHT = 2200;
-const FINISH_Y = 2040;
+const WORLD_WIDTH = 1100;
+const WORLD_HEIGHT = 2860;
+const FINISH_Y = 2700;
 const BALL_RADIUS = 13;
-const GOAL_BAR_CENTER = { x: WORLD_WIDTH / 2, y: 1690 };
-const GOAL_BAR_LENGTH = 340;
+const GOAL_BAR_CENTER = { x: WORLD_WIDTH / 2, y: FINISH_Y - 350 };
+const GOAL_BAR_LENGTH = 400;
 const GOAL_BAR_SPEED = 2.35;
+const MIN_ZOOM = 0.72;
+const MAX_ZOOM = 1.85;
+const WHEEL_ZOOM_SENSITIVITY = 0.0012;
 const COLORS = [
   "#e65d3f",
   "#1f8f7a",
@@ -217,7 +227,7 @@ const MISSILE_FIRE_COOLDOWN_SECONDS = 1.85;
 const MISSILE_PUSH_FORCE = 410;
 const FIRE_FIRE_COOLDOWN_SECONDS = 2;
 const FIRE_PUSH_FORCE = 340;
-const MISSILE_TRAP_OFFSET_X = 240;
+const MISSILE_TRAP_OFFSET_X = 280;
 const OBSTACLE_OPEN_SECONDS = 0.24;
 const OBSTACLE_CLOSE_SECONDS = 0.2;
 const OBSTACLE_FIRE_SECONDS = 0.1;
@@ -232,42 +242,104 @@ const FIRE_HIT_EFFECT_SECONDS = 0.72;
 const MISSILE_SHOT_EFFECT_SECONDS = 0.22;
 const GOAL_SIDE_BLOCKER_TOP = FINISH_Y - 78;
 const GOAL_SIDE_BLOCKER_BOTTOM = FINISH_Y + 150;
+const TRACK_HALF_WIDTH = 300;
+
+const TRACK_CENTERLINE_POINTS: TrackPoint[] = [
+  { x: WORLD_WIDTH / 2, y: 0 },
+  { x: WORLD_WIDTH / 2, y: 240 },
+  { x: WORLD_WIDTH / 2 - 225, y: 520 },
+  { x: WORLD_WIDTH / 2 - 225, y: 780 },
+  { x: WORLD_WIDTH / 2 + 225, y: 1160 },
+  { x: WORLD_WIDTH / 2 + 225, y: 1420 },
+  { x: WORLD_WIDTH / 2 - 225, y: 1760 },
+  { x: WORLD_WIDTH / 2 - 225, y: 2050 },
+  { x: WORLD_WIDTH / 2 + 225, y: 2320 },
+  { x: WORLD_WIDTH / 2 + 225, y: 2500 },
+  { x: WORLD_WIDTH / 2, y: 2680 },
+  { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT },
+];
+
+const LEFT_WALL_POINTS = offsetTrackPoints(TRACK_CENTERLINE_POINTS, -TRACK_HALF_WIDTH);
+const RIGHT_WALL_POINTS = offsetTrackPoints(TRACK_CENTERLINE_POINTS, TRACK_HALF_WIDTH);
+
+function offsetTrackPoints(points: readonly TrackPoint[], offsetX: number) {
+  return points.map((point) => ({ x: point.x + offsetX, y: point.y }));
+}
+
+function createWallSegments(points: readonly TrackPoint[]): Segment[] {
+  return points.slice(0, -1).map((point, index) => {
+    const nextPoint = points[index + 1];
+
+    return {
+      ax: point.x,
+      ay: point.y,
+      bx: nextPoint.x,
+      by: nextPoint.y,
+      tone: "wall" as const,
+    };
+  });
+}
+
+function createFinishApproachSegments(): Segment[] {
+  const topY = FINISH_Y - 250;
+  const bottomY = FINISH_Y - 60;
+  const topBounds = getTrackBoundsAtY(topY);
+
+  return [
+    {
+      ax: topBounds.left,
+      ay: topY,
+      bx: WORLD_WIDTH / 2 - 120,
+      by: bottomY,
+      tone: "gate",
+    },
+    {
+      ax: topBounds.right,
+      ay: topY,
+      bx: WORLD_WIDTH / 2 + 120,
+      by: bottomY,
+      tone: "gate",
+    },
+  ];
+}
 
 const STATIC_SEGMENTS: Segment[] = [
-  { ax: 34, ay: 0, bx: 34, by: WORLD_HEIGHT, tone: "wall" },
-  { ax: WORLD_WIDTH - 34, ay: 0, bx: WORLD_WIDTH - 34, by: WORLD_HEIGHT, tone: "wall" },
-  { ax: 34, ay: 1790, bx: 350, by: 1980, tone: "gate" },
-  { ax: WORLD_WIDTH - 34, ay: 1790, bx: 550, by: 1980, tone: "gate" },
+  ...createWallSegments(LEFT_WALL_POINTS),
+  ...createWallSegments(RIGHT_WALL_POINTS),
+  ...createFinishApproachSegments(),
 ];
 
 const TILT_BAR_DEFINITIONS = [
-  { ax: 80, ay: 260, bx: 270, by: 380 },
-  { ax: 820, ay: 260, bx: 630, by: 380 },
-  { ax: 120, ay: 620, bx: 330, by: 740 },
-  { ax: 780, ay: 620, bx: 570, by: 740 },
-  { ax: 90, ay: 1000, bx: 280, by: 1130 },
-  { ax: 810, ay: 1000, bx: 620, by: 1130 },
+  { ax: 320, ay: 290, bx: 560, by: 415 },
+  { ax: 110, ay: 620, bx: 350, by: 750 },
+  { ax: 780, ay: 940, bx: 535, by: 1080 },
+  { ax: 960, ay: 1280, bx: 700, by: 1410 },
+  { ax: 130, ay: 1650, bx: 380, by: 1800 },
 ];
 
 const BUMPERS: Bumper[] = [
-  { x: 450, y: 510, radius: 62, kind: "round" },
-  { x: 230, y: 850, radius: 54, kind: "half-right" },
-  { x: 670, y: 850, radius: 54, kind: "half-left" },
-  { x: 450, y: 1210, radius: 70, kind: "round" },
-  { x: 250, y: 1470, radius: 58, kind: "half-right" },
-  { x: 650, y: 1470, radius: 58, kind: "half-left" },
+  { x: 380, y: 510, radius: 58, kind: "round" },
+  { x: 220, y: 780, radius: 46, kind: "half-right", bounceMultiplier: 0.92 },
+  { x: 780, y: 1160, radius: 46, kind: "half-left", bounceMultiplier: 0.92 },
+  { x: 670, y: 1450, radius: 66, kind: "round" },
+  { x: 260, y: 1840, radius: 48, kind: "half-right", bounceMultiplier: 0.9 },
 ];
 
 function buildPins() {
   const pins: Array<{ x: number; y: number; radius: number }> = [];
 
-  for (let row = 0; row < 12; row += 1) {
+  for (let row = 0; row < 18; row += 1) {
     const y = 220 + row * 115;
     const isUpperRow = row < 4;
     const spacing = isUpperRow ? 120 : 100;
-    const baseX = isUpperRow ? 150 : 135;
-    const endX = isUpperRow ? 750 : 765;
+    const bounds = getTrackBoundsAtY(y);
+    const baseX = bounds.left + (isUpperRow ? 110 : 90);
+    const endX = bounds.right - (isUpperRow ? 110 : 90);
     const offset = row % 2 === 0 ? 0 : spacing / 2;
+
+    if (baseX > endX) {
+      continue;
+    }
 
     for (let x = baseX + offset; x <= endX; x += spacing) {
       const nearLargeBumper = BUMPERS.some((bumper) => {
@@ -291,6 +363,43 @@ const PINS = buildPins();
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getBoardScale(size: { width: number; height: number }, zoom: number) {
+  return (size.width / WORLD_WIDTH) * zoom;
+}
+
+function getViewportWorldSize(size: { width: number; height: number }, zoom: number) {
+  const scale = getBoardScale(size, zoom);
+
+  return {
+    height: size.height / scale,
+    width: size.width / scale,
+  };
+}
+
+function clampCameraX(
+  value: number,
+  size: { width: number; height: number },
+  zoom: number,
+) {
+  const viewportWorldWidth = getViewportWorldSize(size, zoom).width;
+
+  if (viewportWorldWidth >= WORLD_WIDTH) {
+    return (WORLD_WIDTH - viewportWorldWidth) / 2;
+  }
+
+  return clamp(value, 0, WORLD_WIDTH - viewportWorldWidth);
+}
+
+function clampCameraY(
+  value: number,
+  size: { width: number; height: number },
+  zoom: number,
+) {
+  const viewportWorldHeight = getViewportWorldSize(size, zoom).height;
+
+  return clamp(value, 0, Math.max(WORLD_HEIGHT - viewportWorldHeight, 0));
 }
 
 function pickColor(index: number) {
@@ -335,10 +444,11 @@ function getGateOpening(timeSeconds: number) {
 function buildGateSegments(opening: number): Segment[] {
   const leftEdge = WORLD_WIDTH / 2 - opening / 2;
   const rightEdge = WORLD_WIDTH / 2 + opening / 2;
+  const trackBounds = getTrackBoundsAtY(FINISH_Y);
 
   return [
-    { ax: 34, ay: FINISH_Y, bx: leftEdge, by: FINISH_Y, tone: "gate" },
-    { ax: rightEdge, ay: FINISH_Y, bx: WORLD_WIDTH - 34, by: FINISH_Y, tone: "gate" },
+    { ax: trackBounds.left, ay: FINISH_Y, bx: leftEdge, by: FINISH_Y, tone: "gate" },
+    { ax: rightEdge, ay: FINISH_Y, bx: trackBounds.right, by: FINISH_Y, tone: "gate" },
     { ax: leftEdge, ay: FINISH_Y, bx: leftEdge - 70, by: FINISH_Y - 95, tone: "gate" },
     { ax: rightEdge, ay: FINISH_Y, bx: rightEdge + 70, by: FINISH_Y - 95, tone: "gate" },
   ];
@@ -347,22 +457,107 @@ function buildGateSegments(opening: number): Segment[] {
 function buildGoalSideBlockers(opening: number): BlockerRect[] {
   const leftEdge = WORLD_WIDTH / 2 - opening / 2;
   const rightEdge = WORLD_WIDTH / 2 + opening / 2;
+  const trackBounds = getTrackBoundsAtY(FINISH_Y);
   const height = GOAL_SIDE_BLOCKER_BOTTOM - GOAL_SIDE_BLOCKER_TOP;
 
   return [
     {
       height,
-      width: Math.max(0, leftEdge - 34),
-      x: 34,
+      width: Math.max(0, leftEdge - trackBounds.left),
+      x: trackBounds.left,
       y: GOAL_SIDE_BLOCKER_TOP,
     },
     {
       height,
-      width: Math.max(0, WORLD_WIDTH - 34 - rightEdge),
+      width: Math.max(0, trackBounds.right - rightEdge),
       x: rightEdge,
       y: GOAL_SIDE_BLOCKER_TOP,
     },
   ];
+}
+
+function getPolylineXAtY(points: readonly TrackPoint[], y: number) {
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const minY = Math.min(start.y, end.y);
+    const maxY = Math.max(start.y, end.y);
+
+    if (y < minY || y > maxY) {
+      continue;
+    }
+
+    if (start.y === end.y) {
+      return Math.min(start.x, end.x);
+    }
+
+    const progress = (y - start.y) / (end.y - start.y);
+    return start.x + (end.x - start.x) * progress;
+  }
+
+  return points[points.length - 1].x;
+}
+
+function getTrackBoundsAtY(y: number) {
+  return {
+    left: getPolylineXAtY(LEFT_WALL_POINTS, y),
+    right: getPolylineXAtY(RIGHT_WALL_POINTS, y),
+  };
+}
+
+function insetLeftTrackPoints(inset: number) {
+  return LEFT_WALL_POINTS.map((point) => ({ x: point.x + inset, y: point.y }));
+}
+
+function insetRightTrackPoints(inset: number) {
+  return RIGHT_WALL_POINTS.map((point) => ({ x: point.x - inset, y: point.y }));
+}
+
+function traceTrackPolygon(
+  ctx: CanvasRenderingContext2D,
+  leftPoints: readonly TrackPoint[],
+  rightPoints: readonly TrackPoint[],
+) {
+  ctx.beginPath();
+  ctx.moveTo(leftPoints[0].x, leftPoints[0].y);
+
+  for (let index = 1; index < leftPoints.length; index += 1) {
+    ctx.lineTo(leftPoints[index].x, leftPoints[index].y);
+  }
+
+  for (let index = rightPoints.length - 1; index >= 0; index -= 1) {
+    ctx.lineTo(rightPoints[index].x, rightPoints[index].y);
+  }
+
+  ctx.closePath();
+}
+
+function drawTrackSurface(
+  ctx: CanvasRenderingContext2D,
+  cameraY: number,
+  viewportWorldHeight: number,
+) {
+  ctx.save();
+  traceTrackPolygon(ctx, LEFT_WALL_POINTS, RIGHT_WALL_POINTS);
+  ctx.fillStyle = "#f1d7a7";
+  ctx.fill();
+  ctx.restore();
+
+  const innerLeft = insetLeftTrackPoints(24);
+  const innerRight = insetRightTrackPoints(24);
+
+  ctx.save();
+  traceTrackPolygon(ctx, innerLeft, innerRight);
+  ctx.clip();
+  ctx.fillStyle = "#f8f1e4";
+  ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+  for (let y = Math.floor(cameraY / 120) * 120; y < cameraY + viewportWorldHeight + 120; y += 120) {
+    ctx.fillStyle = y % 240 === 0 ? "rgba(20,108,148,0.055)" : "rgba(211,111,59,0.045)";
+    ctx.fillRect(0, y, WORLD_WIDTH, 60);
+  }
+
+  ctx.restore();
 }
 
 function hashSeed(seed: number) {
@@ -420,7 +615,7 @@ function createObstacleStates(
   const random = createSeededRandom(
     runId * 1009 + shuffleSeed * 9176 + candidateCount * 37 + 0x516d,
   );
-  const trapX = WORLD_WIDTH / 2 - 72 + random() * 144;
+  const trapX = WORLD_WIDTH / 2 - 90 + random() * 180;
   const trapY = FINISH_Y - 120 - random() * 90;
   const jitter = () => random() * 20 - 10;
 
@@ -440,7 +635,7 @@ function createObstacleStates(
       id: "missile",
       kind: "missile",
       range: MISSILE_RANGE,
-      x: clamp(trapX + MISSILE_TRAP_OFFSET_X, 560, WORLD_WIDTH - 100),
+      x: clamp(trapX + MISSILE_TRAP_OFFSET_X, WORLD_WIDTH / 2 + 150, WORLD_WIDTH - 120),
       y: trapY + jitter(),
     }),
     createObstacleState({
@@ -449,7 +644,7 @@ function createObstacleStates(
       id: "fireLeft",
       kind: "fire",
       range: FIRE_RANGE,
-      x: WORLD_WIDTH / 2 - 170 + jitter(),
+      x: WORLD_WIDTH / 2 - 220 + jitter(),
       y: FINISH_Y - 145 + jitter(),
     }),
     createObstacleState({
@@ -458,7 +653,7 @@ function createObstacleStates(
       id: "fireRight",
       kind: "fire",
       range: FIRE_RANGE,
-      x: WORLD_WIDTH / 2 + 170 + jitter(),
+      x: WORLD_WIDTH / 2 + 220 + jitter(),
       y: FINISH_Y - 145 + jitter(),
     }),
   ];
@@ -734,8 +929,15 @@ function createBalls(
           shuffleSeed,
           shouldShuffleAgainstPreviousOrder ? previousOrderIds : null,
         );
-  const gap = Math.min(72, (WORLD_WIDTH - 180) / Math.max(candidates.length, 1));
-  const startX = WORLD_WIDTH / 2 - ((candidates.length - 1) * gap) / 2;
+  const startY = 70;
+  const startBounds = getTrackBoundsAtY(startY);
+  const startLeft = startBounds.left + 70;
+  const startRight = startBounds.right - 70;
+  const gap = Math.min(
+    72,
+    (startRight - startLeft) / Math.max(candidates.length - 1, 1),
+  );
+  const startX = (startLeft + startRight) / 2 - ((candidates.length - 1) * gap) / 2;
 
   return {
     balls: orderedCandidates.map(({ candidate, originalIndex }, index) => ({
@@ -746,8 +948,8 @@ function createBalls(
       radius: BALL_RADIUS,
       vx: (index % 2 === 0 ? 1 : -1) * (35 + index * 7),
       vy: 0,
-      x: clamp(startX + index * gap, 70, WORLD_WIDTH - 70),
-      y: 70 + (index % 3) * 14,
+      x: clamp(startX + index * gap, startLeft, startRight),
+      y: startY + (index % 3) * 14,
     })),
     orderIds: orderedCandidates.map((entry) => entry.candidate.id),
   };
@@ -1172,10 +1374,12 @@ export function PinballBoard({
   const lastShuffleSeedRef = useRef(shuffleSeed);
   const previousOrderIdsRef = useRef<number[]>([]);
   const startedAtRef = useRef<number | null>(null);
+  const cameraXRef = useRef(0);
   const cameraYRef = useRef(0);
   const autoCameraRef = useRef(true);
+  const zoomRef = useRef(1);
   const dragRef = useRef<DragState | null>(null);
-  const sizeRef = useRef({ width: 900, height: 620 });
+  const sizeRef = useRef({ width: 1100, height: 620 });
   const finishCallbackRef = useRef(onFinishOrder);
   const isRunningRef = useRef(isRunning);
   const followCandidateFinishedCallbackRef = useRef(onFollowCandidateFinished);
@@ -1185,7 +1389,7 @@ export function PinballBoard({
   const lastLiveRankingSignatureRef = useRef("");
   const lastLiveRankingEmitMsRef = useRef(0);
   const followCandidateIdRef = useRef(followCandidateId);
-  const [canvasSize, setCanvasSize] = useState({ width: 900, height: 760 });
+  const [canvasSize, setCanvasSize] = useState({ width: 1100, height: 900 });
 
   useEffect(() => {
     finishCallbackRef.current = onFinishOrder;
@@ -1256,7 +1460,7 @@ export function PinballBoard({
     const resize = () => {
       const width = Math.max(wrapper.clientWidth, 320);
       const scale = width / WORLD_WIDTH;
-      const baseHeight = clamp(width * 0.8, 560, 880);
+      const baseHeight = clamp(width * 0.72, 760, 1280);
       const wrapperStyle = window.getComputedStyle(wrapper);
       const footer = footerRef.current;
       const footerStyle = footer ? window.getComputedStyle(footer) : null;
@@ -1274,12 +1478,22 @@ export function PinballBoard({
           : 0;
       const height = clamp(
         Math.max(baseHeight, stretchedHeight),
-        560,
-        Math.max(880, WORLD_HEIGHT * scale),
+        760,
+        Math.max(1280, WORLD_HEIGHT * scale),
       );
       const nextSize = { width, height };
 
       sizeRef.current = nextSize;
+      cameraXRef.current = clampCameraX(
+        cameraXRef.current,
+        nextSize,
+        zoomRef.current,
+      );
+      cameraYRef.current = clampCameraY(
+        cameraYRef.current,
+        nextSize,
+        zoomRef.current,
+      );
       setCanvasSize(nextSize);
     };
 
@@ -1313,6 +1527,7 @@ export function PinballBoard({
     obstacleHitEffectsRef.current = [];
     missileShotEffectsRef.current = [];
     finishOrderRef.current = [];
+    cameraXRef.current = clampCameraX(0, sizeRef.current, zoomRef.current);
     cameraYRef.current = 0;
     autoCameraRef.current = true;
     lastFrameRef.current = null;
@@ -1733,13 +1948,13 @@ export function PinballBoard({
       ball.x += ball.vx * dt;
       ball.y += ball.vy * dt;
 
-      if (ball.x < 34 + ball.radius) {
-        ball.x = 34 + ball.radius;
+      if (ball.x < ball.radius + 8) {
+        ball.x = ball.radius + 8;
         ball.vx = Math.abs(ball.vx) * 0.82 + 18;
       }
 
-      if (ball.x > WORLD_WIDTH - 34 - ball.radius) {
-        ball.x = WORLD_WIDTH - 34 - ball.radius;
+      if (ball.x > WORLD_WIDTH - ball.radius - 8) {
+        ball.x = WORLD_WIDTH - ball.radius - 8;
         ball.vx = -Math.abs(ball.vx) * 0.82 - 18;
       }
 
@@ -1750,6 +1965,20 @@ export function PinballBoard({
 
       for (const segment of STATIC_SEGMENTS) {
         collideSegment(ball, segment);
+      }
+
+      const trackBounds = getTrackBoundsAtY(ball.y);
+      const leftTrackLimit = trackBounds.left + ball.radius + 8;
+      const rightTrackLimit = trackBounds.right - ball.radius - 8;
+
+      if (ball.x < leftTrackLimit) {
+        ball.x = leftTrackLimit;
+        ball.vx = Math.abs(ball.vx) * 0.78 + 16;
+      }
+
+      if (ball.x > rightTrackLimit) {
+        ball.x = rightTrackLimit;
+        ball.vx = -Math.abs(ball.vx) * 0.78 - 16;
       }
 
       for (const bar of tiltBars) {
@@ -1836,8 +2065,7 @@ export function PinballBoard({
     }
 
     const size = sizeRef.current;
-    const scale = size.width / WORLD_WIDTH;
-    const viewportWorldHeight = size.height / scale;
+    const viewportWorldSize = getViewportWorldSize(size, zoomRef.current);
     const balls = ballsRef.current;
     const followedBall =
       typeof followCandidateIdRef.current === "number"
@@ -1858,13 +2086,19 @@ export function PinballBoard({
       return;
     }
 
-    const targetCamera = clamp(
-      leader.y - viewportWorldHeight * 0.42,
-      0,
-      Math.max(WORLD_HEIGHT - viewportWorldHeight, 0),
+    const targetCameraX = clampCameraX(
+      leader.x - viewportWorldSize.width * 0.5,
+      size,
+      zoomRef.current,
+    );
+    const targetCameraY = clampCameraY(
+      leader.y - viewportWorldSize.height * 0.42,
+      size,
+      zoomRef.current,
     );
     const stiffness = 1 - Math.pow(0.015, dt);
-    cameraYRef.current += (targetCamera - cameraYRef.current) * stiffness;
+    cameraXRef.current += (targetCameraX - cameraXRef.current) * stiffness;
+    cameraYRef.current += (targetCameraY - cameraYRef.current) * stiffness;
   }
 
   function drawBoard(canvas: HTMLCanvasElement, elapsedSeconds: number) {
@@ -1886,26 +2120,18 @@ export function PinballBoard({
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size.width, size.height);
-    const scale = size.width / WORLD_WIDTH;
+    const scale = getBoardScale(size, zoomRef.current);
+    const viewportWorldSize = getViewportWorldSize(size, zoomRef.current);
+    const cameraX = cameraXRef.current;
     const cameraY = cameraYRef.current;
 
     ctx.save();
     ctx.scale(scale, scale);
-    ctx.translate(0, -cameraY);
+    ctx.translate(-cameraX, -cameraY);
 
     ctx.fillStyle = "#f6efe1";
-    ctx.fillRect(0, cameraY, WORLD_WIDTH, size.height / scale);
-
-    for (let y = Math.floor(cameraY / 120) * 120; y < cameraY + size.height / scale + 120; y += 120) {
-      ctx.fillStyle = y % 240 === 0 ? "rgba(20,108,148,0.055)" : "rgba(211,111,59,0.045)";
-      ctx.fillRect(34, y, WORLD_WIDTH - 68, 60);
-    }
-
-    ctx.fillStyle = "#f1d7a7";
-    ctx.fillRect(34, 0, WORLD_WIDTH - 68, WORLD_HEIGHT);
-
-    ctx.fillStyle = "#f8f1e4";
-    ctx.fillRect(58, 30, WORLD_WIDTH - 116, WORLD_HEIGHT - 60);
+    ctx.fillRect(cameraX, cameraY, viewportWorldSize.width, viewportWorldSize.height);
+    drawTrackSurface(ctx, cameraY, viewportWorldSize.height);
     const gateOpening = getGateOpening(elapsedSeconds);
 
     drawGoalSideBlockers(ctx, gateOpening);
@@ -1963,9 +2189,10 @@ export function PinballBoard({
     ctx.strokeStyle = "#146c94";
     ctx.lineWidth = 5;
     ctx.setLineDash([18, 12]);
+    const finishTrackBounds = getTrackBoundsAtY(FINISH_Y);
     ctx.beginPath();
-    ctx.moveTo(120, FINISH_Y + 78);
-    ctx.lineTo(WORLD_WIDTH - 120, FINISH_Y + 78);
+    ctx.moveTo(finishTrackBounds.left + 86, FINISH_Y + 78);
+    ctx.lineTo(finishTrackBounds.right - 86, FINISH_Y + 78);
     ctx.stroke();
     ctx.restore();
 
@@ -2018,10 +2245,10 @@ export function PinballBoard({
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    const scale = sizeRef.current.width / WORLD_WIDTH;
+    const scale = getBoardScale(sizeRef.current, zoomRef.current);
 
     return {
-      x: x / scale,
+      x: cameraXRef.current + x / scale,
       y: cameraYRef.current + y / scale,
     };
   }
@@ -2031,6 +2258,7 @@ export function PinballBoard({
     dragRef.current = {
       moved: false,
       pointerId: event.pointerId,
+      startCameraX: cameraXRef.current,
       startCameraY: cameraYRef.current,
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -2044,6 +2272,7 @@ export function PinballBoard({
       return;
     }
 
+    const deltaX = event.clientX - drag.startClientX;
     const deltaY = event.clientY - drag.startClientY;
 
     if (
@@ -2055,13 +2284,17 @@ export function PinballBoard({
     }
 
     if (drag.moved) {
-      const scale = sizeRef.current.width / WORLD_WIDTH;
-      const viewportWorldHeight = sizeRef.current.height / scale;
+      const scale = getBoardScale(sizeRef.current, zoomRef.current);
       autoCameraRef.current = false;
-      cameraYRef.current = clamp(
+      cameraXRef.current = clampCameraX(
+        drag.startCameraX - deltaX / scale,
+        sizeRef.current,
+        zoomRef.current,
+      );
+      cameraYRef.current = clampCameraY(
         drag.startCameraY - deltaY / scale,
-        0,
-        Math.max(WORLD_HEIGHT - viewportWorldHeight, 0),
+        sizeRef.current,
+        zoomRef.current,
       );
     }
   }
@@ -2089,6 +2322,45 @@ export function PinballBoard({
     }
   }
 
+  function handleWheel(event: ReactWheelEvent<HTMLCanvasElement>) {
+    event.preventDefault();
+
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const pointerX = event.clientX - rect.left;
+    const pointerY = event.clientY - rect.top;
+    const previousScale = getBoardScale(sizeRef.current, zoomRef.current);
+    const focusWorldX = cameraXRef.current + pointerX / previousScale;
+    const focusWorldY = cameraYRef.current + pointerY / previousScale;
+    const zoomMultiplier = Math.exp(-event.deltaY * WHEEL_ZOOM_SENSITIVITY);
+    const nextZoom = clamp(zoomRef.current * zoomMultiplier, MIN_ZOOM, MAX_ZOOM);
+
+    if (Math.abs(nextZoom - zoomRef.current) < 0.001) {
+      return;
+    }
+
+    zoomRef.current = nextZoom;
+    const nextScale = getBoardScale(sizeRef.current, zoomRef.current);
+
+    cameraXRef.current = clampCameraX(
+      focusWorldX - pointerX / nextScale,
+      sizeRef.current,
+      zoomRef.current,
+    );
+    cameraYRef.current = clampCameraY(
+      focusWorldY - pointerY / nextScale,
+      sizeRef.current,
+      zoomRef.current,
+    );
+    autoCameraRef.current = false;
+    manualCameraCallbackRef.current?.();
+  }
+
   return (
     <div
       ref={wrapperRef}
@@ -2107,6 +2379,7 @@ export function PinballBoard({
         onPointerCancel={() => {
           dragRef.current = null;
         }}
+        onWheel={handleWheel}
       />
       <p ref={footerRef} className="mt-3 px-2 text-xs leading-6 text-muted">
         기본 카메라는 선두 공을 따라갑니다. 선수를 누르면 해당 공을 따라가고,

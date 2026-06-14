@@ -258,28 +258,8 @@ export function PinballDraftPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
-        <PinballBoard
-          className="xl:self-stretch"
-          candidates={players}
-          followCandidateId={
-            trackingMode === "player" ? selectedCandidateId : null
-          }
-          isRunning={phase === "running"}
-          runId={runId}
-          shuffleSeed={shuffleSeed}
-          onFollowCandidateFinished={handleFollowCandidateFinished}
-          onLiveRankingChange={setLiveRanking}
-          onManualCamera={handleManualCamera}
-          onSelectCandidate={handleSelectPlayer}
-          onProgressOrder={setFinishOrder}
-          onFinishOrder={(order) => {
-            setFinishOrder(order);
-            setPhase("finished");
-          }}
-        />
-
-        <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+      <div className="space-y-4">
+        <div className="grid gap-4 xl:grid-cols-[minmax(340px,420px)_minmax(0,1fr)]">
           <SurfaceCard className="p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-foreground">참가자 입력</p>
@@ -294,7 +274,7 @@ export function PinballDraftPage() {
                 setInputError(null);
                 setCandidateNamesText(event.target.value);
               }}
-              className="mt-4 min-h-36 w-full resize-y rounded-lg border border-line-strong bg-white px-4 py-3 text-sm leading-7 text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent"
+              className="mt-4 min-h-28 w-full resize-y rounded-lg border border-line-strong bg-white px-4 py-3 text-sm leading-7 text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent xl:min-h-24"
               placeholder="예: alpha, bravo, charlie"
               disabled={phase === "running"}
             />
@@ -333,9 +313,9 @@ export function PinballDraftPage() {
                 </Button>
               </div>
             </div>
-            <div className="mt-4 grid max-h-[calc(100vh-300px)] gap-2 overflow-y-auto pr-1">
+            <div className="mt-4 grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {players.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-line px-4 py-6 text-sm text-muted">
+                <p className="rounded-lg border border-dashed border-line px-4 py-6 text-sm text-muted sm:col-span-2 lg:col-span-3 2xl:col-span-4">
                   이름 목록을 적용하면 보드에 바로 배치됩니다.
                 </p>
               ) : (
@@ -349,7 +329,7 @@ export function PinballDraftPage() {
                       key={player.id}
                       type="button"
                       className={cn(
-                        "rounded-lg border px-4 py-3 text-left transition-colors",
+                        "rounded-lg border px-3 py-2 text-left transition-colors",
                         isSelected
                           ? "border-accent bg-accent-soft text-accent-ink"
                           : entry.isFinished
@@ -392,6 +372,25 @@ export function PinballDraftPage() {
             </div>
           </SurfaceCard>
         </div>
+
+        <PinballBoard
+          candidates={players}
+          followCandidateId={
+            trackingMode === "player" ? selectedCandidateId : null
+          }
+          isRunning={phase === "running"}
+          runId={runId}
+          shuffleSeed={shuffleSeed}
+          onFollowCandidateFinished={handleFollowCandidateFinished}
+          onLiveRankingChange={setLiveRanking}
+          onManualCamera={handleManualCamera}
+          onSelectCandidate={handleSelectPlayer}
+          onProgressOrder={setFinishOrder}
+          onFinishOrder={(order) => {
+            setFinishOrder(order);
+            setPhase("finished");
+          }}
+        />
       </div>
     </main>
   );

@@ -676,7 +676,7 @@ export function RpsDraftListPage({ mode = "draft" }: RpsDraftListPageProps) {
             </h1>
           </div>
 
-          {isAuthenticated ? (
+          {mode === "draft" || isAuthenticated ? (
             <div className="flex flex-wrap gap-2 sm:justify-end">
               <Button variant="accent" onClick={handleOpenCreateTypeDialog}>
                 {createButtonLabel}

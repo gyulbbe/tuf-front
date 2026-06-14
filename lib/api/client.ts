@@ -1,5 +1,6 @@
 import axios, { AxiosHeaders, CanceledError } from "axios";
-import { readStoredToken } from "@/lib/auth/auth-storage";
+import { clearAuthCookie } from "@/lib/auth/auth-cookie";
+import { clearStoredToken, readStoredToken } from "@/lib/auth/auth-storage";
 import { buildAuthSession, isExpiredExp } from "@/lib/auth/jwt";
 
 declare module "axios" {
@@ -31,6 +32,25 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler;
 }
 
+function clearExpiredClientSession() {
+  clearStoredToken();
+  clearAuthCookie();
+}
+
+function isPublicBrowseGetRequest(method: string | undefined) {
+  if (method?.toLowerCase() !== "get") {
+    return false;
+  }
+
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const path = window.location.pathname;
+
+  return !path.startsWith("/admin") && path !== "/me" && !path.startsWith("/me/");
+}
+
 function configureInterceptors() {
   if (configured) {
     return;
@@ -52,6 +72,12 @@ function configureInterceptors() {
     const session = buildAuthSession(authorization);
 
     if (!session || isExpiredExp(session.user.exp)) {
+      clearExpiredClientSession();
+
+      if (isPublicBrowseGetRequest(config.method)) {
+        return config;
+      }
+
       unauthorizedHandler?.();
       throw new CanceledError("Authentication token is expired.");
     }

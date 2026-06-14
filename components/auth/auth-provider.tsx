@@ -141,7 +141,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const session = buildAuthSession(authorization);
 
       if (!session || isExpiredExp(session.user.exp)) {
-        handleAuthFailure("session-expired");
+        clearPersistedSession();
+        setAuthState(UNAUTHENTICATED_AUTH_STATE);
         return;
       }
 
@@ -153,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [handleAuthFailure]);
+  }, []);
 
   useEffect(() => {
     setUnauthorizedHandler(() => {

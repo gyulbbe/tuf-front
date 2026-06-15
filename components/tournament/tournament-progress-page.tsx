@@ -8,12 +8,15 @@ import { TournamentScoreSubmissionPanel } from "@/components/tournament/tourname
 import { SurfaceCard } from "@/components/site/surface-card";
 import { Button } from "@/components/ui/button";
 import {
+  getClanShareLogSummary,
   submitClanShareMatches,
+  type ClanShareMatchResult,
   type ClanShareMatchPayload,
 } from "@/lib/api/clan-share";
 import {
   getTournament,
   listTournamentMatchScoreSubmissions,
+  type TournamentMatchScoreSubmission,
   updateTournamentMatchParticipants,
 } from "@/lib/api/tournament";
 import type {
@@ -23,6 +26,7 @@ import type {
 } from "@/lib/tournament/types";
 
 type TournamentProgressPageProps = {
+  mode?: "public" | "admin";
   tournamentId: string;
 };
 
@@ -122,6 +126,8 @@ function buildClanShareMatches(tournament: Tournament) {
       }
 
       return {
+        tournamentId: tournament.id,
+        matchId: match.id,
         player1: slot1.participant.displayName,
         player2: slot2.participant.displayName,
         winner: winnerSlot.participant.displayName,
@@ -136,15 +142,16 @@ function buildClanShareMatches(tournament: Tournament) {
 }
 
 export function TournamentProgressPage({
+  mode = "admin",
   tournamentId,
 }: TournamentProgressPageProps) {
+  const isAdminMode = mode === "admin";
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingApprovalMatchIds, setPendingApprovalMatchIds] = useState<
     Set<string>
   >(() => new Set());
-  const [pendingApprovalRefreshKey, setPendingApprovalRefreshKey] = useState(0);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const previousTournamentRef = useRef<{
     id: string;
@@ -152,6 +159,10 @@ export function TournamentProgressPage({
   } | null>(null);
   const promptedTournamentIdsRef = useRef<Set<string>>(new Set());
   const [clanShareDialogOpen, setClanShareDialogOpen] = useState(false);
+  const [clanShareHistoryChecking, setClanShareHistoryChecking] = useState(false);
+  const [clanShareHistoryCheckFailed, setClanShareHistoryCheckFailed] =
+    useState(false);
+  const [clanShareHasHistory, setClanShareHasHistory] = useState(false);
   const [clanShareSending, setClanShareSending] = useState(false);
   const [clanShareSuccess, setClanShareSuccess] = useState(false);
   const [clanShareError, setClanShareError] = useState<string | null>(null);
@@ -159,14 +170,66 @@ export function TournamentProgressPage({
     string | null
   >(null);
   const [clanShareHasFailure, setClanShareHasFailure] = useState(false);
+  const [clanShareResults, setClanShareResults] = useState<
+    ClanShareMatchResult[]
+  >([]);
   const matches = useMemo(() => getMatches(tournament), [tournament]);
+  const matchIdsKey = useMemo(
+    () => matches.map((match) => match.id).join("|"),
+    [matches],
+  );
   const selectedMatch =
     matches.find((match) => match.id === selectedMatchId) ?? null;
   const canManuallyOpenClanShare =
-    tournament?.status === "FINISHED" && canPromptClanShare(tournament);
-  const refreshPendingApprovalIndicators = useCallback(() => {
-    setPendingApprovalRefreshKey((current) => current + 1);
-  }, []);
+    isAdminMode &&
+    tournament?.status === "FINISHED" &&
+    canPromptClanShare(tournament);
+  const clanShareSuccessResults = clanShareResults.filter(
+    (result) => result.eloOk,
+  );
+  const clanShareFailureResults = clanShareResults.filter(
+    (result) => !result.eloOk,
+  );
+  const clanShareSheetFailures = clanShareResults.filter(
+    (result) => !result.sheetOk,
+  );
+  const clanShareLogFailures = clanShareResults.filter(
+    (result) => !result.logOk,
+  );
+  const clanShareDialogTitle = clanShareHistoryCheckFailed
+    ? "연동 이력 확인 실패"
+    : clanShareHasHistory
+      ? "이미 연동한 이력이 있습니다"
+      : "ELO와 시트에 반영하시겠습니까?";
+  const clanShareDialogDescription = clanShareHistoryCheckFailed
+    ? "전송 이력 확인에 실패해 연동을 시작하지 않았습니다."
+    : clanShareHasHistory
+      ? "계속 진행하면 완료된 모든 경기 결과를 다시 전송합니다."
+      : "완료된 경기 결과를 ELO API와 Google Sheet에 전송합니다.";
+  const handleSubmissionsChange = useCallback((
+    matchId: string,
+    submissions: TournamentMatchScoreSubmission[],
+  ) => {
+    if (!isAdminMode) {
+      return;
+    }
+
+    const hasPending = submissions.some(
+      (submission) => submission.status === "PENDING",
+    );
+
+    setPendingApprovalMatchIds((current) => {
+      const next = new Set(current);
+
+      if (hasPending) {
+        next.add(matchId);
+      } else {
+        next.delete(matchId);
+      }
+
+      return next;
+    });
+  }, [isAdminMode]);
 
   function closeClanShareDialog() {
     if (clanShareSending) {
@@ -174,22 +237,45 @@ export function TournamentProgressPage({
     }
 
     setClanShareDialogOpen(false);
+    setClanShareHistoryCheckFailed(false);
+    setClanShareHasHistory(false);
     setClanShareSuccess(false);
     setClanShareError(null);
     setClanShareResultMessage(null);
     setClanShareHasFailure(false);
+    setClanShareResults([]);
   }
 
-  function openClanShareDialog() {
-    if (clanShareSending) {
+  async function openClanShareDialog() {
+    if (clanShareSending || clanShareHistoryChecking || !tournament) {
       return;
     }
 
+    setClanShareHistoryChecking(true);
+    setClanShareHistoryCheckFailed(false);
+    setClanShareHasHistory(false);
     setClanShareSuccess(false);
     setClanShareError(null);
     setClanShareResultMessage(null);
     setClanShareHasFailure(false);
-    setClanShareDialogOpen(true);
+    setClanShareResults([]);
+
+    try {
+      const summary = await getClanShareLogSummary(tournament.id);
+
+      setClanShareHasHistory(summary.hasHistory);
+      setClanShareDialogOpen(true);
+    } catch (error) {
+      setClanShareHistoryCheckFailed(true);
+      setClanShareError(
+        error instanceof Error
+          ? error.message
+          : "ELO/시트 연동 이력을 확인하지 못했습니다.",
+      );
+      setClanShareDialogOpen(true);
+    } finally {
+      setClanShareHistoryChecking(false);
+    }
   }
 
   async function submitClanShare() {
@@ -202,16 +288,30 @@ export function TournamentProgressPage({
     setClanShareError(null);
     setClanShareResultMessage(null);
     setClanShareHasFailure(false);
+    setClanShareResults([]);
 
     try {
       const result = await submitClanShareMatches(buildClanShareMatches(tournament));
 
       setClanShareResultMessage(
-        result.failureCount > 0
-          ? `전송 결과: 성공 ${result.successCount}건, 실패 ${result.failureCount}건. 실패 이유는 시트 H열에 기록되었습니다.`
-          : `전송 결과: 성공 ${result.successCount}건, 실패 0건.`,
+        [
+          `ELO 전송 결과: 성공 ${result.successCount}건, 실패 ${result.failureCount}건.`,
+          result.sheetFailureCount > 0
+            ? `시트 기록 실패 ${result.sheetFailureCount}건.`
+            : null,
+          result.logFailureCount > 0
+            ? `DB 로그 저장 실패 ${result.logFailureCount}건.`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
-      setClanShareHasFailure(result.failureCount > 0);
+      setClanShareHasFailure(
+        result.failureCount > 0 ||
+          result.sheetFailureCount > 0 ||
+          result.logFailureCount > 0,
+      );
+      setClanShareResults(result.results);
       setClanShareSuccess(true);
     } catch (error) {
       setClanShareError(
@@ -264,6 +364,10 @@ export function TournamentProgressPage({
   }, [tournamentId]);
 
   useEffect(() => {
+    if (!isAdminMode) {
+      return;
+    }
+
     if (!tournament) {
       previousTournamentRef.current = null;
       return;
@@ -283,14 +387,13 @@ export function TournamentProgressPage({
       !promptedTournamentIdsRef.current.has(tournament.id)
     ) {
       promptedTournamentIdsRef.current.add(tournament.id);
-      setClanShareSuccess(false);
-      setClanShareError(null);
-      setClanShareDialogOpen(true);
+      void openClanShareDialog();
     }
-  }, [tournament]);
+  }, [isAdminMode, tournament]);
 
   useEffect(() => {
-    if (!tournament) {
+    if (!isAdminMode || !tournament) {
+      setPendingApprovalMatchIds(new Set());
       return;
     }
 
@@ -298,17 +401,18 @@ export function TournamentProgressPage({
 
     async function loadPendingApprovalMatches() {
       const nextPendingIds = new Set<string>();
+      const matchIds = matchIdsKey ? matchIdsKey.split("|") : [];
 
       await Promise.all(
-        matches.map(async (match) => {
+        matchIds.map(async (matchId) => {
           try {
             const submissions = await listTournamentMatchScoreSubmissions(
               tournamentId,
-              match.id,
+              matchId,
             );
 
             if (submissions.some((submission) => submission.status === "PENDING")) {
-              nextPendingIds.add(match.id);
+              nextPendingIds.add(matchId);
             }
           } catch {
             // Keep the board usable even if one match submission lookup fails.
@@ -326,7 +430,7 @@ export function TournamentProgressPage({
     return () => {
       cancelled = true;
     };
-  }, [matches, pendingApprovalRefreshKey, tournament, tournamentId]);
+  }, [isAdminMode, matchIdsKey, tournament?.id, tournamentId]);
 
   return (
     <div className="relative left-1/2 w-[calc(100vw-1.25rem)] max-w-[1600px] -translate-x-1/2 space-y-4 sm:w-[calc(100vw-2rem)]">
@@ -334,26 +438,30 @@ export function TournamentProgressPage({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
-              Admin Tournament
+              {isAdminMode ? "Admin Tournament" : "Tournament"}
             </p>
             <h1 className="mt-2 text-2xl font-semibold text-foreground sm:text-3xl">
               {tournament?.title ?? "토너먼트 진행 관리"}
             </h1>
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center lg:justify-end">
-            <Link
-              href={`/tournament/${tournamentId}`}
-              className="inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-5 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
-            >
-              시청자 화면
-            </Link>
+            {isAdminMode ? (
+              <Link
+                href={`/tournament/${tournamentId}`}
+                className="inline-flex items-center justify-center rounded-full border border-line-strong bg-white px-5 py-3 text-sm font-semibold text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-ink"
+              >
+                시청자 화면
+              </Link>
+            ) : null}
             {canManuallyOpenClanShare ? (
               <Button
-                disabled={clanShareSending}
-                onClick={openClanShareDialog}
+                disabled={clanShareSending || clanShareHistoryChecking}
+                onClick={() => {
+                  void openClanShareDialog();
+                }}
                 variant="accent"
               >
-                ELO/시트 연동
+                {clanShareHistoryChecking ? "이력 확인 중..." : "ELO/시트 연동"}
               </Button>
             ) : null}
           </div>
@@ -380,7 +488,10 @@ export function TournamentProgressPage({
                 setSelectedMatchId(match.id)
               }
               onTournamentChange={setTournament}
-              pendingApprovalMatchIds={pendingApprovalMatchIds}
+              pendingApprovalMatchIds={
+                isAdminMode ? pendingApprovalMatchIds : new Set<string>()
+              }
+              readOnly={!isAdminMode}
               selectedMatchId={selectedMatchId}
               tournament={tournament}
               tournamentId={tournamentId}
@@ -390,7 +501,9 @@ export function TournamentProgressPage({
               onMatchSelect={(match: TournamentMatch) =>
                 setSelectedMatchId(match.id)
               }
-              pendingApprovalMatchIds={pendingApprovalMatchIds}
+              pendingApprovalMatchIds={
+                isAdminMode ? pendingApprovalMatchIds : new Set<string>()
+              }
               selectedMatchId={selectedMatchId}
               tournament={tournament}
             />
@@ -399,7 +512,9 @@ export function TournamentProgressPage({
               onMatchSelect={(match: TournamentMatch) =>
                 setSelectedMatchId(match.id)
               }
-              pendingApprovalMatchIds={pendingApprovalMatchIds}
+              pendingApprovalMatchIds={
+                isAdminMode ? pendingApprovalMatchIds : new Set<string>()
+              }
               selectedMatchId={selectedMatchId}
               tournament={tournament}
             />
@@ -407,11 +522,11 @@ export function TournamentProgressPage({
 
           <TournamentScoreSubmissionPanel
             key={selectedMatch?.id ?? "no-match"}
-            mode="admin"
+            mode={mode}
             selectedMatch={selectedMatch}
             tournament={tournament}
             tournamentId={tournamentId}
-            onSubmissionsChange={refreshPendingApprovalIndicators}
+            onSubmissionsChange={handleSubmissionsChange}
             onTournamentChange={setTournament}
           />
         </div>
@@ -420,20 +535,32 @@ export function TournamentProgressPage({
       <OverlayDialog
         closeOnBackdropClick={!clanShareSending}
         closeOnEscape={!clanShareSending}
-        description="완료된 경기 결과를 ELO API와 Google Sheet에 전송합니다."
+        description={clanShareDialogDescription}
         onClose={closeClanShareDialog}
         open={clanShareDialogOpen}
-        title="ELO와 시트에 반영하시겠습니까?"
+        title={clanShareDialogTitle}
       >
         <div className="space-y-4">
           <div className="rounded-lg border border-line bg-surface-strong px-4 py-4 text-sm leading-6 text-muted">
             <p className="font-semibold text-foreground">
-              완료 경기 전송
+              {clanShareHasHistory ? "완료 경기 재전송" : "완료 경기 전송"}
             </p>
-            <p className="mt-2">
-              예를 누르면 완료된 모든 경기 결과를 ELO API와 시트에 전송합니다.
-              시트 H열에는 경기별 결과가 기록됩니다.
-            </p>
+            {clanShareHistoryCheckFailed ? (
+              <p className="mt-2">
+                연동 이력을 확인하지 못했습니다. 중복 전송을 막기 위해 전송을
+                시작하지 않았습니다.
+              </p>
+            ) : clanShareHasHistory ? (
+              <p className="mt-2">
+                이미 연동한 이력이 있습니다. 계속 진행하면 현재 완료된 모든
+                경기 결과를 다시 1건씩 ELO API와 시트에 전송합니다.
+              </p>
+            ) : (
+              <p className="mt-2">
+                예를 누르면 완료된 모든 경기 결과를 ELO API와 시트에 전송합니다.
+                시트 H열에는 경기별 결과가 기록됩니다.
+              </p>
+            )}
           </div>
 
           {clanShareSuccess ? (
@@ -445,6 +572,58 @@ export function TournamentProgressPage({
               }
             >
               {clanShareResultMessage ?? "clan-share 전송이 완료되었습니다."}
+            </div>
+          ) : null}
+
+          {clanShareSuccess && clanShareResults.length > 0 ? (
+            <div className="space-y-3 rounded-lg border border-line bg-surface-strong px-4 py-4 text-sm">
+              {clanShareSuccessResults.length > 0 ? (
+                <div>
+                  <p className="font-semibold text-success-ink">성공</p>
+                  <ul className="mt-2 space-y-1 text-muted">
+                    {clanShareSuccessResults.map((result) => (
+                      <li key={`success-${result.matchId}`}>
+                        {result.player1} vs {result.player2} 성공
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {clanShareFailureResults.length > 0 ? (
+                <div>
+                  <p className="font-semibold text-danger-ink">실패</p>
+                  <ul className="mt-2 space-y-1 text-muted">
+                    {clanShareFailureResults.map((result) => (
+                      <li key={`failure-${result.matchId}`}>
+                        {result.player1} vs {result.player2} 실패:{" "}
+                        {result.eloMessage || "ELO 전송 실패"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {clanShareSheetFailures.length > 0 ||
+              clanShareLogFailures.length > 0 ? (
+                <div>
+                  <p className="font-semibold text-warning-ink">추가 경고</p>
+                  <ul className="mt-2 space-y-1 text-muted">
+                    {clanShareSheetFailures.map((result) => (
+                      <li key={`sheet-${result.matchId}`}>
+                        {result.player1} vs {result.player2} 시트 기록 실패:{" "}
+                        {result.sheetMessage || "Google Sheets 기록 실패"}
+                      </li>
+                    ))}
+                    {clanShareLogFailures.map((result) => (
+                      <li key={`log-${result.matchId}`}>
+                        {result.player1} vs {result.player2} DB 로그 저장 실패:{" "}
+                        {result.logMessage || "DB 로그 저장 실패"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -460,9 +639,9 @@ export function TournamentProgressPage({
               onClick={closeClanShareDialog}
               variant="outline"
             >
-              {clanShareSuccess ? "닫기" : "아니오"}
+              {clanShareSuccess || clanShareHistoryCheckFailed ? "닫기" : "아니오"}
             </Button>
-            {!clanShareSuccess ? (
+            {!clanShareSuccess && !clanShareHistoryCheckFailed ? (
               <Button
                 disabled={clanShareSending}
                 onClick={() => {
@@ -470,7 +649,13 @@ export function TournamentProgressPage({
                 }}
                 variant="accent"
               >
-                {clanShareSending ? "전송 중..." : clanShareError ? "다시 전송" : "예"}
+                {clanShareSending
+                  ? "전송 중..."
+                  : clanShareError
+                    ? "다시 전송"
+                    : clanShareHasHistory
+                      ? "계속 진행"
+                      : "예"}
               </Button>
             ) : null}
           </div>

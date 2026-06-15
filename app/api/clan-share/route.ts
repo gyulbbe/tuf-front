@@ -2,13 +2,19 @@ import { NextResponse } from "next/server";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getServerAuthSession } from "@/lib/auth/server-auth";
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 const CLAN_SHARE_ENDPOINT = "https://tufelo.vercel.app/api/clan-share";
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
 const CLAN_SHARE_MATCH_TYPES = new Set(["개인리그", "끝장전", "종족 최강전"]);
+const SUCCESS_STATUS = "SUCCESS";
+const FAILED_STATUS = "FAILED";
 
 type ClanShareMatchRequest = {
+  tournamentId: number;
+  matchId: number;
   player1: string;
   player2: string;
   winner: string;
@@ -32,13 +38,40 @@ type SheetEnv = {
   spreadsheetId: string;
 };
 
+type SheetContext =
+  | {
+      accessToken: string;
+      env: SheetEnv;
+      ok: true;
+    }
+  | {
+      error: string;
+      ok: false;
+    };
+
+type TokenContext =
+  | {
+      ok: true;
+      token: string;
+    }
+  | {
+      error: string;
+      ok: false;
+    };
+
 type ClanShareMatchResult = {
+  eloMessage: string;
   eloOk: boolean;
   index: number;
+  logMessage: string;
+  logOk: boolean;
   loser: string;
-  sheetError?: string;
+  matchId: number;
+  player1: string;
+  player2: string;
+  sheetMessage: string;
   sheetOk: boolean;
-  statusMessage: string;
+  tournamentId: number;
   winner: string;
 };
 
@@ -74,6 +107,28 @@ function readOptionalString(raw: Record<string, unknown>, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function readRequiredId(
+  raw: Record<string, unknown>,
+  key: string,
+  index: number,
+) {
+  const value = raw[key];
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : NaN;
+
+  if (!Number.isSafeInteger(numericValue) || numericValue <= 0) {
+    throw new ClanShareRequestError(
+      `${index + 1}번째 경기의 ${key} 값이 필요합니다.`,
+    );
+  }
+
+  return numericValue;
+}
+
 function parseClanShareMatches(body: unknown): ClanShareMatchRequest[] {
   const raw = readObject(body);
   const matches = Array.isArray(raw?.matches) ? raw.matches : [];
@@ -100,6 +155,8 @@ function parseClanShareMatches(body: unknown): ClanShareMatchRequest[] {
     }
 
     return {
+      tournamentId: readRequiredId(rawMatch, "tournamentId", index),
+      matchId: readRequiredId(rawMatch, "matchId", index),
       player1: readRequiredString(rawMatch, "player1", index),
       player2: readRequiredString(rawMatch, "player2", index),
       winner: readRequiredString(rawMatch, "winner", index),
@@ -113,28 +170,42 @@ function parseClanShareMatches(body: unknown): ClanShareMatchRequest[] {
 }
 
 async function readApiError(response: Response, fallbackMessage: string) {
+  const body = await readApiBody(response);
+
+  return (
+    readApiBodyMessage(body) ||
+    (await readApiText(response)) ||
+    fallbackMessage
+  );
+}
+
+async function readApiBody(response: Response) {
   const contentType = response.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/json")) {
-    const body = await response.json().catch(() => null);
-
-    if (body && typeof body === "object") {
-      const message = (body as { message?: unknown; error?: unknown }).message;
-      const error = (body as { message?: unknown; error?: unknown }).error;
-
-      if (typeof message === "string" && message.trim()) {
-        return message;
-      }
-
-      if (typeof error === "string" && error.trim()) {
-        return error;
-      }
-    }
+    return readObject(await response.clone().json().catch(() => null));
   }
 
-  const text = await response.text().catch(() => "");
+  return null;
+}
 
-  return text.trim() || fallbackMessage;
+function readApiBodyMessage(body: Record<string, unknown> | null) {
+  const message = body?.message;
+  const error = body?.error;
+
+  if (typeof message === "string" && message.trim()) {
+    return message.trim();
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+
+  return null;
+}
+
+async function readApiText(response: Response) {
+  return (await response.clone().text().catch(() => "")).trim();
 }
 
 function getRequiredEnv(): SheetEnv {
@@ -263,6 +334,25 @@ async function getGoogleAccessToken(env: SheetEnv) {
   return body.access_token;
 }
 
+async function getSheetContext(): Promise<SheetContext> {
+  try {
+    const env = getRequiredEnv();
+    return {
+      accessToken: await getGoogleAccessToken(env),
+      env,
+      ok: true,
+    };
+  } catch (error) {
+    return {
+      error: normalizeResultMessage(
+        error,
+        "Google Sheets 설정 또는 인증에 실패했습니다.",
+      ),
+      ok: false,
+    };
+  }
+}
+
 function formatSheetDate(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
 
@@ -344,14 +434,20 @@ async function appendToGoogleSheet(
   }
 }
 
-function getClanShareToken() {
+function getClanShareToken(): TokenContext {
   const token = process.env.TUF_ELO_CLAN_SHARE_TOKEN?.trim();
 
   if (!token) {
-    throw new Error("TUF_ELO_CLAN_SHARE_TOKEN 환경 변수가 설정되지 않았습니다.");
+    return {
+      error: "TUF_ELO_CLAN_SHARE_TOKEN 환경 변수가 설정되지 않았습니다.",
+      ok: false,
+    };
   }
 
-  return token;
+  return {
+    ok: true,
+    token,
+  };
 }
 
 async function submitToClanShareApi(
@@ -373,95 +469,174 @@ async function submitToClanShareApi(
       playedDate: match.playedDate,
     }),
   });
+  const body = await readApiBody(response);
 
   if (!response.ok) {
     throw new Error(
       await readApiError(response, "clan-share API 호출에 실패했습니다."),
     );
   }
+
+  if (body?.ok === false || body?.success === false) {
+    throw new Error(
+      readApiBodyMessage(body) || "clan-share API가 실패를 반환했습니다.",
+    );
+  }
 }
 
-async function processClanShareMatch(
-  env: SheetEnv,
-  accessToken: string,
-  token: string,
+function getLogMapName(match: ClanShareMatchRequest) {
+  return match.map.trim() || "맵 미지정";
+}
+
+async function saveBackendLog(
+  authorization: string,
+  sendGroupId: string,
   match: ClanShareMatchRequest,
-  index: number,
-): Promise<ClanShareMatchResult> {
+  result: Pick<
+    ClanShareMatchResult,
+    "eloMessage" | "eloOk" | "sheetMessage" | "sheetOk"
+  >,
+) {
+  const response = await fetch(`${API_BASE_URL}/tournaments/clan-share-send-logs`, {
+    method: "POST",
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      tournamentId: match.tournamentId,
+      matchId: match.matchId,
+      sendGroupId,
+      player1: match.player1,
+      player2: match.player2,
+      winner: match.winner,
+      loser: match.loser,
+      mapName: getLogMapName(match),
+      matchType: match.matchType,
+      matchName: match.matchName,
+      playedDate: match.playedDate,
+      eloStatus: result.eloOk ? SUCCESS_STATUS : FAILED_STATUS,
+      eloMessage: result.eloMessage,
+      sheetStatus: result.sheetOk ? SUCCESS_STATUS : FAILED_STATUS,
+      sheetMessage: result.sheetMessage,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiError(response, "DB 전송 로그 저장에 실패했습니다."),
+    );
+  }
+}
+
+async function processClanShareMatch({
+  authorization,
+  index,
+  match,
+  sendGroupId,
+  sheetContext,
+  tokenContext,
+}: {
+  authorization: string;
+  index: number;
+  match: ClanShareMatchRequest;
+  sendGroupId: string;
+  sheetContext: SheetContext;
+  tokenContext: TokenContext;
+}): Promise<ClanShareMatchResult> {
   let eloOk = true;
-  let statusMessage = "SUCCESS";
+  let eloMessage = SUCCESS_STATUS;
+  let sheetOk = true;
+  let sheetMessage = SUCCESS_STATUS;
+  let logOk = true;
+  let logMessage = SUCCESS_STATUS;
+
+  if (!tokenContext.ok) {
+    eloOk = false;
+    eloMessage = tokenContext.error;
+  } else {
+    try {
+      await submitToClanShareApi(tokenContext.token, match);
+    } catch (error) {
+      eloOk = false;
+      eloMessage = normalizeResultMessage(
+        error,
+        "clan-share API 호출에 실패했습니다.",
+      );
+    }
+  }
+
+  if (!sheetContext.ok) {
+    sheetOk = false;
+    sheetMessage = sheetContext.error;
+  } else {
+    try {
+      await appendToGoogleSheet(
+        sheetContext.env,
+        sheetContext.accessToken,
+        match,
+        eloMessage,
+      );
+    } catch (error) {
+      sheetOk = false;
+      sheetMessage = normalizeResultMessage(
+        error,
+        "Google Sheets API 호출에 실패했습니다.",
+      );
+    }
+  }
 
   try {
-    await submitToClanShareApi(token, match);
+    await saveBackendLog(authorization, sendGroupId, match, {
+      eloMessage,
+      eloOk,
+      sheetMessage,
+      sheetOk,
+    });
   } catch (error) {
-    eloOk = false;
-    statusMessage = normalizeResultMessage(
+    logOk = false;
+    logMessage = normalizeResultMessage(
       error,
-      "clan-share API 호출에 실패했습니다.",
+      "DB 전송 로그 저장에 실패했습니다.",
     );
   }
 
-  try {
-    await appendToGoogleSheet(env, accessToken, match, statusMessage);
-  } catch (error) {
-    return {
-      eloOk,
-      index: index + 1,
-      loser: match.loser,
-      sheetError: normalizeResultMessage(
-        error,
-        "Google Sheets API 호출에 실패했습니다.",
-      ),
-      sheetOk: false,
-      statusMessage,
-      winner: match.winner,
-    };
-  }
-
   return {
+    eloMessage,
     eloOk,
     index: index + 1,
+    logMessage,
+    logOk,
     loser: match.loser,
-    sheetOk: true,
-    statusMessage,
+    matchId: match.matchId,
+    player1: match.player1,
+    player2: match.player2,
+    sheetMessage,
+    sheetOk,
+    tournamentId: match.tournamentId,
     winner: match.winner,
   };
 }
 
 function buildSubmitSummary(results: ClanShareMatchResult[]) {
-  const successCount = results.filter(
-    (result) => result.eloOk && result.sheetOk,
-  ).length;
+  const successCount = results.filter((result) => result.eloOk).length;
   const failureCount = results.length - successCount;
+  const sheetFailureCount = results.filter((result) => !result.sheetOk).length;
+  const logFailureCount = results.filter((result) => !result.logOk).length;
 
   return {
     failureCount,
+    logFailureCount,
+    sheetFailureCount,
     successCount,
     total: results.length,
   };
 }
 
-function buildSheetFailureMessage(results: ClanShareMatchResult[]) {
-  const failedResults = results.filter((result) => !result.sheetOk);
-
-  if (failedResults.length === 0) {
-    return null;
-  }
-
-  return failedResults
-    .map(
-      (result) =>
-        `${result.index}번째 경기(${result.winner} vs ${result.loser}): ${
-          result.sheetError ?? "Google Sheets API 호출에 실패했습니다."
-        }`,
-    )
-    .join(" / ");
-}
-
 export async function POST(request: Request) {
   const session = await getServerAuthSession();
 
-  if (!session || !isAdminRole(session.user.role)) {
+  if (!session || !isAdminRole(session.user.role) || !session.authorization) {
     return NextResponse.json(
       { message: "관리자 권한이 필요합니다." },
       { status: 403 },
@@ -470,36 +645,31 @@ export async function POST(request: Request) {
 
   try {
     const matches = parseClanShareMatches(await request.json().catch(() => null));
-    const env = getRequiredEnv();
-    const token = getClanShareToken();
-    const accessToken = await getGoogleAccessToken(env);
+    const sendGroupId = crypto.randomUUID();
+    const sheetContext = await getSheetContext();
+    const tokenContext = getClanShareToken();
     const results: ClanShareMatchResult[] = [];
 
     for (const [index, match] of matches.entries()) {
       results.push(
-        await processClanShareMatch(env, accessToken, token, match, index),
+        await processClanShareMatch({
+          authorization: session.authorization,
+          index,
+          match,
+          sendGroupId,
+          sheetContext,
+          tokenContext,
+        }),
       );
     }
 
     const summary = buildSubmitSummary(results);
-    const sheetFailureMessage = buildSheetFailureMessage(results);
-
-    if (sheetFailureMessage) {
-      return NextResponse.json(
-        {
-          ...summary,
-          message: `Google Sheets 기록에 실패했습니다. ${sheetFailureMessage}`,
-          ok: false,
-          results,
-        },
-        { status: 502 },
-      );
-    }
 
     return NextResponse.json({
       ...summary,
       ok: summary.failureCount === 0,
       results,
+      sendGroupId,
     });
   } catch (error) {
     return NextResponse.json(

@@ -53,10 +53,24 @@ export type TournamentCreateMapDefaultRequest = {
   mapId: number;
 };
 
+export type TournamentCreateMatchDefaultRole = Extract<
+  TournamentMatchRole,
+  "OPENING" | "WINNERS" | "LOSERS" | "DECIDER" | "FINAL"
+>;
+
+export type TournamentCreateMatchDefaultRequest = {
+  target: TournamentCreateMapDefaultTarget;
+  roundNo?: number;
+  matchRole?: TournamentCreateMatchDefaultRole;
+  bestOf?: number;
+  mapIds?: Array<number | null>;
+};
+
 export type TournamentCreateRequest = {
   title: string;
   bracketType: TournamentBracketType;
   bestOf: TournamentBestOf;
   groups: TournamentCreateGroupRequest[];
   mapDefaults?: TournamentCreateMapDefaultRequest[];
+  matchDefaults?: TournamentCreateMatchDefaultRequest[];
 };

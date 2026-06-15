@@ -141,7 +141,7 @@ function TournamentPlayerRow({
         </span>
         <span
           aria-label="점수 없음"
-          className="flex h-[22px] w-[23px] items-center justify-center rounded bg-surface-muted font-black text-muted"
+          className="flex h-[22px] w-[23px] items-center justify-center rounded border border-line bg-surface-muted font-black text-muted"
         >
           {score}
         </span>
@@ -163,7 +163,7 @@ function TournamentPlayerRow({
         </span>
         <span
           aria-label="점수 없음"
-          className="flex h-[22px] w-[23px] items-center justify-center rounded bg-surface-muted font-black text-foreground"
+          className="flex h-[22px] w-[23px] items-center justify-center rounded border border-line bg-surface-muted font-black text-foreground"
         >
           {score}
         </span>
@@ -209,8 +209,9 @@ function TournamentPlayerRow({
       <span
         aria-label={formatScoreAria(scoreValue)}
         className={cn(
-          "flex h-[22px] w-[23px] items-center justify-center rounded bg-surface-muted font-black text-foreground",
-          isWinner && "bg-accent text-white",
+          "flex h-[22px] w-[23px] items-center justify-center rounded border border-line bg-surface-muted font-black text-foreground",
+          isWinner &&
+            "border-accent/45 bg-white text-accent-ink shadow-[inset_0_0_0_1px_rgba(20,108,148,0.12)]",
         )}
       >
         {score}

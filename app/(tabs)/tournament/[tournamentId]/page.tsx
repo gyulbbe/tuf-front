@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { TournamentBracketPage } from "@/components/tournament/tournament-bracket-page";
+import { TournamentProgressPage } from "@/components/tournament/tournament-progress-page";
 
 export const metadata: Metadata = {
   title: "토너먼트 대진표",
@@ -16,5 +16,5 @@ export default async function TournamentDetailPage({
 }: TournamentDetailPageProps) {
   const { tournamentId } = await params;
 
-  return <TournamentBracketPage tournamentId={tournamentId} />;
+  return <TournamentProgressPage mode="public" tournamentId={tournamentId} />;
 }

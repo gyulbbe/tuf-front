@@ -10,6 +10,7 @@ import type {
   TournamentMatch,
   TournamentMatchKey,
   TournamentMatchRole,
+  TournamentMatchSetResult,
   TournamentMatchSlot,
   TournamentMatchStatus,
   TournamentParticipant,
@@ -33,6 +34,7 @@ export type {
   TournamentBracketType,
   TournamentCreateGroupRequest,
   TournamentCreateMapDefaultRequest,
+  TournamentCreateMatchDefaultRequest,
   TournamentCreateRequest,
   TournamentCreateSlotRequest,
 } from "@/lib/tournament/create-types";
@@ -65,20 +67,35 @@ export type TournamentMatchScoreSubmission = {
   submitterLoginId?: string | null;
   submitterDisplayName?: string | null;
   submitterRole: TournamentScoreSubmitterRole;
+  bestOf: number | null;
   slot1Score: number;
   slot2Score: number;
   winnerSlotNo: 1 | 2;
   mapId: number | null;
+  sets: TournamentScoreSubmissionSet[];
   status: TournamentScoreSubmissionStatus;
   adminNote?: string | null;
   regDate?: string | null;
 };
 
+export type TournamentScoreSubmissionSet = {
+  setNo: number;
+  winnerSlotNo: 1 | 2;
+  mapId: number;
+  mapName: string | null;
+};
+
 export type TournamentSubmitScoreRequest = {
+  bestOf?: number | null;
   mapId?: number | null;
-  scores: Array<{
+  scores?: Array<{
     slotNo: 1 | 2;
     score: number;
+  }>;
+  sets?: Array<{
+    setNo: number;
+    winnerSlotNo: 1 | 2;
+    mapId: number;
   }>;
 };
 
@@ -541,6 +558,18 @@ function normalizeMatchSlot(
   };
 }
 
+function normalizeMatchSetResult(value: unknown, index: number): TournamentMatchSetResult {
+  const raw = readObject(value);
+  const winnerSlotNo = readNumber(raw.winnerSlotNo, 0);
+
+  return {
+    setNo: readNumber(raw.setNo, index + 1),
+    mapId: readNullableNumber(raw.mapId),
+    mapName: readStringOrNull(raw.mapName),
+    winnerSlotNo: winnerSlotNo === 1 || winnerSlotNo === 2 ? winnerSlotNo : null,
+  };
+}
+
 function normalizeMatch(
   value: unknown,
   index: number,
@@ -551,6 +580,16 @@ function normalizeMatch(
   const matchRole = normalizeMatchRole(raw.matchRole);
   const matchKey = readString(raw.matchKey, `${groupCode}${index + 1}`);
   const layout = inferLayout(matchRole, matchKey, raw.layoutCol, raw.layoutRow);
+  const setResults = readArray(raw.setResults)
+    .map(normalizeMatchSetResult)
+    .sort((left, right) => left.setNo - right.setNo);
+  const setMapSummary = Array.from(
+    new Set(
+      setResults
+        .map((setResult) => setResult.mapName)
+        .filter((mapName): mapName is string => Boolean(mapName)),
+    ),
+  ).join(" / ");
 
   return {
     id: readId(raw.id, matchKey),
@@ -565,7 +604,8 @@ function normalizeMatch(
     bestOf: readNumber(raw.bestOf, 3),
     status: normalizeMatchStatus(raw.status),
     mapId: readNullableNumber(raw.mapId),
-    mapName: readStringOrNull(raw.mapName),
+    mapName: setMapSummary || readStringOrNull(raw.mapName),
+    setResults,
     scheduledAt: readStringOrNull(raw.scheduledAt),
     slots: readArray(raw.slots)
       .map((slot, slotIndex) =>
@@ -836,13 +876,29 @@ function normalizeScoreSubmission(
     submitterLoginId: readStringOrNull(raw.submitterLoginId),
     submitterDisplayName: readStringOrNull(raw.submitterDisplayName),
     submitterRole: normalizeScoreSubmitterRole(raw.submitterRole),
+    bestOf: readNullableNumber(raw.bestOf),
     slot1Score,
     slot2Score,
     winnerSlotNo: winnerSlotNo === 2 ? 2 : 1,
     mapId: readNullableNumber(raw.mapId),
+    sets: readArray(raw.sets)
+      .map(normalizeScoreSubmissionSet)
+      .sort((left, right) => left.setNo - right.setNo),
     status: normalizeScoreSubmissionStatus(raw.status),
     adminNote: readString(raw.adminNote) || null,
     regDate: readString(raw.regDate) || null,
+  };
+}
+
+function normalizeScoreSubmissionSet(value: unknown, index: number): TournamentScoreSubmissionSet {
+  const raw = readObject(value);
+  const winnerSlotNo = readNumber(raw.winnerSlotNo, 1);
+
+  return {
+    setNo: readNumber(raw.setNo, index + 1),
+    winnerSlotNo: winnerSlotNo === 2 ? 2 : 1,
+    mapId: readNumber(raw.mapId, 0),
+    mapName: readStringOrNull(raw.mapName),
   };
 }
 

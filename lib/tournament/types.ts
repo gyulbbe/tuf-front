@@ -61,6 +61,13 @@ export type TournamentMatchSlot = {
   sourceOutcome?: TournamentSlotOutcome;
 };
 
+export type TournamentMatchSetResult = {
+  setNo: number;
+  mapId: number | null;
+  mapName: string | null;
+  winnerSlotNo: 1 | 2 | null;
+};
+
 export type TournamentMatch = {
   id: string;
   matchKey: TournamentMatchKey;
@@ -70,6 +77,7 @@ export type TournamentMatch = {
   status: TournamentMatchStatus;
   mapId: number | null;
   mapName: string | null;
+  setResults: TournamentMatchSetResult[];
   scheduledAt: string | null;
   slots: TournamentMatchSlot[];
   layoutCol: number;

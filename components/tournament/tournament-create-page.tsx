@@ -27,7 +27,7 @@ import {
   normalizeTournamentBestOf,
   type TournamentBestOf,
   type TournamentBracketType,
-  type TournamentCreateMapDefaultRequest,
+  type TournamentCreateMatchDefaultRequest,
 } from "@/lib/tournament/create-types";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +60,11 @@ type DualMapDefaultRole = "OPENING" | "WINNERS" | "LOSERS" | "DECIDER";
 type MapDefaultSelection = {
   mapId: number | null;
   mapName: string;
+};
+
+type MatchDefaultSelection = {
+  bestOf: TournamentBestOf | null;
+  mapSelections: MapDefaultSelection[];
 };
 
 type SingleRoundMapDefaultOption = {
@@ -186,6 +191,57 @@ function createEmptyMapDefaultSelection(): MapDefaultSelection {
     mapId: null,
     mapName: "",
   };
+}
+
+function createEmptyMatchDefaultSelection(): MatchDefaultSelection {
+  return {
+    bestOf: null,
+    mapSelections: [],
+  };
+}
+
+function getMatchDefaultBestOf(
+  selection: MatchDefaultSelection | undefined,
+  fallbackBestOf: TournamentBestOf,
+) {
+  return normalizeTournamentBestOf(selection?.bestOf ?? fallbackBestOf);
+}
+
+function getMatchDefaultMapSelection(
+  selection: MatchDefaultSelection | undefined,
+  setIndex: number,
+) {
+  return selection?.mapSelections[setIndex] ?? createEmptyMapDefaultSelection();
+}
+
+function hasMatchDefaultValue(
+  selection: MatchDefaultSelection | undefined,
+  fallbackBestOf: TournamentBestOf,
+) {
+  if (!selection) {
+    return false;
+  }
+
+  return (
+    (selection.bestOf !== null &&
+      normalizeTournamentBestOf(selection.bestOf) !==
+        normalizeTournamentBestOf(fallbackBestOf)) ||
+    selection.mapSelections.some((mapSelection) => Boolean(mapSelection.mapId))
+  );
+}
+
+function getMatchDefaultPayloadMapIds(
+  selection: MatchDefaultSelection | undefined,
+  bestOf: TournamentBestOf,
+) {
+  if (!selection?.mapSelections.some((mapSelection) => Boolean(mapSelection.mapId))) {
+    return undefined;
+  }
+
+  return Array.from(
+    { length: normalizeTournamentBestOf(bestOf) },
+    (_, index) => selection.mapSelections[index]?.mapId ?? null,
+  );
 }
 
 function getNextPowerOfTwo(value: number) {
@@ -508,7 +564,7 @@ function ParticipantPool({
           모든 참가자가 배치되었습니다. 슬롯에서 해제하면 다시 표시됩니다.
         </div>
       ) : (
-        <div className="mt-4 grid max-h-[360px] gap-2 overflow-y-auto pr-1">
+        <div className="mt-4 grid max-h-[260px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
           {unassignedParticipants.map((participant) => {
             const isSelected = selectedParticipantId === participant.id;
 
@@ -528,7 +584,7 @@ function ParticipantPool({
                   }
                 }}
                 className={cn(
-                  "grid cursor-grab grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-lg border px-3 py-3 text-left transition-colors active:cursor-grabbing",
+                  "grid cursor-grab grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors active:cursor-grabbing",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   isSelected
                     ? "border-accent bg-accent-soft"
@@ -536,24 +592,15 @@ function ParticipantPool({
                 )}
               >
                 <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className={cn(
-                        "flex h-6 w-6 flex-none items-center justify-center rounded-md text-[11px] font-black",
-                        getParticipantTone(participant.id),
-                      )}
-                    >
-                      {participant.source === "USER" ? "U" : "E"}
-                    </span>
-                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold text-foreground">
-                      {participant.displayName}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-                    <span>{participant.source === "USER" ? "내부 유저" : "참가자"}</span>
-                    {participant.detail ? <span>{participant.detail}</span> : null}
+                  <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold text-foreground">
+                    {participant.displayName}
+                  </span>
+                  <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
+                    {participant.detail ? (
+                      <span className="min-w-0 truncate">{participant.detail}</span>
+                    ) : null}
                     {isSelected ? (
-                      <span className="rounded-full bg-accent px-2 py-0.5 font-semibold text-white">
+                      <span className="flex-none rounded-full bg-accent px-2 py-0.5 font-semibold text-white">
                         선택됨
                       </span>
                     ) : null}
@@ -599,14 +646,14 @@ export function TournamentCreatePage() {
   );
   const [raceSurvivalGroups, setRaceSurvivalGroups] =
     useState<RaceSurvivalGroupState>(createInitialRaceSurvivalGroups);
-  const [singleMapDefaults, setSingleMapDefaults] = useState<
-    Record<number, MapDefaultSelection>
+  const [singleMatchDefaults, setSingleMatchDefaults] = useState<
+    Record<number, MatchDefaultSelection>
   >({});
-  const [dualMapDefaults, setDualMapDefaults] = useState<
-    Partial<Record<DualMapDefaultRole, MapDefaultSelection>>
+  const [dualMatchDefaults, setDualMatchDefaults] = useState<
+    Partial<Record<DualMapDefaultRole, MatchDefaultSelection>>
   >({});
-  const [ultimateMapDefault, setUltimateMapDefault] =
-    useState<MapDefaultSelection>(createEmptyMapDefaultSelection);
+  const [ultimateMatchDefault, setUltimateMatchDefault] =
+    useState<MatchDefaultSelection>(createEmptyMatchDefaultSelection);
   const [selectedParticipantId, setSelectedParticipantId] = useState<
     string | null
   >(null);
@@ -721,12 +768,29 @@ export function TournamentCreatePage() {
         return "듀얼 조별전은 조가 1개 이상 필요합니다.";
       }
 
-      const emptyGroup = dualGroups.find((group) =>
-        group.slots.every((participantId) => !participantId),
+      const undersizedGroup = dualGroups.find(
+        (group) => group.slots.filter(Boolean).length < 2,
       );
 
-      if (emptyGroup) {
-        return `${emptyGroup.groupName}에 참가자를 1명 이상 배치해주세요.`;
+      if (undersizedGroup) {
+        return "듀얼 조는 최소 2명이 필요합니다.";
+      }
+
+      const invalidTwoPlayerGroup = dualGroups.find((group) => {
+        const assignedCount = group.slots.filter(Boolean).length;
+
+        if (assignedCount !== 2) {
+          return false;
+        }
+
+        const hasOpeningOnePlayer = Boolean(group.slots[0] || group.slots[1]);
+        const hasOpeningTwoPlayer = Boolean(group.slots[2] || group.slots[3]);
+
+        return !hasOpeningOnePlayer || !hasOpeningTwoPlayer;
+      });
+
+      if (invalidTwoPlayerGroup) {
+        return "2명 조는 첫 경기 두 줄에 한 명씩 배치해주세요.";
       }
     }
 
@@ -758,9 +822,9 @@ export function TournamentCreatePage() {
     }
 
     setRaceSurvivalGroups(createInitialRaceSurvivalGroups());
-    setSingleMapDefaults({});
-    setDualMapDefaults({});
-    setUltimateMapDefault(createEmptyMapDefaultSelection());
+    setSingleMatchDefaults({});
+    setDualMatchDefaults({});
+    setUltimateMatchDefault(createEmptyMatchDefaultSelection());
     setSelectedParticipantId(null);
   }
 
@@ -770,9 +834,9 @@ export function TournamentCreatePage() {
     setSingleMatches(createInitialSingleMatches());
     setDualGroups(createInitialDualGroups());
     setRaceSurvivalGroups(createInitialRaceSurvivalGroups());
-    setSingleMapDefaults({});
-    setDualMapDefaults({});
-    setUltimateMapDefault(createEmptyMapDefaultSelection());
+    setSingleMatchDefaults({});
+    setDualMatchDefaults({});
+    setUltimateMatchDefault(createEmptyMatchDefaultSelection());
     setSelectedParticipantId(null);
   }
 
@@ -886,63 +950,148 @@ export function TournamentCreatePage() {
     setDualGroups((current) => current.slice(0, -1));
   }
 
-  function handleSelectSingleRoundMap(
-    roundNo: number,
-    map: HomeScheduleMapSearchResult,
-  ) {
+  function handleChangeSingleRoundBestOf(roundNo: number, nextBestOf: number) {
     setSubmitError(null);
-    setSingleMapDefaults((current) => ({
+    setSingleMatchDefaults((current) => ({
       ...current,
       [roundNo]: {
-        mapId: map.id,
-        mapName: map.mapName,
+        ...(current[roundNo] ?? createEmptyMatchDefaultSelection()),
+        bestOf: normalizeTournamentBestOf(nextBestOf),
       },
     }));
   }
 
-  function handleClearSingleRoundMap(roundNo: number) {
-    setSubmitError(null);
-    setSingleMapDefaults((current) => {
-      const next = { ...current };
-      delete next[roundNo];
-      return next;
-    });
-  }
-
-  function handleSelectDualRoleMap(
-    role: DualMapDefaultRole,
+  function handleSelectSingleRoundSetMap(
+    roundNo: number,
+    setIndex: number,
     map: HomeScheduleMapSearchResult,
   ) {
     setSubmitError(null);
-    setDualMapDefaults((current) => ({
-      ...current,
-      [role]: {
+    setSingleMatchDefaults((current) => {
+      const selection = current[roundNo] ?? createEmptyMatchDefaultSelection();
+      const mapSelections = [...selection.mapSelections];
+      mapSelections[setIndex] = {
         mapId: map.id,
         mapName: map.mapName,
+      };
+
+      return {
+        ...current,
+        [roundNo]: {
+          ...selection,
+          mapSelections,
+        },
+      };
+    });
+  }
+
+  function handleClearSingleRoundSetMap(roundNo: number, setIndex: number) {
+    setSubmitError(null);
+    setSingleMatchDefaults((current) => {
+      const selection = current[roundNo] ?? createEmptyMatchDefaultSelection();
+      const mapSelections = [...selection.mapSelections];
+      mapSelections[setIndex] = createEmptyMapDefaultSelection();
+
+      return {
+        ...current,
+        [roundNo]: {
+          ...selection,
+          mapSelections,
+        },
+      };
+    });
+  }
+
+  function handleChangeDualRoleBestOf(role: DualMapDefaultRole, nextBestOf: number) {
+    setSubmitError(null);
+    setDualMatchDefaults((current) => ({
+      ...current,
+      [role]: {
+        ...(current[role] ?? createEmptyMatchDefaultSelection()),
+        bestOf: normalizeTournamentBestOf(nextBestOf),
       },
     }));
   }
 
-  function handleClearDualRoleMap(role: DualMapDefaultRole) {
+  function handleSelectDualRoleSetMap(
+    role: DualMapDefaultRole,
+    setIndex: number,
+    map: HomeScheduleMapSearchResult,
+  ) {
     setSubmitError(null);
-    setDualMapDefaults((current) => {
-      const next = { ...current };
-      delete next[role];
-      return next;
+    setDualMatchDefaults((current) => {
+      const selection = current[role] ?? createEmptyMatchDefaultSelection();
+      const mapSelections = [...selection.mapSelections];
+      mapSelections[setIndex] = {
+        mapId: map.id,
+        mapName: map.mapName,
+      };
+
+      return {
+        ...current,
+        [role]: {
+          ...selection,
+          mapSelections,
+        },
+      };
     });
   }
 
-  function handleSelectUltimateMap(map: HomeScheduleMapSearchResult) {
+  function handleClearDualRoleSetMap(role: DualMapDefaultRole, setIndex: number) {
     setSubmitError(null);
-    setUltimateMapDefault({
-      mapId: map.id,
-      mapName: map.mapName,
+    setDualMatchDefaults((current) => {
+      const selection = current[role] ?? createEmptyMatchDefaultSelection();
+      const mapSelections = [...selection.mapSelections];
+      mapSelections[setIndex] = createEmptyMapDefaultSelection();
+
+      return {
+        ...current,
+        [role]: {
+          ...selection,
+          mapSelections,
+        },
+      };
     });
   }
 
-  function handleClearUltimateMap() {
+  function handleChangeUltimateBestOf(nextBestOf: number) {
     setSubmitError(null);
-    setUltimateMapDefault(createEmptyMapDefaultSelection());
+    setUltimateMatchDefault((current) => ({
+      ...current,
+      bestOf: normalizeTournamentBestOf(nextBestOf),
+    }));
+  }
+
+  function handleSelectUltimateSetMap(
+    setIndex: number,
+    map: HomeScheduleMapSearchResult,
+  ) {
+    setSubmitError(null);
+    setUltimateMatchDefault((current) => {
+      const mapSelections = [...current.mapSelections];
+      mapSelections[setIndex] = {
+        mapId: map.id,
+        mapName: map.mapName,
+      };
+
+      return {
+        ...current,
+        mapSelections,
+      };
+    });
+  }
+
+  function handleClearUltimateSetMap(setIndex: number) {
+    setSubmitError(null);
+    setUltimateMatchDefault((current) => {
+      const mapSelections = [...current.mapSelections];
+      mapSelections[setIndex] = createEmptyMapDefaultSelection();
+
+      return {
+        ...current,
+        mapSelections,
+      };
+    });
   }
 
   function clearSlot(slotReference: SlotReference) {
@@ -1187,22 +1336,23 @@ export function TournamentCreatePage() {
     }));
   }
 
-  function buildMapDefaultsPayload(): TournamentCreateMapDefaultRequest[] | undefined {
+  function buildMatchDefaultsPayload(): TournamentCreateMatchDefaultRequest[] | undefined {
     if (!bracketType || bracketType === "RACE_SURVIVAL") {
       return undefined;
     }
 
-    const mapDefaults: TournamentCreateMapDefaultRequest[] = [];
+    const matchDefaults: TournamentCreateMatchDefaultRequest[] = [];
 
     if (bracketType === "SINGLE_ELIMINATION") {
       singleRoundMapDefaultOptions.forEach(({ roundNo }) => {
-        const mapDefault = singleMapDefaults[roundNo];
+        const matchDefault = singleMatchDefaults[roundNo];
 
-        if (mapDefault?.mapId) {
-          mapDefaults.push({
+        if (hasMatchDefaultValue(matchDefault, bestOf)) {
+          matchDefaults.push({
             target: "ROUND",
             roundNo,
-            mapId: mapDefault.mapId,
+            bestOf: matchDefault?.bestOf ?? undefined,
+            mapIds: getMatchDefaultPayloadMapIds(matchDefault, getMatchDefaultBestOf(matchDefault, bestOf)),
           });
         }
       });
@@ -1210,27 +1360,32 @@ export function TournamentCreatePage() {
 
     if (bracketType === "DUAL_GROUP") {
       DUAL_MAP_DEFAULT_ROLES.forEach(({ role }) => {
-        const mapDefault = dualMapDefaults[role];
+        const matchDefault = dualMatchDefaults[role];
 
-        if (mapDefault?.mapId) {
-          mapDefaults.push({
+        if (hasMatchDefaultValue(matchDefault, bestOf)) {
+          matchDefaults.push({
             target: "MATCH_ROLE",
             matchRole: role,
-            mapId: mapDefault.mapId,
+            bestOf: matchDefault?.bestOf ?? undefined,
+            mapIds: getMatchDefaultPayloadMapIds(matchDefault, getMatchDefaultBestOf(matchDefault, bestOf)),
           });
         }
       });
     }
 
-    if (bracketType === "ULTIMATE_BATTLE" && ultimateMapDefault.mapId) {
-      mapDefaults.push({
-        target: "MATCH_ROLE",
-        matchRole: "FINAL",
-        mapId: ultimateMapDefault.mapId,
-      });
+    if (bracketType === "ULTIMATE_BATTLE") {
+      if (hasMatchDefaultValue(ultimateMatchDefault, bestOf)) {
+        const effectiveBestOf = getMatchDefaultBestOf(ultimateMatchDefault, bestOf);
+        matchDefaults.push({
+          target: "MATCH_ROLE",
+          matchRole: "FINAL",
+          bestOf: effectiveBestOf,
+          mapIds: getMatchDefaultPayloadMapIds(ultimateMatchDefault, effectiveBestOf),
+        });
+      }
     }
 
-    return mapDefaults.length > 0 ? mapDefaults : undefined;
+    return matchDefaults.length > 0 ? matchDefaults : undefined;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1256,7 +1411,7 @@ export function TournamentCreatePage() {
         bracketType,
         bestOf: normalizeTournamentBestOf(bestOf),
         groups: buildGroupsPayload(),
-        mapDefaults: buildMapDefaultsPayload(),
+        matchDefaults: buildMatchDefaultsPayload(),
       });
 
       router.push(`/tournament/${createdTournament.id}`);
@@ -1399,141 +1554,342 @@ export function TournamentCreatePage() {
               </div>
             )}
 
-            <TournamentMapDefaultsPanel
+            <TournamentMatchDefaultsPanel
               bracketType={bracketType}
+              fallbackBestOf={normalizeTournamentBestOf(bestOf)}
               disabled={creating}
-              dualMapDefaults={dualMapDefaults}
-              singleMapDefaults={singleMapDefaults}
+              dualMatchDefaults={dualMatchDefaults}
+              singleMatchDefaults={singleMatchDefaults}
               singleRoundOptions={singleRoundMapDefaultOptions}
-              ultimateMapDefault={ultimateMapDefault}
-              onClearDualRoleMap={handleClearDualRoleMap}
-              onClearSingleRoundMap={handleClearSingleRoundMap}
-              onClearUltimateMap={handleClearUltimateMap}
-              onSelectDualRoleMap={handleSelectDualRoleMap}
-              onSelectSingleRoundMap={handleSelectSingleRoundMap}
-              onSelectUltimateMap={handleSelectUltimateMap}
+              ultimateMatchDefault={ultimateMatchDefault}
+              onChangeDualRoleBestOf={handleChangeDualRoleBestOf}
+              onChangeSingleRoundBestOf={handleChangeSingleRoundBestOf}
+              onChangeUltimateBestOf={handleChangeUltimateBestOf}
+              onClearDualRoleSetMap={handleClearDualRoleSetMap}
+              onClearSingleRoundSetMap={handleClearSingleRoundSetMap}
+              onClearUltimateSetMap={handleClearUltimateSetMap}
+              onSelectDualRoleSetMap={handleSelectDualRoleSetMap}
+              onSelectSingleRoundSetMap={handleSelectSingleRoundSetMap}
+              onSelectUltimateSetMap={handleSelectUltimateSetMap}
             />
+          </SurfaceCard>
 
-            <DraftUserSearch
-              clearOnSelect
-              label="내부 유저 검색"
-              placeholder="닉네임 또는 아이디"
-              onSelect={handleAddUser}
-              disabled={creating}
-              disabledUserIds={disabledUserIds}
-              disabledUserMessage="이미 참가자 풀에 추가된 유저입니다."
-              emptyMessage="검색 결과가 없습니다."
-            />
+          <div className="min-w-0 space-y-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="space-y-4">
+                <DraftUserSearch
+                  clearOnSelect
+                  label="유저 검색"
+                  placeholder="닉네임 또는 아이디"
+                  onSelect={handleAddUser}
+                  disabled={creating}
+                  disabledUserIds={disabledUserIds}
+                  disabledUserMessage="이미 참가자 풀에 추가된 유저입니다."
+                  emptyMessage="검색 결과가 없습니다."
+                />
 
-            <ParticipantPool
-              assignedParticipantIds={assignedParticipantIds}
-              onDropToPool={handlePoolDrop}
-              onDragStart={(event, participantId) =>
-                writeDragData(event, { source: "POOL", participantId })
-              }
-              onRemoveParticipant={handleRemoveParticipant}
-              onSelectParticipant={(participantId) =>
-                setSelectedParticipantId((current) =>
-                  current === participantId ? null : participantId,
-                )
-              }
-              participants={participants}
-              selectedParticipantId={selectedParticipantId}
-            />
+                <ParticipantPool
+                  assignedParticipantIds={assignedParticipantIds}
+                  onDropToPool={handlePoolDrop}
+                  onDragStart={(event, participantId) =>
+                    writeDragData(event, { source: "POOL", participantId })
+                  }
+                  onRemoveParticipant={handleRemoveParticipant}
+                  onSelectParticipant={(participantId) =>
+                    setSelectedParticipantId((current) =>
+                      current === participantId ? null : participantId,
+                    )
+                  }
+                  participants={participants}
+                  selectedParticipantId={selectedParticipantId}
+                />
+              </div>
 
-            <div className="rounded-lg border border-line bg-surface-strong p-4">
-              <p className="text-sm font-semibold text-foreground">생성 요약</p>
-              <dl className="mt-4 grid gap-2 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-muted">방식</dt>
-                  <dd className="font-semibold text-foreground">
-                    {getBracketTypeLabel(bracketType)}
-                  </dd>
+              <div className="space-y-4">
+                <div className="rounded-lg border border-line bg-surface-strong p-4">
+                  <p className="text-sm font-semibold text-foreground">생성 요약</p>
+                  <dl className="mt-4 grid gap-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-muted">방식</dt>
+                      <dd className="font-semibold text-foreground">
+                        {getBracketTypeLabel(bracketType)}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-muted">배치 참가자</dt>
+                      <dd className="font-semibold text-foreground">
+                        {assignedSlotCount}명
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-muted">전체 슬롯</dt>
+                      <dd className="font-semibold text-foreground">
+                        {totalSlotCount}칸
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-muted">부전승</dt>
+                      <dd className="font-semibold text-foreground">
+                        {byeCount}칸
+                      </dd>
+                    </div>
+                  </dl>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-muted">배치 참가자</dt>
-                  <dd className="font-semibold text-foreground">
-                    {assignedSlotCount}명
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-muted">전체 슬롯</dt>
-                  <dd className="font-semibold text-foreground">
-                    {totalSlotCount}칸
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-muted">부전승</dt>
-                  <dd className="font-semibold text-foreground">
-                    {byeCount}칸
-                  </dd>
-                </div>
-              </dl>
+
+                {validationMessage ? (
+                  <p className="rounded-lg border border-warning-ink/25 bg-warning-soft px-4 py-3 text-sm leading-6 text-warning-ink">
+                    {validationMessage}
+                  </p>
+                ) : null}
+
+                {submitError ? (
+                  <p className="rounded-lg border border-danger-ink/20 bg-danger-soft px-4 py-3 text-sm leading-6 text-danger-ink">
+                    {submitError}
+                  </p>
+                ) : null}
+
+                <Button
+                  type="submit"
+                  variant="accent"
+                  fullWidth
+                  disabled={!canSubmit}
+                >
+                  {creating ? "등록 중..." : "대진표 등록"}
+                </Button>
+              </div>
             </div>
 
-            {validationMessage ? (
-              <p className="rounded-lg border border-warning-ink/25 bg-warning-soft px-4 py-3 text-sm leading-6 text-warning-ink">
-                {validationMessage}
-              </p>
-            ) : null}
-
-            {submitError ? (
-              <p className="rounded-lg border border-danger-ink/20 bg-danger-soft px-4 py-3 text-sm leading-6 text-danger-ink">
-                {submitError}
-              </p>
-            ) : null}
-
-            <Button
-              type="submit"
-              variant="accent"
-              fullWidth
-              disabled={!canSubmit}
-            >
-              {creating ? "등록 중..." : "대진표 등록"}
-            </Button>
-          </SurfaceCard>
-
-          <SurfaceCard className="min-w-0 overflow-hidden p-0">
-            {bracketType === "SINGLE_ELIMINATION" ? (
-              <SingleBuilderBoard
-                bestOf={bestOf}
-                matches={singleMatches}
-                participantsById={participantsById}
-                selectedParticipantId={selectedParticipantId}
-                onAddMatch={handleAddSingleMatch}
-                onClearSlot={clearSlot}
-                onDropSlot={handleSlotDrop}
-                onRemoveMatch={handleRemoveSingleMatch}
-                onSlotClick={handleSlotClick}
-              />
-            ) : bracketType === "DUAL_GROUP" ? (
-              <DualBuilderBoard
-                bestOf={bestOf}
-                groups={dualGroups}
-                participantsById={participantsById}
-                selectedParticipantId={selectedParticipantId}
-                onAddGroup={handleAddDualGroup}
-                onClearSlot={clearSlot}
-                onDropSlot={handleSlotDrop}
-                onRemoveGroup={handleRemoveDualGroup}
-                onSlotClick={handleSlotClick}
-              />
-            ) : (
-              <SpecialBuilderBoard
-                bestOf={bestOf}
-                bracketType={bracketType}
-                onAssignRaceSurvivalParticipant={handleAssignRaceSurvivalParticipant}
-                onRemoveRaceSurvivalParticipant={handleRemoveRaceSurvivalParticipant}
-                participants={participants}
-                participantsById={participantsById}
-                raceSurvivalGroups={raceSurvivalGroups}
-                selectedParticipantId={selectedParticipantId}
-              />
-            )}
-          </SurfaceCard>
+            <SurfaceCard className="min-w-0 overflow-hidden p-0">
+              {bracketType === "SINGLE_ELIMINATION" ? (
+                <SingleBuilderBoard
+                  bestOf={bestOf}
+                  matches={singleMatches}
+                  participantsById={participantsById}
+                  selectedParticipantId={selectedParticipantId}
+                  onAddMatch={handleAddSingleMatch}
+                  onClearSlot={clearSlot}
+                  onDropSlot={handleSlotDrop}
+                  onRemoveMatch={handleRemoveSingleMatch}
+                  onSlotClick={handleSlotClick}
+                />
+              ) : bracketType === "DUAL_GROUP" ? (
+                <DualBuilderBoard
+                  bestOf={bestOf}
+                  groups={dualGroups}
+                  participantsById={participantsById}
+                  selectedParticipantId={selectedParticipantId}
+                  onAddGroup={handleAddDualGroup}
+                  onClearSlot={clearSlot}
+                  onDropSlot={handleSlotDrop}
+                  onRemoveGroup={handleRemoveDualGroup}
+                  onSlotClick={handleSlotClick}
+                />
+              ) : (
+                <SpecialBuilderBoard
+                  bestOf={bestOf}
+                  bracketType={bracketType}
+                  onAssignRaceSurvivalParticipant={handleAssignRaceSurvivalParticipant}
+                  onRemoveRaceSurvivalParticipant={handleRemoveRaceSurvivalParticipant}
+                  participants={participants}
+                  participantsById={participantsById}
+                  raceSurvivalGroups={raceSurvivalGroups}
+                  selectedParticipantId={selectedParticipantId}
+                />
+              )}
+            </SurfaceCard>
+          </div>
         </div>
       )}
     </form>
+  );
+}
+
+function TournamentMatchDefaultsPanel({
+  bracketType,
+  fallbackBestOf,
+  disabled,
+  dualMatchDefaults,
+  singleMatchDefaults,
+  singleRoundOptions,
+  ultimateMatchDefault,
+  onChangeDualRoleBestOf,
+  onChangeSingleRoundBestOf,
+  onChangeUltimateBestOf,
+  onClearDualRoleSetMap,
+  onClearSingleRoundSetMap,
+  onClearUltimateSetMap,
+  onSelectDualRoleSetMap,
+  onSelectSingleRoundSetMap,
+  onSelectUltimateSetMap,
+}: {
+  bracketType: TournamentBracketType;
+  fallbackBestOf: TournamentBestOf;
+  disabled: boolean;
+  dualMatchDefaults: Partial<Record<DualMapDefaultRole, MatchDefaultSelection>>;
+  singleMatchDefaults: Record<number, MatchDefaultSelection>;
+  singleRoundOptions: SingleRoundMapDefaultOption[];
+  ultimateMatchDefault: MatchDefaultSelection;
+  onChangeDualRoleBestOf: (role: DualMapDefaultRole, bestOf: number) => void;
+  onChangeSingleRoundBestOf: (roundNo: number, bestOf: number) => void;
+  onChangeUltimateBestOf: (bestOf: number) => void;
+  onClearDualRoleSetMap: (role: DualMapDefaultRole, setIndex: number) => void;
+  onClearSingleRoundSetMap: (roundNo: number, setIndex: number) => void;
+  onClearUltimateSetMap: (setIndex: number) => void;
+  onSelectDualRoleSetMap: (
+    role: DualMapDefaultRole,
+    setIndex: number,
+    map: HomeScheduleMapSearchResult,
+  ) => void;
+  onSelectSingleRoundSetMap: (
+    roundNo: number,
+    setIndex: number,
+    map: HomeScheduleMapSearchResult,
+  ) => void;
+  onSelectUltimateSetMap: (
+    setIndex: number,
+    map: HomeScheduleMapSearchResult,
+  ) => void;
+}) {
+  if (
+    bracketType !== "SINGLE_ELIMINATION" &&
+    bracketType !== "DUAL_GROUP" &&
+    bracketType !== "ULTIMATE_BATTLE"
+  ) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-line bg-surface-strong p-4">
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-foreground">승부 세트 수 / 세트 맵 기본값</p>
+        <p className="text-xs leading-5 text-muted">
+          선택 사항입니다. 결과 제출할 때 실제 BO와 세트별 맵을 다시 바꿀 수 있습니다.
+        </p>
+      </div>
+
+      {bracketType === "SINGLE_ELIMINATION" ? (
+        <div className="grid gap-3">
+          {singleRoundOptions.map((roundOption) => {
+            const selection = singleMatchDefaults[roundOption.roundNo];
+            const effectiveBestOf = getMatchDefaultBestOf(selection, fallbackBestOf);
+
+            return (
+              <MatchDefaultPicker
+                key={roundOption.roundNo}
+                disabled={disabled}
+                label={roundOption.label}
+                bestOf={effectiveBestOf}
+                selection={selection}
+                onBestOfChange={(nextBestOf) =>
+                  onChangeSingleRoundBestOf(roundOption.roundNo, nextBestOf)
+                }
+                onClearSetMap={(setIndex) =>
+                  onClearSingleRoundSetMap(roundOption.roundNo, setIndex)
+                }
+                onSelectSetMap={(setIndex, map) =>
+                  onSelectSingleRoundSetMap(roundOption.roundNo, setIndex, map)
+                }
+              />
+            );
+          })}
+        </div>
+      ) : null}
+
+      {bracketType === "DUAL_GROUP" ? (
+        <div className="grid gap-3">
+          {DUAL_MAP_DEFAULT_ROLES.map(({ label, role }) => {
+            const selection = dualMatchDefaults[role];
+            const effectiveBestOf = getMatchDefaultBestOf(selection, fallbackBestOf);
+
+            return (
+              <MatchDefaultPicker
+                key={role}
+                disabled={disabled}
+                label={label}
+                bestOf={effectiveBestOf}
+                selection={selection}
+                onBestOfChange={(nextBestOf) =>
+                  onChangeDualRoleBestOf(role, nextBestOf)
+                }
+                onClearSetMap={(setIndex) =>
+                  onClearDualRoleSetMap(role, setIndex)
+                }
+                onSelectSetMap={(setIndex, map) =>
+                  onSelectDualRoleSetMap(role, setIndex, map)
+                }
+              />
+            );
+          })}
+        </div>
+      ) : null}
+
+      {bracketType === "ULTIMATE_BATTLE" ? (
+        <MatchDefaultPicker
+          bestOf={getMatchDefaultBestOf(ultimateMatchDefault, fallbackBestOf)}
+          disabled={disabled}
+          label="끝장전"
+          selection={ultimateMatchDefault}
+          showBestOfInput={false}
+          onBestOfChange={onChangeUltimateBestOf}
+          onClearSetMap={onClearUltimateSetMap}
+          onSelectSetMap={onSelectUltimateSetMap}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function MatchDefaultPicker({
+  bestOf,
+  disabled,
+  label,
+  selection,
+  showBestOfInput = true,
+  onBestOfChange,
+  onClearSetMap,
+  onSelectSetMap,
+}: {
+  bestOf: TournamentBestOf;
+  disabled: boolean;
+  label: string;
+  selection: MatchDefaultSelection | undefined;
+  showBestOfInput?: boolean;
+  onBestOfChange: (bestOf: number) => void;
+  onClearSetMap: (setIndex: number) => void;
+  onSelectSetMap: (setIndex: number, map: HomeScheduleMapSearchResult) => void;
+}) {
+  return (
+    <div className="grid gap-3 rounded-lg border border-line bg-white p-3">
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_120px] sm:items-end">
+        <p className="text-sm font-semibold text-foreground">{label}</p>
+        {showBestOfInput ? (
+          <label className="grid gap-1 text-xs font-semibold text-muted">
+            BO
+            <Input
+              type="number"
+              min={MIN_TOURNAMENT_BEST_OF}
+              step={2}
+              value={bestOf}
+              onBlur={(event) => onBestOfChange(Number(event.target.value))}
+              onChange={(event) => onBestOfChange(Number(event.target.value))}
+              disabled={disabled}
+            />
+          </label>
+        ) : null}
+      </div>
+      <div className="grid gap-2">
+        {Array.from({ length: bestOf }, (_, setIndex) => (
+          <MapDefaultPicker
+            key={setIndex}
+            disabled={disabled}
+            label={`${setIndex + 1}세트`}
+            selection={getMatchDefaultMapSelection(selection, setIndex)}
+            onClear={() => onClearSetMap(setIndex)}
+            onSelect={(map) => onSelectSetMap(setIndex, map)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 

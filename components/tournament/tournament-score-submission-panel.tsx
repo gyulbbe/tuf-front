@@ -38,6 +38,10 @@ type TournamentScoreSubmissionPanelProps = {
     matchId: string,
     submissions: TournamentMatchScoreSubmission[],
   ) => void;
+  onApprovedMatchReadyForClanShare?: (
+    matchId: string,
+    tournament: Tournament,
+  ) => void;
   onTournamentChange: (tournament: Tournament) => void;
 };
 
@@ -741,6 +745,7 @@ export function TournamentScoreSubmissionPanel({
   selectedMatch,
   tournament,
   tournamentId,
+  onApprovedMatchReadyForClanShare,
   onSubmissionsChange,
   onTournamentChange,
 }: TournamentScoreSubmissionPanelProps) {
@@ -1150,6 +1155,7 @@ export function TournamentScoreSubmissionPanel({
         submission.id,
       );
       onTournamentChange(nextTournament);
+      onApprovedMatchReadyForClanShare?.(selectedMatch.id, nextTournament);
       const nextSubmissions: TournamentMatchScoreSubmission[] = submissions.map(
         (item) =>
           item.id === submission.id

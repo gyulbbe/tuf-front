@@ -70,6 +70,42 @@ export type ClanShareLogSummary = {
   totalCount: number;
 };
 
+export type ClanShareMatchSendStatus = "SUCCESS" | "FAILED" | "UNSENT";
+
+export type ClanShareRoundStatusMatch = {
+  matchId: string;
+  player1: string;
+  player2: string;
+  winner: string;
+  mapName: string;
+  status: ClanShareMatchSendStatus;
+  eloMessage: string | null;
+  sheetStatus: "SUCCESS" | "FAILED" | null;
+  sheetMessage: string | null;
+  latestSentAt: string | null;
+  retryable: boolean;
+};
+
+export type ClanShareRoundStatusGroup = {
+  groupKey: string;
+  groupLabel: string;
+  matches: ClanShareRoundStatusMatch[];
+};
+
+export type ClanShareRoundStatusTotals = {
+  total: number;
+  success: number;
+  failed: number;
+  unsent: number;
+  sheetFailed: number;
+  retryable: number;
+};
+
+export type ClanShareRoundStatus = {
+  groups: ClanShareRoundStatusGroup[];
+  totals: ClanShareRoundStatusTotals;
+};
+
 function readObject(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
@@ -149,6 +185,81 @@ function normalizeLogSummary(value: unknown): ClanShareLogSummary {
   };
 }
 
+function normalizeSendStatus(value: unknown): ClanShareMatchSendStatus {
+  switch (value) {
+    case "SUCCESS":
+    case "FAILED":
+      return value;
+    case "UNSENT":
+    default:
+      return "UNSENT";
+  }
+}
+
+function normalizeSheetStatus(value: unknown): "SUCCESS" | "FAILED" | null {
+  switch (value) {
+    case "SUCCESS":
+    case "FAILED":
+      return value;
+    default:
+      return null;
+  }
+}
+
+function normalizeRoundStatusMatch(value: unknown): ClanShareRoundStatusMatch {
+  const raw = readObject(value);
+
+  return {
+    matchId: readString(raw.matchId, String(readNumber(raw.matchId))),
+    player1: readString(raw.player1),
+    player2: readString(raw.player2),
+    winner: readString(raw.winner),
+    mapName: readString(raw.mapName),
+    status: normalizeSendStatus(raw.status),
+    eloMessage: readString(raw.eloMessage) || null,
+    sheetStatus: normalizeSheetStatus(raw.sheetStatus),
+    sheetMessage: readString(raw.sheetMessage) || null,
+    latestSentAt: readString(raw.latestSentAt) || null,
+    retryable: readBoolean(raw.retryable),
+  };
+}
+
+function normalizeRoundStatusGroup(value: unknown): ClanShareRoundStatusGroup {
+  const raw = readObject(value);
+
+  return {
+    groupKey: readString(raw.groupKey),
+    groupLabel: readString(raw.groupLabel),
+    matches: Array.isArray(raw.matches)
+      ? raw.matches.map(normalizeRoundStatusMatch)
+      : [],
+  };
+}
+
+function normalizeRoundStatusTotals(value: unknown): ClanShareRoundStatusTotals {
+  const raw = readObject(value);
+
+  return {
+    total: readNumber(raw.total),
+    success: readNumber(raw.success),
+    failed: readNumber(raw.failed),
+    unsent: readNumber(raw.unsent),
+    sheetFailed: readNumber(raw.sheetFailed),
+    retryable: readNumber(raw.retryable),
+  };
+}
+
+function normalizeRoundStatus(value: unknown): ClanShareRoundStatus {
+  const raw = readObject(value);
+
+  return {
+    groups: Array.isArray(raw.groups)
+      ? raw.groups.map(normalizeRoundStatusGroup)
+      : [],
+    totals: normalizeRoundStatusTotals(raw.totals),
+  };
+}
+
 async function unwrapBackendPayload<T>(
   request: Promise<{
     data: ApiEnvelope<T> | ErrorResponseBody | T;
@@ -203,6 +314,20 @@ export async function getClanShareLogSummary(tournamentId: string) {
   );
 
   return normalizeLogSummary(response);
+}
+
+export async function getClanShareRoundStatus(tournamentId: string) {
+  const response = await unwrapBackendPayload<unknown>(
+    apiClient.get<ApiEnvelope<unknown> | unknown>(
+      `/tournaments/${tournamentId}/clan-share-send-logs/status`,
+      {
+        validateStatus: () => true,
+      },
+    ),
+    "ELO/시트 전송 상태를 불러오지 못했습니다.",
+  );
+
+  return normalizeRoundStatus(response);
 }
 
 export async function submitClanShareMatches(matches: ClanShareMatchPayload[]) {

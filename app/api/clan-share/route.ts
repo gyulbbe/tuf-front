@@ -23,6 +23,7 @@ type ClanShareMatchRequest = {
   matchType: "개인리그" | "끝장전" | "종족 최강전";
   matchName: string;
   playedDate: string;
+  setNo: number | null;
 };
 
 type GoogleTokenResponse = {
@@ -69,6 +70,7 @@ type ClanShareMatchResult = {
   matchId: number;
   player1: string;
   player2: string;
+  setNo: number | null;
   sheetMessage: string;
   sheetOk: boolean;
   tournamentId: number;
@@ -165,8 +167,36 @@ function parseClanShareMatches(body: unknown): ClanShareMatchRequest[] {
       matchType: matchType as ClanShareMatchRequest["matchType"],
       matchName: readRequiredString(rawMatch, "matchName", index),
       playedDate: readRequiredString(rawMatch, "playedDate", index),
+      setNo: readOptionalPositiveInteger(rawMatch, "setNo", index),
     };
   });
+}
+
+function readOptionalPositiveInteger(
+  raw: Record<string, unknown>,
+  key: string,
+  index: number,
+) {
+  const value = raw[key];
+
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : NaN;
+
+  if (!Number.isSafeInteger(numericValue) || numericValue <= 0) {
+    throw new ClanShareRequestError(
+      `${index + 1}번째 경기의 ${key} 값이 올바르지 않습니다.`,
+    );
+  }
+
+  return numericValue;
 }
 
 async function readApiError(response: Response, fallbackMessage: string) {
@@ -611,6 +641,7 @@ async function processClanShareMatch({
     matchId: match.matchId,
     player1: match.player1,
     player2: match.player2,
+    setNo: match.setNo,
     sheetMessage,
     sheetOk,
     tournamentId: match.tournamentId,

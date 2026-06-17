@@ -35,6 +35,7 @@ export type ClanShareMatchPayload = {
   matchType: "개인리그" | "끝장전" | "종족 최강전";
   matchName: string;
   playedDate: string;
+  setNo?: number;
 };
 
 export type ClanShareMatchResult = {
@@ -47,6 +48,7 @@ export type ClanShareMatchResult = {
   matchId: number;
   player1: string;
   player2: string;
+  setNo: number | null;
   sheetMessage: string;
   sheetOk: boolean;
   tournamentId: number;
@@ -72,6 +74,16 @@ export type ClanShareLogSummary = {
 
 export type ClanShareMatchSendStatus = "SUCCESS" | "FAILED" | "UNSENT";
 
+export type ClanShareRoundStatusSet = {
+  setNo: number;
+  status: ClanShareMatchSendStatus;
+  eloMessage: string | null;
+  sheetStatus: "SUCCESS" | "FAILED" | null;
+  sheetMessage: string | null;
+  latestSentAt: string | null;
+  retryable: boolean;
+};
+
 export type ClanShareRoundStatusMatch = {
   matchId: string;
   player1: string;
@@ -84,6 +96,7 @@ export type ClanShareRoundStatusMatch = {
   sheetMessage: string | null;
   latestSentAt: string | null;
   retryable: boolean;
+  sets: ClanShareRoundStatusSet[];
 };
 
 export type ClanShareRoundStatusGroup = {
@@ -145,6 +158,7 @@ function normalizeMatchResult(value: unknown): ClanShareMatchResult {
     matchId: readNumber(raw.matchId),
     player1: readString(raw.player1),
     player2: readString(raw.player2),
+    setNo: readNumber(raw.setNo) || null,
     sheetMessage: readString(raw.sheetMessage, ""),
     sheetOk: readBoolean(raw.sheetOk),
     tournamentId: readNumber(raw.tournamentId),
@@ -215,6 +229,23 @@ function normalizeRoundStatusMatch(value: unknown): ClanShareRoundStatusMatch {
     player2: readString(raw.player2),
     winner: readString(raw.winner),
     mapName: readString(raw.mapName),
+    status: normalizeSendStatus(raw.status),
+    eloMessage: readString(raw.eloMessage) || null,
+    sheetStatus: normalizeSheetStatus(raw.sheetStatus),
+    sheetMessage: readString(raw.sheetMessage) || null,
+    latestSentAt: readString(raw.latestSentAt) || null,
+    retryable: readBoolean(raw.retryable),
+    sets: Array.isArray(raw.sets)
+      ? raw.sets.map(normalizeRoundStatusSet)
+      : [],
+  };
+}
+
+function normalizeRoundStatusSet(value: unknown): ClanShareRoundStatusSet {
+  const raw = readObject(value);
+
+  return {
+    setNo: readNumber(raw.setNo),
     status: normalizeSendStatus(raw.status),
     eloMessage: readString(raw.eloMessage) || null,
     sheetStatus: normalizeSheetStatus(raw.sheetStatus),

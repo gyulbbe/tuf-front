@@ -362,10 +362,86 @@ function buildDynamicConnectorSegments(options: {
   return segments;
 }
 
+type SingleParticipantAppearance = {
+  match: TournamentMatch;
+  slotNo: number;
+};
+
+function compareSingleParticipantAppearances(
+  left: SingleParticipantAppearance,
+  right: SingleParticipantAppearance,
+) {
+  const leftRound = left.match.roundNo ?? Number.MAX_SAFE_INTEGER;
+  const rightRound = right.match.roundNo ?? Number.MAX_SAFE_INTEGER;
+  const leftMatchNo = left.match.matchNo ?? Number.MAX_SAFE_INTEGER;
+  const rightMatchNo = right.match.matchNo ?? Number.MAX_SAFE_INTEGER;
+
+  return (
+    leftRound - rightRound ||
+    leftMatchNo - rightMatchNo ||
+    left.match.displayOrder - right.match.displayOrder ||
+    left.slotNo - right.slotNo
+  );
+}
+
+function buildSingleParticipantConnectors(group: TournamentGroup) {
+  const appearancesByParticipantId = new Map<
+    string,
+    SingleParticipantAppearance[]
+  >();
+
+  group.matches.forEach((match) => {
+    match.slots.forEach((slot) => {
+      const participantId = slot.participant?.id;
+
+      if (!participantId || slot.isBye) {
+        return;
+      }
+
+      appearancesByParticipantId.set(participantId, [
+        ...(appearancesByParticipantId.get(participantId) ?? []),
+        { match, slotNo: slot.slotNo },
+      ]);
+    });
+  });
+
+  return Array.from(appearancesByParticipantId.entries()).map(
+    ([participantId, rawAppearances]): TournamentParticipantConnector => {
+      const appearances = Array.from(
+        new Map(
+          rawAppearances.map((appearance) => [
+            appearance.match.id,
+            appearance,
+          ]),
+        ).values(),
+      ).sort(compareSingleParticipantAppearances);
+      const segments = appearances.flatMap((appearance, index) => {
+        const previousAppearance = appearances[index - 1];
+
+        if (!previousAppearance) {
+          return [];
+        }
+
+        return buildDynamicConnectorSegments({
+          participantId,
+          sourceMatch: previousAppearance.match,
+          targetMatch: appearance.match,
+          targetSlotNo: appearance.slotNo,
+        });
+      });
+
+      return { participantId, segments };
+    },
+  );
+}
+
 function buildComputedConnectors(group: TournamentGroup) {
+  if (isSingleEliminationGroup(group)) {
+    return buildSingleParticipantConnectors(group);
+  }
+
   const connectorMap = new Map<string, TournamentConnectorSegment[]>();
   const matchById = new Map(group.matches.map((match) => [match.id, match]));
-  const isSingleGroup = isSingleEliminationGroup(group);
 
   group.matches.forEach((targetMatch) => {
     targetMatch.slots.forEach((slot) => {
@@ -379,20 +455,6 @@ function buildComputedConnectors(group: TournamentGroup) {
       const sourceMatch = matchById.get(sourceMatchId);
 
       if (!sourceMatch) {
-        return;
-      }
-
-      if (isSingleGroup) {
-        appendSegments(
-          connectorMap,
-          participantId,
-          buildDynamicConnectorSegments({
-            participantId,
-            sourceMatch,
-            targetMatch,
-            targetSlotNo: slot.slotNo,
-          }),
-        );
         return;
       }
 
@@ -574,13 +636,15 @@ function DuelGroupPanel({
   const [hoveredParticipantId, setHoveredParticipantId] = useState<string | null>(
     null,
   );
-  const connectors = group.connectors?.length
-    ? group.connectors
-    : buildComputedConnectors(group);
+  const isSingleGroup = isSingleEliminationGroup(group);
+  const connectors = isSingleGroup
+    ? buildComputedConnectors(group)
+    : group.connectors?.length
+      ? group.connectors
+      : buildComputedConnectors(group);
   const activeConnector = connectors.find(
     (connector) => connector.participantId === hoveredParticipantId,
   );
-  const isSingleGroup = isSingleEliminationGroup(group);
 
   function handleParticipantLeave(participantId: string) {
     setHoveredParticipantId((current) =>

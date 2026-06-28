@@ -595,6 +595,8 @@ function normalizeMatch(
     id: readId(raw.id, matchKey),
     matchKey: matchKey as TournamentMatchKey,
     matchRole,
+    roundNo: readNullableNumber(raw.roundNo),
+    matchNo: readNullableNumber(raw.matchNo),
     displayName: resolveMatchDisplayName(
       matchKey,
       matchRole,

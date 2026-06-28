@@ -72,6 +72,8 @@ export type TournamentMatch = {
   id: string;
   matchKey: TournamentMatchKey;
   matchRole: TournamentMatchRole;
+  roundNo: number | null;
+  matchNo: number | null;
   displayName: string;
   bestOf: number;
   status: TournamentMatchStatus;
